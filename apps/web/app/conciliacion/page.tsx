@@ -133,8 +133,8 @@ export default function ConciliacionPage() {
                 <div className="overflow-hidden rounded-xl bg-white p-4 shadow-sm border border-gray-100">
                     <div className="flex items-center justify-between">
                         <dt className="truncate text-xs font-bold text-gray-500 uppercase tracking-wide">FACTURAS SIN CONCILIAR</dt>
-                        <div className="p-2 bg-yellow-50 rounded-lg">
-                            <DocumentTextIcon className="h-5 w-5 text-yellow-600" />
+                        <div className="p-2 bg-yellow-50 rounded-lg flex items-center justify-center">
+                            <DocumentTextIcon className="h-5 w-5 text-yellow-600" style={{ width: '20px', height: '20px' }} />
                         </div>
                     </div>
                     <dd className="mt-2 flex flex-col items-baseline">
@@ -145,8 +145,8 @@ export default function ConciliacionPage() {
                 <div className="overflow-hidden rounded-xl bg-white p-4 shadow-sm border border-gray-100">
                     <div className="flex items-center justify-between">
                         <dt className="truncate text-xs font-bold text-gray-500 uppercase tracking-wide">PAGOS SIN CONCILIAR</dt>
-                        <div className="p-2 bg-blue-50 rounded-lg">
-                            <DocumentTextIcon className="h-5 w-5 text-blue-600" />
+                        <div className="p-2 bg-blue-50 rounded-lg flex items-center justify-center">
+                            <DocumentTextIcon className="h-5 w-5 text-blue-600" style={{ width: '20px', height: '20px' }} />
                         </div>
                     </div>
                     <dd className="mt-2 flex flex-col items-baseline">
@@ -157,8 +157,8 @@ export default function ConciliacionPage() {
                 <div className="overflow-hidden rounded-xl bg-white p-4 shadow-sm border border-gray-100">
                     <div className="flex items-center justify-between">
                         <dt className="truncate text-xs font-bold text-gray-500 uppercase tracking-wide">CONCILIADAS HOY</dt>
-                        <div className="p-2 bg-green-50 rounded-lg">
-                            <DocumentTextIcon className="h-5 w-5 text-green-600" />
+                        <div className="p-2 bg-green-50 rounded-lg flex items-center justify-center">
+                            <DocumentTextIcon className="h-5 w-5 text-green-600" style={{ width: '20px', height: '20px' }} />
                         </div>
                     </div>
                     <dd className="mt-2 flex flex-col items-baseline">
@@ -168,8 +168,8 @@ export default function ConciliacionPage() {
                 <div className="overflow-hidden rounded-xl bg-white p-4 shadow-sm border border-gray-100">
                     <div className="flex items-center justify-between">
                         <dt className="truncate text-xs font-bold text-gray-500 uppercase tracking-wide">CON DIFERENCIAS</dt>
-                        <div className="p-2 bg-red-50 rounded-lg">
-                            <DocumentTextIcon className="h-5 w-5 text-red-600" />
+                        <div className="p-2 bg-red-50 rounded-lg flex items-center justify-center">
+                            <DocumentTextIcon className="h-5 w-5 text-red-600" style={{ width: '20px', height: '20px' }} />
                         </div>
                     </div>
                     <dd className="mt-2 flex flex-col items-baseline">
