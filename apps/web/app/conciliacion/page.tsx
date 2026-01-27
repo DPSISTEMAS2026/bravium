@@ -111,16 +111,10 @@ export default function ConciliacionPage() {
     return (
         <div className="p-6">
             {/* Header */}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-start mb-8">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">
-                        {view === 'FILES' ? 'Conciliación Bancaria' : `Detalle: ${selectedFile?.filename}`}
-                    </h1>
-                    <p className="text-sm text-gray-500">
-                        {view === 'FILES'
-                            ? 'Selecciona una cartola para comenzar a trabajar.'
-                            : `${selectedFile?.count} movimientos (${selectedFile?.pendingCount} pendientes)`}
-                    </p>
+                    <h1 className="text-2xl font-bold text-gray-900">Conciliación</h1>
+                    <p className="text-sm text-gray-500">Conciliación automática de facturas y pagos</p>
                 </div>
                 {view === 'DETAILS' && (
                     <button
@@ -131,61 +125,117 @@ export default function ConciliacionPage() {
                         Volver
                     </button>
                 )}
-                {view === 'FILES' && (
-                    <button
-                        onClick={fetchFiles}
-                        className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-                    >
-                        Refrescar
-                    </button>
-                )}
             </div>
 
-            {/* FILES VIEW */}
-            {view === 'FILES' && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {isLoading ? (
-                        <p className="text-gray-500">Cargando cartolas...</p>
-                    ) : files.length === 0 ? (
-                        <p className="text-gray-500">No hay cartolas cargadas. Ve a "Cargar Cartola" para subir una.</p>
-                    ) : (
-                        files.map((file) => (
-                            <div
-                                key={file.filename}
-                                onClick={() => handleSelectFile(file)}
-                                className="relative flex items-center space-x-3 rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-offset-2 hover:border-gray-400 cursor-pointer transition-all"
-                            >
-                                <div className="flex-shrink-0">
-                                    <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                                        <DocumentTextIcon className="text-indigo-600" style={{ width: '24px', height: '24px' }} aria-hidden="true" />
-                                    </div>
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <span className="absolute inset-0" aria-hidden="true" />
-                                    <p className="text-sm font-medium text-gray-900">{file.filename}</p>
-                                    <p className="truncate text-sm text-gray-500">{file.bankName} • {file.count} movim.</p>
-                                    <div className="mt-1 flex items-center text-xs text-gray-400">
-                                        {formatDate(file.minDate)} - {formatDate(file.maxDate)}
-                                    </div>
-                                </div>
-                                <div>
-                                    {file.pendingCount > 0 ? (
-                                        <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/10">
-                                            {file.pendingCount} Pend.
-                                        </span>
-                                    ) : (
-                                        <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
-                                            OK
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                        ))
-                    )}
+            {/* KPI Summary Grid */}
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+                <div className="overflow-hidden rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between">
+                        <dt className="truncate text-xs font-bold text-gray-500 uppercase tracking-wide">FACTURAS SIN CONCILIAR</dt>
+                        <div className="p-2 bg-yellow-50 rounded-lg">
+                            <DocumentTextIcon className="h-5 w-5 text-yellow-600" />
+                        </div>
+                    </div>
+                    <dd className="mt-2 flex flex-col items-baseline">
+                        <span className="text-2xl font-semibold text-gray-900">116</span>
+                        <span className="text-sm text-gray-500 font-medium">$125.628.546</span>
+                    </dd>
                 </div>
+                <div className="overflow-hidden rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between">
+                        <dt className="truncate text-xs font-bold text-gray-500 uppercase tracking-wide">PAGOS SIN CONCILIAR</dt>
+                        <div className="p-2 bg-blue-50 rounded-lg">
+                            <DocumentTextIcon className="h-5 w-5 text-blue-600" />
+                        </div>
+                    </div>
+                    <dd className="mt-2 flex flex-col items-baseline">
+                        <span className="text-2xl font-semibold text-gray-900">44</span>
+                        <span className="text-sm text-gray-500 font-medium">$38.213.450</span>
+                    </dd>
+                </div>
+                <div className="overflow-hidden rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between">
+                        <dt className="truncate text-xs font-bold text-gray-500 uppercase tracking-wide">CONCILIADAS HOY</dt>
+                        <div className="p-2 bg-green-50 rounded-lg">
+                            <DocumentTextIcon className="h-5 w-5 text-green-600" />
+                        </div>
+                    </div>
+                    <dd className="mt-2 flex flex-col items-baseline">
+                        <span className="text-2xl font-semibold text-gray-900">0</span>
+                    </dd>
+                </div>
+                <div className="overflow-hidden rounded-xl bg-white p-4 shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between">
+                        <dt className="truncate text-xs font-bold text-gray-500 uppercase tracking-wide">CON DIFERENCIAS</dt>
+                        <div className="p-2 bg-red-50 rounded-lg">
+                            <DocumentTextIcon className="h-5 w-5 text-red-600" />
+                        </div>
+                    </div>
+                    <dd className="mt-2 flex flex-col items-baseline">
+                        <span className="text-2xl font-semibold text-gray-900">0</span>
+                    </dd>
+                </div>
+            </div>
+
+            {/* Action Bar */}
+            <div className="flex items-center justify-between mb-8 p-1 bg-white rounded-lg border border-gray-200 w-fit">
+                <button className="px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-md shadow-sm">
+                    Conciliación Automática
+                </button>
+                <button className="px-4 py-2 text-sm font-medium text-gray-700 bg-transparent hover:bg-gray-50 rounded-md">
+                    Conciliación Manual
+                </button>
+                <button className="px-4 py-2 text-sm font-medium text-gray-700 bg-transparent hover:bg-gray-50 rounded-md">
+                    Historial
+                </button>
+            </div>
+
+            {view === 'FILES' && (
+                <>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Cartolas Disponibles</h3>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {isLoading ? (
+                            <p className="text-gray-500">Cargando cartolas...</p>
+                        ) : files.length === 0 ? (
+                            <p className="text-gray-500">No hay cartolas cargadas. Ve a "Cargar Cartola" para subir una.</p>
+                        ) : (
+                            files.map((file) => (
+                                <div
+                                    key={file.filename}
+                                    onClick={() => handleSelectFile(file)}
+                                    className="relative flex items-center space-x-3 rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-offset-2 hover:border-gray-400 cursor-pointer transition-all"
+                                >
+                                    <div className="flex-shrink-0">
+                                        <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                                            <DocumentTextIcon className="text-indigo-600" style={{ width: '24px', height: '24px' }} aria-hidden="true" />
+                                        </div>
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <span className="absolute inset-0" aria-hidden="true" />
+                                        <p className="text-sm font-medium text-gray-900">{file.filename}</p>
+                                        <p className="truncate text-sm text-gray-500">{file.bankName} • {file.count} movim.</p>
+                                        <div className="mt-1 flex items-center text-xs text-gray-400">
+                                            {formatDate(file.minDate)} - {formatDate(file.maxDate)}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        {file.pendingCount > 0 ? (
+                                            <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/10">
+                                                {file.pendingCount} Pend.
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+                                                OK
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </>
             )}
 
-            {/* DETAILS VIEW */}
             {view === 'DETAILS' && (
                 <div className="bg-white shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg overflow-hidden">
                     <table className="min-w-full divide-y divide-gray-300">
@@ -234,4 +284,3 @@ export default function ConciliacionPage() {
             )}
         </div>
     );
-}
