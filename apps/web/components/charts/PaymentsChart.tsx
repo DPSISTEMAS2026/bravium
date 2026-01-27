@@ -29,7 +29,7 @@ export function PaymentsChart() {
                     <YAxis tick={{ fill: '#6c757d' }} axisLine={false} tickLine={false} tickFormatter={(value) => `$${value / 1000000}M`} />
                     <Tooltip
                         cursor={{ fill: '#f8f9fa' }}
-                        formatter={(value: number) => [`$${value.toLocaleString()}`, '']}
+                        formatter={(value: any) => [`$${Number(value).toLocaleString()}`, '']}
                     />
                     <Legend />
                     <Bar dataKey="Pagado" fill="#0d6efd" radius={[4, 4, 0, 0]} maxBarSize={50} />
