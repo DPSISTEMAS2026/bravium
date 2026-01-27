@@ -157,7 +157,7 @@ export default function ConciliacionPage() {
                             >
                                 <div className="flex-shrink-0">
                                     <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                                        <DocumentTextIcon className="h-6 w-6 text-indigo-600" aria-hidden="true" />
+                                        <DocumentTextIcon className="text-indigo-600" style={{ width: '24px', height: '24px' }} aria-hidden="true" />
                                     </div>
                                 </div>
                                 <div className="min-w-0 flex-1">
