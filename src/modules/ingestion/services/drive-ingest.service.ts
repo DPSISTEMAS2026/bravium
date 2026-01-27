@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 export interface DriveIngestDto {
     fileUrl?: string; // If public or presigned
     fileContentBase64?: string; // If passed directly
+    jsonRows?: any[]; // If n8n already parsed it
     metadata: {
         filename: string;
         bankName: string;
@@ -22,25 +23,32 @@ export class DriveIngestService {
     async processDriveFile(dto: DriveIngestDto) {
         this.logger.log(`Processing Drive File: ${dto.metadata.filename} (${dto.metadata.bankName})`);
 
-        let workbook: XLSX.WorkBook;
+        let rows: any[] = [];
 
-        // 1. Get Content
-        if (dto.fileContentBase64) {
-            workbook = XLSX.read(dto.fileContentBase64, { type: 'base64' });
-        } else if (dto.fileUrl) {
-            // Fetch content if URL provided
-            const response = await fetch(dto.fileUrl);
-            const buffer = await response.arrayBuffer();
-            workbook = XLSX.read(buffer, { type: 'array' });
+        if (dto.jsonRows && Array.isArray(dto.jsonRows)) {
+            rows = dto.jsonRows;
+            this.logger.log(`Received ${rows.length} pre-parsed rows from JSON`);
         } else {
-            throw new Error('No file content provided');
+            let workbook: XLSX.WorkBook;
+
+            // 1. Get Content
+            if (dto.fileContentBase64) {
+                workbook = XLSX.read(dto.fileContentBase64, { type: 'base64' });
+            } else if (dto.fileUrl) {
+                // Fetch content if URL provided
+                const response = await fetch(dto.fileUrl);
+                const buffer = await response.arrayBuffer();
+                workbook = XLSX.read(buffer, { type: 'array' });
+            } else {
+                throw new Error('No file content or JSON rows provided');
+            }
+
+            // 2. Parse Sheets
+            const sheetName = workbook.SheetNames[0];
+            rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
         }
 
-        // 2. Parse Sheets
-        const sheetName = workbook.SheetNames[0];
-        const rows: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-
-        this.logger.log(`Parsed ${rows.length} rows from Excel`);
+        this.logger.log(`Processing ${rows.length} rows`);
 
         // 3. Find Bank Account
         // Heuristic: Find first account matching bankName
