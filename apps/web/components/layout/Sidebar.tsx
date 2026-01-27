@@ -38,6 +38,7 @@ export function Sidebar() {
     return (
         <div className="d-flex flex-column flex-shrink-0 p-3 text-white bg-dark sidebar">
             <div className="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-white text-decoration-none px-3 mt-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logo.svg" alt="Bravium" className="h-8 w-auto" style={{ maxHeight: '40px' }} />
             </div>
             <hr />

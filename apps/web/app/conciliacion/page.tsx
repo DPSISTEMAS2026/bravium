@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeftIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 
 interface Transaction {
@@ -42,7 +42,8 @@ export default function ConciliacionPage() {
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
     // Fetch Files List
-    const fetchFiles = async () => {
+    // Fetch Files List
+    const fetchFiles = useCallback(async () => {
         setIsLoading(true);
         try {
             const res = await fetch(`${API_URL}/conciliacion/files`);
@@ -55,10 +56,10 @@ export default function ConciliacionPage() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [API_URL]);
 
     // Fetch Transactions for a specific file
-    const fetchTransactions = async (filename: string) => {
+    const fetchTransactions = useCallback(async (filename: string) => {
         setIsLoading(true);
         try {
             const res = await fetch(`${API_URL}/conciliacion/overview?filename=${encodeURIComponent(filename)}`);
@@ -71,7 +72,7 @@ export default function ConciliacionPage() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [API_URL]);
 
     useEffect(() => {
         if (view === 'FILES') {
@@ -79,7 +80,7 @@ export default function ConciliacionPage() {
         } else if (view === 'DETAILS' && selectedFile) {
             fetchTransactions(selectedFile.filename);
         }
-    }, [view, selectedFile]);
+    }, [view, selectedFile, fetchFiles, fetchTransactions]);
 
     const handleSelectFile = (file: IngestedFile) => {
         setSelectedFile(file);
@@ -197,7 +198,7 @@ export default function ConciliacionPage() {
                         {isLoading ? (
                             <p className="text-gray-500">Cargando cartolas...</p>
                         ) : files.length === 0 ? (
-                            <p className="text-gray-500">No hay cartolas cargadas. Ve a "Cargar Cartola" para subir una.</p>
+                            <p className="text-gray-500">No hay cartolas cargadas. Ve a &quot;Cargar Cartola&quot; para subir una.</p>
                         ) : (
                             files.map((file) => (
                                 <div
