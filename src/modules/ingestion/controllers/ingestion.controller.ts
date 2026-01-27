@@ -60,4 +60,10 @@ export class IngestionController {
     ping() {
         return { message: 'pong', timestamp: new Date().toISOString() };
     }
+
+    @Post('manual/dtes-csv')
+    async ingestManualDtes(@Body() body: { csvContent: string }) {
+        if (!body.csvContent) return { status: 'error', message: 'No content' };
+        return this.driveIngestService.processManualDteCsv(body.csvContent);
+    }
 }

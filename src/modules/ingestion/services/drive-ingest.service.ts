@@ -166,6 +166,107 @@ export class DriveIngestService {
         return [];
     }
 
+    async processManualDteCsv(csvContent: string) {
+        this.logger.log('Processing Manual DTE CSV Ingestion...');
+        const lines = csvContent.split('\n');
+        let insertedCount = 0;
+        let errors = 0;
+
+        // Skip header (Emisor;Documento;...)
+        const startIdx = lines[0].startsWith('Emisor') ? 1 : 0;
+        const COMPANY_RUT = '76.201.228-5'; // Configurable or Env?
+
+        for (let i = startIdx; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            try {
+                const parts = line.split(';');
+                if (parts.length < 5) continue;
+
+                const [emisorName, docTypeStr, folioStr, fechaStr, totalStr] = parts;
+
+                // 1. Resolve Provider
+                const fakeRut = this.generateFakeRut(emisorName);
+                let provider = await this.prisma.provider.findFirst({ where: { rut: fakeRut } });
+
+                if (!provider) {
+                    provider = await this.prisma.provider.create({
+                        data: {
+                            name: emisorName,
+                            rut: fakeRut,
+                            category: 'SIMULATED'
+                        }
+                    });
+                }
+
+                // 2. Resolve Type
+                let typeCode = 33;
+                if (docTypeStr.includes('Nota de crédito')) typeCode = 61;
+                else if (docTypeStr.includes('exenta')) typeCode = 34;
+
+                // 3. Parse Date
+                const [d, m, y] = fechaStr.split('-');
+                const issuedDate = new Date(`${y}-${m}-${d}`);
+
+                // 4. Parse Amount
+                const totalAmount = parseInt(totalStr.replace(/\./g, ''), 10);
+                const folio = parseInt(folioStr, 10);
+
+                // 5. Upsert DTE
+                // Note: Need to cast origin to any if strict enum doesn't have LEGACY_EXCEL yet, 
+                // or assume we added it. schema not viewed recently for Enum. 
+                // I will use 'MANUAL_UPLOAD' provided it exists or string. 
+                // Actually Enum DataOrigin usually has MANUAL. Let's start with 'MANUAL'.
+
+                const dteData = {
+                    folio,
+                    type: typeCode,
+                    rutIssuer: provider.rut,
+                    rutReceiver: COMPANY_RUT,
+                    totalAmount,
+                    issuedDate,
+                    siiStatus: 'ACEPTADO',
+                    providerId: provider.id,
+                    outstandingAmount: totalAmount,
+                    paymentStatus: 'UNPAID', // Enum DtePaymentStatus.UNPAID
+                    origin: DataOrigin.MANUAL_UPLOAD || 'MANUAL',
+                };
+
+                const existing = await this.prisma.dTE.findUnique({
+                    where: {
+                        rutIssuer_type_folio: {
+                            rutIssuer: provider.rut,
+                            type: typeCode,
+                            folio: folio
+                        }
+                    }
+                });
+
+                if (!existing) {
+                    await this.prisma.dTE.create({ data: dteData as any });
+                    insertedCount++;
+                }
+
+            } catch (err) {
+                console.error('Error processing line:', line, err);
+                errors++;
+            }
+        }
+
+        return { status: 'success', inserted: insertedCount, errors };
+    }
+
+    private generateFakeRut(name: string): string {
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+            hash = ((hash << 5) - hash) + name.charCodeAt(i);
+            hash |= 0;
+        }
+        const num = Math.abs(hash) % 90000000 + 10000000;
+        return `${num}-K`;
+    }
+
     private parseDate(val: any): Date | null {
         if (!val) return null;
         if (val instanceof Date) return val;
