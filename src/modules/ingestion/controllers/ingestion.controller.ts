@@ -48,13 +48,9 @@ export class IngestionController {
 
     @Post('cartolas/drive')
     async ingestDriveCartola(@Body() body: DriveIngestDto) {
-        if (!body.fileUrl && !body.fileContentBase64 && !body.jsonRows) {
-            return { status: 'error', message: 'Missing file content, URL, or JSON rows' };
-        }
-
         try {
             const result = await this.driveIngestService.processDriveFile(body);
-            return { status: 'success', data: result };
+            return result;
         } catch (error) {
             this.logger.error('Drive Ingest Failed', error);
             return { status: 'error', message: error.message };
