@@ -9,13 +9,15 @@ import {
     CreditCardIcon,
     DocumentChartBarIcon,
     ArrowDownTrayIcon,
-    ArrowLeftOnRectangleIcon
+    ArrowLeftOnRectangleIcon,
+    ShoppingBagIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
 
 const navigation = [
     { name: 'Dashboard', href: '/', icon: HomeIcon },
     { name: 'Conciliación', href: '/conciliacion', icon: BanknotesIcon },
+    { name: 'Monitor de Compras', href: '/monitor-compras', icon: ShoppingBagIcon },
     { name: 'Cargar Cartola', href: '/ingestion/cartolas', icon: ArrowDownTrayIcon },
     { name: 'Proveedores', href: '/proveedores', icon: UsersIcon },
     { name: 'Pagos', href: '/pagos', icon: CreditCardIcon },
