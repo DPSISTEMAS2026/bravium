@@ -48,8 +48,8 @@ export class IngestionController {
 
     @Post('cartolas/drive')
     async ingestDriveCartola(@Body() body: DriveIngestDto) {
-        if (!body.fileUrl && !body.fileContentBase64) {
-            return { status: 'error', message: 'Missing file content or URL' };
+        if (!body.fileUrl && !body.fileContentBase64 && !body.jsonRows) {
+            return { status: 'error', message: 'Missing file content, URL, or JSON rows' };
         }
 
         try {

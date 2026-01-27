@@ -69,8 +69,8 @@ export class DriveIngestService {
         for (const row of rows) {
             // Mapping keys might vary. We try standard names or "normalized" keys from prompts commonly.
             // Prompt says: fecha, descripcion, monto, tipo
-            const date = this.parseDate(row['Fecha'] || row['fecha'] || row['Date']);
-            const description = row['Descripcion'] || row['Description'] || row['Movimiento'] || 'Sin descripción';
+            const date = this.parseDate(row['Fecha'] || row['fecha'] || row['Date'] || row['date']);
+            const description = row['Descripcion'] || row['Description'] || row['Movimiento'] || row['description'] || 'Sin descripción';
             // Amount handling: sometimes "Cargo" and "Abono" are separate columns, sometimes "Monto" with sign
             let amount = 0;
 
@@ -78,6 +78,9 @@ export class DriveIngestService {
             else if (row['Amount']) amount = Number(row['Amount']);
             else if (row['Cargo']) amount = -Math.abs(Number(row['Cargo'])); // Outflow
             else if (row['Abono']) amount = Math.abs(Number(row['Abono']));   // Inflow
+            // Support for OpenAI / n8n JSON output keys
+            else if (row['credit'] !== undefined && row['credit'] !== null && Number(row['credit']) > 0) amount = Math.abs(Number(row['credit']));
+            else if (row['debit'] !== undefined && row['debit'] !== null && Number(row['debit']) > 0) amount = -Math.abs(Number(row['debit']));
 
             if (isNaN(amount) || !date) continue; // Skip invalid
 

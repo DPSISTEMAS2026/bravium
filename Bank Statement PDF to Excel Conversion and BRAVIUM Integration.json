@@ -1,0 +1,286 @@
+{
+  "name": "Bank Statement PDF to Excel Conversion and BRAVIUM Integration",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "1TA-_Ll12LdPwY0hnuD_nRM9ZyvuVIdxH",
+          "mode": "id"
+        },
+        "event": "fileCreated",
+        "options": {
+          "fileType": "all"
+        }
+      },
+      "id": "46b60181-8467-4f0c-a579-644335e4d4b1",
+      "name": "New PDF in Drive",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        144
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "LcpwOpxwTcPXFM4B",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://bravium-backend.onrender.com/ingestion/cartolas/drive",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\"bankName\": $(\"Parse OpenAI JSON Response\").item.json.bank, \"fileName\": $(\"New PDF in Drive\").item.json.name, \"rows\": $(\"Parse OpenAI JSON Response\").item.json.rows}) }}",
+        "options": {}
+      },
+      "id": "4ec03051-8571-40eb-847d-aabb9e2bedff",
+      "name": "POST to BRAVIUM Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2304,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": "200",
+              "operator": {
+                "type": "number",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "id-2",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": "299",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "id-3",
+              "leftValue": "={{ $json.error }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "57720cae-17c0-456a-b56d-b584b261c787",
+      "name": "Check for Errors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2480,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#alerts"
+        },
+        "text": "=Error processing cartola PDF: {{ $('New PDF in Drive').item.json.name }}\nError details: {{ $json.error || $json.message || 'Unknown error' }}\nStatus: {{ $json.statusCode }}",
+        "otherOptions": {}
+      },
+      "id": "a7b828e9-a1e6-4949-bdf9-647e74ccaf53",
+      "name": "Send Error to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        2688,
+        128
+      ],
+      "webhookId": "3e0d045a-60ba-460e-82f4-6450a3224ba4",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "options": {
+          "binaryPropertyName": "data"
+        }
+      },
+      "id": "eaf25c65-cbc2-49bc-b74f-773d4b3ec317",
+      "name": "Download PDF File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1680,
+        144
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "LcpwOpxwTcPXFM4B",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-4o"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "Analiza esta cartola bancaria (PDF). Extrae todos los movimientos bancarios. Devuelve SOLO JSON con esta estructura exacta: {\"bank\": \"string\", \"account\": \"string | null\", \"period\": \"string | null\", \"currency\": \"CLP\", \"rows\": [{\"date\": \"YYYY-MM-DD\", \"description\": \"string\", \"debit\": number | null, \"credit\": number | null, \"balance\": number | null}]}. No inventes datos. Usa null si no existe. Solo JSON, sin texto adicional."
+            },
+            {
+              "type": "file",
+              "fileType": "base64",
+              "fileName": "document.pdf"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "618eeccc-6bd1-41f2-8766-9de14946a62f",
+      "name": "OpenAI Vision Analysis",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1840,
+        144
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "W7t44rvkt0juFhIs",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst outputItems = [];\n\nfor (const item of items) {\n  let responseText = item.json.message?.content || item.json.choices?.[0]?.message?.content || JSON.stringify(item.json);\n  \n  const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    const parsedData = JSON.parse(jsonMatch[0]);\n    outputItems.push({\n      json: {\n        bank: parsedData.bank,\n        rows: parsedData.rows,\n        originalFileName: $('New PDF in Drive').item.json.name\n      }\n    });\n  } else {\n    throw new Error('No valid JSON found in OpenAI response');\n  }\n}\n\nreturn outputItems;"
+      },
+      "id": "612b71fa-77c6-4a44-90f0-f1421d60a1b4",
+      "name": "Parse OpenAI JSON Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2128,
+        144
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "New PDF in Drive": {
+      "main": [
+        [
+          {
+            "node": "Download PDF File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST to BRAVIUM Backend": {
+      "main": [
+        [
+          {
+            "node": "Check for Errors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Errors": {
+      "main": [
+        [
+          {
+            "node": "Send Error to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF File": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Vision Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Vision Analysis": {
+      "main": [
+        [
+          {
+            "node": "Parse OpenAI JSON Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OpenAI JSON Response": {
+      "main": [
+        [
+          {
+            "node": "POST to BRAVIUM Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "f72af0b9-f81f-4284-aa48-8c1eab97b140",
+  "meta": {
+    "instanceId": "c0373526a4d42fad86d6aed975760d8c61b47148ffdbfbdb1b2e8cc442bb5e46"
+  },
+  "id": "bh2uKN_U9Zi_AtN7HI3Zg",
+  "tags": []
+}
