@@ -76,8 +76,8 @@ export default function MonitorComprasPage() {
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-8">
                 <div className="bg-white overflow-hidden rounded-xl border border-gray-200 shadow-sm p-5">
                     <div className="flex items-center">
-                        <div className="p-3 rounded-full bg-green-100 text-green-600">
-                            <ArrowTrendingDownIcon className="h-6 w-6" />
+                        <div className="p-3 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
+                            <ArrowTrendingDownIcon className="h-6 w-6" style={{ width: '24px', height: '24px' }} />
                         </div>
                         <div className="ml-4">
                             <p className="text-sm font-medium text-gray-500">Ahorro Potencial Mensual</p>
@@ -87,8 +87,8 @@ export default function MonitorComprasPage() {
                 </div>
                 <div className="bg-white overflow-hidden rounded-xl border border-gray-200 shadow-sm p-5">
                     <div className="flex items-center">
-                        <div className="p-3 rounded-full bg-red-100 text-red-600">
-                            <ArrowTrendingUpIcon className="h-6 w-6" />
+                        <div className="p-3 rounded-full bg-red-100 text-red-600 flex items-center justify-center">
+                            <ArrowTrendingUpIcon className="h-6 w-6" style={{ width: '24px', height: '24px' }} />
                         </div>
                         <div className="ml-4">
                             <p className="text-sm font-medium text-gray-500">Sobreprecio Detectado</p>
@@ -98,8 +98,8 @@ export default function MonitorComprasPage() {
                 </div>
                 <div className="bg-white overflow-hidden rounded-xl border border-gray-200 shadow-sm p-5">
                     <div className="flex items-center">
-                        <div className="p-3 rounded-full bg-blue-100 text-blue-600">
-                            <ShoppingBagIcon className="h-6 w-6" />
+                        <div className="p-3 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                            <ShoppingBagIcon className="h-6 w-6" style={{ width: '24px', height: '24px' }} />
                         </div>
                         <div className="ml-4">
                             <p className="text-sm font-medium text-gray-500">Productos Monitoreados</p>
@@ -150,7 +150,7 @@ export default function MonitorComprasPage() {
                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                                     {product.status === 'SAVING' ? (
                                         <div className="flex items-center text-green-600">
-                                            <CheckCircleIcon className="h-4 w-4 mr-1" />
+                                            <CheckCircleIcon className="h-4 w-4 mr-1" style={{ width: '16px', height: '16px' }} />
                                             Excelente
                                         </div>
                                     ) : (

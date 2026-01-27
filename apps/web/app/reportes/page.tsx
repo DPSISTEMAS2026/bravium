@@ -55,8 +55,8 @@ export default function ReportesPage() {
                         <div className="p-6">
                             <div className="flex justify-between items-start mb-4">
                                 <h3 className="text-xs font-bold text-gray-500 tracking-wider uppercase">{tool.title}</h3>
-                                <div className={`p-2 rounded-lg ${tool.color}`}>
-                                    <tool.icon className="h-5 w-5" />
+                                <div className={`p-2 rounded-lg ${tool.color} flex items-center justify-center`}>
+                                    <tool.icon className="h-5 w-5" style={{ width: '20px', height: '20px' }} />
                                 </div>
                             </div>
                             <p className="text-sm text-gray-600 mb-6 h-10 line-clamp-2">
@@ -75,8 +75,8 @@ export default function ReportesPage() {
                     <div className="p-6 flex flex-col justify-center h-full">
                         <div className="flex justify-between items-start mb-4">
                             <h3 className="text-xs font-bold text-pink-500 tracking-wider uppercase">REPORTE PERSONALIZADO</h3>
-                            <div className="p-2 rounded-lg bg-pink-100 text-pink-600">
-                                <ChartBarIcon className="h-5 w-5" />
+                            <div className="p-2 rounded-lg bg-pink-100 text-pink-600 flex items-center justify-center">
+                                <ChartBarIcon className="h-5 w-5" style={{ width: '20px', height: '20px' }} />
                             </div>
                         </div>
                         <p className="text-sm text-gray-600 mb-6">
