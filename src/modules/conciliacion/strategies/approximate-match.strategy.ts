@@ -8,7 +8,7 @@ export class ApproximateMatchStrategy implements MatchingStrategy {
 
     // Configurable tolerances
     private readonly DAYS_TOLERANCE = 3;
-    private readonly AMOUNT_TOLERANCE = 500; // CLP
+    private readonly AMOUNT_TOLERANCE = 400; // CLP (User requested +/- 400)
 
     async findMatches(
         transaction: BankTransaction,
