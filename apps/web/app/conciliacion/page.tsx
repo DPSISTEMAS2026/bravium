@@ -29,7 +29,7 @@ export default function ConciliacionPage() {
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('http://localhost:3001/conciliacion/overview');
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/conciliacion/overview`);
             if (res.ok) {
                 const data = await res.json();
                 setTransactions(data);
