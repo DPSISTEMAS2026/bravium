@@ -1,4 +1,8 @@
+'use client';
+
 import { usePurchaseRecommendations } from '../../hooks/use-purchase-recommendations';
+import { PriceComparisonTable } from '../../components/purchase-intelligence/price-comparison-table';
+import { SavingsKPICard } from '../../components/purchase-intelligence/savings-kpi-card';
 
 // Mock Data for KPI (Still mocked for now as it needs aggregate endpoint)
 const KPI_DATA = {
