@@ -1,0 +1,733 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==============================
+// 1. BANKING DOMAIN
+// ==============================
+
+model BankAccount {
+  id            String            @id @default(uuid())
+  bankName      String // Banco de Chile, Santander, etc.
+  accountNumber String
+  currency      String            @default("CLP")
+  rutHolder     String // RUT del titular
+  isActive      Boolean           @default(true)
+  
+  // Multi-tenancy
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  transactions  BankTransaction[]
+
+  @@map("bank_accounts")
+}
+
+model BankTransaction {
+  id            String                @id @default(uuid())
+  bankAccountId String
+  bankAccount   BankAccount           @relation(fields: [bankAccountId], references: [id])
+  date          DateTime // Fecha del movimiento
+  amount        Int // Monto en CLP
+  description   String // Descripción de la cartola
+  reference     String? // Número de documento/operación si existe
+  type          TransactionType // CREDIT (Abono), DEBIT (Cargo)
+  status        TransactionStatus     @default(PENDING)
+  matches       ReconciliationMatch[]
+
+  // Ingestion Metadata
+  origin        DataOrigin            @default(API_INTEGRATION)
+  metadata      Json?                 // Raw payload from n8n or bank
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("bank_transactions")
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+}
+
+enum TransactionStatus {
+  PENDING
+  MATCHED
+  PARTIALLY_MATCHED
+  UNMATCHED
+}
+
+// ==============================
+// 2. PROVIDERS & PAYMENTS DOMAIN
+// ==============================
+
+model Provider {
+  id        String    @id @default(uuid())
+  rut       String    @unique
+  name      String
+  category  String? // Rubro o categoría interna
+  currentBalance Int @default(0) // Saldo global con el proveedor (CACHE, recalculado desde Ledger)
+  
+  // Multi-tenancy
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+
+  payments  Payment[]
+  dtes      DTE[]
+  ledgerEntries FinancialLedgerEntry[]
+  supplierProducts SupplierProduct[] // Added for Purchase Intelligence
+  priceHistory     ProductPriceHistory[] // Added for Purchase Intelligence
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("providers")
+}
+
+// ==============================
+// 11. PURCHASE INTELLIGENCE (COST OPTIMIZATION)
+// ==============================
+
+model Product {
+  id            String            @id @default(uuid())
+  sku           String            @unique // Internal SKU
+  name          String
+  description   String?
+  category      String?
+  unit          String            @default("UN") // KG, LT, CAJA, UN
+  
+  // Multi-tenancy
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  
+  // Analytics
+  averagePrice  Int               @default(0)
+  minPrice      Int               @default(0)
+  maxPrice      Int               @default(0)
+  lastPrice     Int               @default(0)
+  
+  // Relations
+  supplierProducts SupplierProduct[]
+  priceHistory     ProductPriceHistory[]
+  externalOffers   ExternalOffer[]
+  recommendations  PurchaseRecommendation[]
+  aliases          ProductAlias[]        // Added for Normalization
+  costAlerts       CostAlert[]           // Added for Cost Monitoring
+
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@map("products")
+}
+
+model SupplierProduct {
+  id                String    @id @default(uuid())
+  
+  productId         String
+  product           Product   @relation(fields: [productId], references: [id])
+  
+  providerId        String
+  provider          Provider  @relation(fields: [providerId], references: [id])
+  
+  supplierSku       String?   // Código del proveedor para este producto
+  lastPrice         Int       @default(0)
+  lastPurchaseDate  DateTime?
+  
+  url               String?   // Link directo a la ficha del proveedor (B2B portal)
+
+  // Multi-tenancy
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([productId, providerId])
+  @@map("supplier_products")
+}
+
+model ProductPriceHistory {
+  id            String      @id @default(uuid())
+  
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id])
+  
+  providerId    String?     // Nullable if source is EXTERNAL_GENERIC
+  provider      Provider?   @relation(fields: [providerId], references: [id])
+
+  price         Int
+  currency      String      @default("CLP")
+  date          DateTime
+  
+  source        PriceSource // DTE, PURCHASE_ORDER, EXTERNAL_SCRAPING, MANUAL_QUOTE
+  referenceId   String?     // ID del DTE o PO
+              
+  quantity      Float?      // To calc weighted average
+  
+  // Multi-tenancy
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  
+  createdAt     DateTime    @default(now())
+  
+  @@index([productId, date])
+  @@map("product_price_history")
+}
+
+model ExternalOffer {
+  id            String      @id @default(uuid())
+  
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id])
+  
+  vendorName    String      // "MercadoLibre", "Amazon", "Sodimac", etc.
+  price         Int
+  url           String?
+  
+  lastCheckedAt DateTime    @default(now())
+  isValid       Boolean     @default(true)
+  
+  // Multi-tenancy
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  
+  createdAt     DateTime    @default(now())
+
+  @@map("external_offers")
+}
+
+model PurchaseRecommendation {
+  id            String              @id @default(uuid())
+  
+  productId     String
+  product       Product             @relation(fields: [productId], references: [id])
+  
+  type          RecommendationType  // BETTER_PRICE_AVAILABLE, HISTORICAL_OVERPRICING
+  
+  description   String
+  explanation   String?           // "Pagando 15% más que el promedio de 3 meses"
+  potentialSaving Int               // Monto estimado de ahorro
+  savingPct       Float             // % de ahorro
+  confidenceScore Int             @default(0) // 0-100
+
+  // Actionable Info
+  suggestedProviderId String?
+  suggestedUrl        String?
+  
+  status        RecommendationStatus @default(PENDING)
+  validUntil    DateTime?
+  
+  // Multi-tenancy
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  
+  createdAt     DateTime            @default(now())
+  
+  @@map("purchase_recommendations")
+}
+
+enum PriceSource {
+  DTE               // Real invoice
+  PURCHASE_ORDER    // Negotiated price
+  EXTERNAL_SCRAPING // Bot/Script
+  MANUAL_QUOTE      // User input
+}
+
+enum RecommendationType {
+  BETTER_PRICE_AVAILABLE
+  HISTORICAL_OVERPRICING
+  BUY_BULK_OPPORTUNITY
+  VENDOR_CHANGE_SUGGESTED
+}
+
+model ProductAlias {
+  id            String    @id @default(uuid())
+  
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id])
+  
+  aliasName     String    @unique // "COCA COLA 1.5", "BEBIDA COCA COLA", etc.
+  source        String?   // "DTE_PROVIDER_A"
+  
+  confidence    Float     @default(1.0) // 1.0 = Manual/Confirmed, <1.0 = Auto/Fuzzy
+  
+  createdAt     DateTime  @default(now())
+
+  // Multi-tenancy
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+
+  @@map("product_aliases")
+}
+
+model CostAlert {
+  id            String    @id @default(uuid())
+  
+  // Multi-tenancy
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id])
+  
+  type          CostAlertType // SPIKE, MARKET_DRIFT
+  severity      String    // HIGH, MEDIUM, LOW
+  
+  message       String
+  detectedValue Int       // Precio detectado que gatilló la alerta
+  referenceValue Int      // Precio referencia (promedio/mercado)
+  
+  status        AlertStatus @default(OPEN)
+  
+  createdAt     DateTime  @default(now())
+  
+  @@map("cost_alerts")
+}
+
+enum CostAlertType {
+  PRICE_SPIKE           // Subida repentina > X%
+  MARKET_DRIFT          // Desviación lenta pero constante
+  ABOVE_MARKET_AVG      // Más caro que la calle
+} 
+
+enum RecommendationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  IGNORED
+}
+
+model Payment {
+  id                String                @id @default(uuid())
+  providerId        String?
+  provider          Provider?             @relation(fields: [providerId], references: [id])
+  amount            Int
+  paymentDate       DateTime
+  method            PaymentMethod // TRANSFER, CHEQUE, CASH
+  internalReference String? // ID interno del ERP o comprobante
+  status            PaymentStatus         @default(ISSUED)
+  matches           ReconciliationMatch[]
+
+  // Ingestion Metadata
+  origin            DataOrigin            @default(MANUAL_UPLOAD)
+  metadata          Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  TRANSFER
+  CHECK
+  CASH
+  CREDIT_CARD
+  OTHER
+}
+
+enum PaymentStatus {
+  ISSUED
+  CONFIRMED
+  CANCELLED
+}
+
+// ==============================
+// 3. ACCOUNTING & TAX DOMAIN (DTE)
+// ==============================
+
+model DTE {
+  id              String                @id @default(uuid())
+  folio           Int
+  type            Int // 33 (Factura), 34 (Exenta), 61 (Nota Crédito), etc.
+  rutIssuer       String
+  rutReceiver     String
+  totalAmount     Int
+  issuedDate      DateTime
+  siiStatus       String // RECHAZADO, ACEPTADO, ETC.
+  providerId      String?
+  provider        Provider?             @relation(fields: [providerId], references: [id])
+  matches         ReconciliationMatch[]
+  
+  // Financial Status
+  paymentStatus   DtePaymentStatus         @default(UNPAID)
+  outstandingAmount Int                 // Monto pendiente de pago (Inicialmente = totalAmount)
+  
+  // Ingestion Metadata
+  origin          DataOrigin            @default(API_INTEGRATION)
+  metadata        Json?
+
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([rutIssuer, type, folio]) // Unicidad del DTE
+  @@map("dtes")
+}
+
+enum DtePaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  OVERPAID
+}
+
+// ==============================
+// 4. RECONCILIATION DOMAIN
+// ==============================
+
+model ReconciliationMatch {
+  id            String          @id @default(uuid())
+  
+  // The Bank Transaction being reconciled
+  transactionId String
+  transaction   BankTransaction @relation(fields: [transactionId], references: [id])
+
+  // Matched against a Payment (Internal) OR a DTE (Invoice)
+  paymentId     String?
+  payment       Payment?        @relation(fields: [paymentId], references: [id])
+  
+  dteId         String?
+  dte           DTE?            @relation(fields: [dteId], references: [id])
+
+  // Meta info
+  origin        MatchOrigin     @default(AUTOMATIC)
+  status        MatchStatus     @default(DRAFT)
+  confidence    Float           @default(0.0) // 0.0 - 1.0 (Score de coincidencia)
+  ruleApplied   String?         // Nombre de la estrategia usada (ej: "ExactMatch", "FuzzyMatch")
+  notes         String?
+  
+  // Audit del match
+  confirmedAt   DateTime?
+  confirmedBy   String?         // User ID que confirmó
+
+  // Financial Impact
+  adjustments   BalanceAdjustment[] // Diferencias de monto (Write-offs, small diffs)
+
+  createdAt     DateTime        @default(now())
+  createdBy     String?         // User ID (if manual)
+
+  @@map("reconciliation_matches")
+}
+
+// ==============================
+// 5. FINANCIAL CONSOLIDATION
+// ==============================
+
+model AccountingPeriod {
+  id        String   @id @default(uuid())
+  year      Int
+  month     Int      
+  status    PeriodStatus @default(OPEN)
+  
+  startDate DateTime
+  endDate   DateTime
+  
+  adjustments BalanceAdjustment[]
+  exportJobs  ExportJob[]
+  alerts      FinancialAlert[]
+  ledgerEntries FinancialLedgerEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([year, month])
+  @@map("accounting_periods")
+}
+
+enum PeriodStatus {
+  OPEN
+  CLOSING
+  CLOSED
+  LOCKED
+}
+
+model BalanceAdjustment {
+  id          String           @id @default(uuid())
+  amount      Int              // Monto del ajuste (Positivo o Negativo)
+  reason      AdjustmentReason
+  description String?
+  
+  // Relations
+  matchId     String?
+  match       ReconciliationMatch? @relation(fields: [matchId], references: [id])
+  
+  periodId    String?
+  period      AccountingPeriod?    @relation(fields: [periodId], references: [id])
+
+  createdAt   DateTime         @default(now())
+  createdBy   String?          // User ID o SYSTEM
+
+  @@map("balance_adjustments")
+}
+
+enum AdjustmentReason {
+  SMALL_DIFFERENCE_FAVOR  // Diferencia a favor empresa (Ingreso)
+  SMALL_DIFFERENCE_AGAINST// Diferencia en contra (Gasto)
+  EXCHANGE_RATE           // Diferencia tipo de cambio
+  WRITE_OFF               // Castigo (incobrable/impagable)
+  CARRY_UNDER             // Valor arrastrado (saldos)
+}
+
+// ==============================
+// GLOBAL ENUMS & ORIGINS
+// ==============================
+
+enum DataOrigin {
+  LEGACY_EXCEL
+  N8N_AUTOMATION
+  MANUAL_UPLOAD
+  API_INTEGRATION
+}
+
+// ==============================
+// 6. FINANCIAL AUDIT & LEDGER (SINGLE SOURCE OF TRUTH)
+// ==============================
+
+model FinancialLedgerEntry {
+  id              String            @id @default(uuid())
+  transactionDate DateTime
+  
+  // Who does this affect?
+  providerId      String?
+  provider        Provider?         @relation(fields: [providerId], references: [id])
+
+  // What period?
+  periodId        String?
+  period          AccountingPeriod? @relation(fields: [periodId], references: [id])
+
+  // Multi-tenancy (CRITICAL for Ledger)
+  organizationId String?
+  organization   Organization?      @relation(fields: [organizationId], references: [id])
+
+  // Classification
+  type            LedgerEntryType
+  
+  // Financials
+  // Logic: Positive (+) = Aumenta Deuda (Factura recibida) / Negative (-) = Disminuye Deuda (Pago realizado)
+  amount          Int 
+  
+  // Traceability (Polymorphic-ish reference)
+  referenceType   ReferenceType     // DTE, PAYMENT, ADJUSTMENT, NONE
+  referenceId     String?           // Optional for MANUAL_ENTRY
+  
+  description     String?           // Comentario humano obligatorio/opcional
+  metadata        Json?             // Para guardar filas crudas del Excel o datos extra
+
+  createdAt       DateTime          @default(now())
+  createdBy       String?           // User identification
+  
+  @@index([providerId, transactionDate])
+  @@map("financial_ledger_entries")
+}
+
+enum LedgerEntryType {
+  INVOICE_RECEIVED      // Factura (Aumenta Deuda)
+  PAYMENT_ISSUED        // Pago (Disminuye Deuda)
+  CREDIT_NOTE_RECEIVED  // Nota Crédito (Disminuye Deuda)
+  DEBIT_NOTE_RECEIVED   // Nota Débito (Aumenta Deuda)
+  
+  ADJUSTMENT            // Ajuste manual o correctivo
+  EXPENSE_BY_DIFFERENCE // Diferencia negativa (Gasto)
+  INCOME_BY_DIFFERENCE  // Diferencia positiva (Ingreso)
+  
+  MANUAL_ENTRY          // Fila histórica de Excel
+  OPENING_BALANCE       // Saldo inicial de migración
+}
+
+enum ReferenceType {
+  DTE
+  PAYMENT
+  MATCH
+  ADJUSTMENT
+  NONE
+  LEGACY_EXCEL
+}
+
+enum MatchOrigin {
+  AUTOMATIC
+  MANUAL
+}
+
+enum MatchStatus {
+  DRAFT
+  CONFIRMED
+  REJECTED
+}
+
+// ==============================
+// 7. EXPORT & REPORTING
+// ==============================
+
+model ExportJob {
+  id          String   @id @default(uuid())
+  
+  // Target Period
+  periodId    String
+  period      AccountingPeriod @relation(fields: [periodId], references: [id])
+  
+  format      ExportFormat
+  status      ExportStatus     @default(PENDING)
+  
+  // Artifact
+  fileUrl     String?  // URL/Path to the generated snapshot file
+  rowCount    Int      // Audit: How many lines were exported
+  checksum    String?  // Audit: Hash of the file content
+  
+  // Execution
+  createdAt   DateTime @default(now())
+  createdBy   String?  // User ID
+  
+  @@map("export_jobs")
+}
+
+enum ExportFormat {
+  NUBOX_PRO       // CSV específico para Nubox
+  SII_LIBRO_DIARIO // Formato estándar SII
+  GENERIC_EXCEL   // Formato humano para contadores
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ==============================
+// 8. FINANCIAL CONTROL & ALERTS
+// ==============================
+
+model FinancialAlert {
+  id          String        @id @default(uuid())
+  code        String        // e.g. OVERDUE_INVOICE, UNMATCHED_TX
+  message     String
+  severity    AlertSeverity
+  status      AlertStatus   @default(OPEN)
+
+  // Context
+  periodId    String?
+  period      AccountingPeriod? @relation(fields: [periodId], references: [id])
+
+  // Linked Entity (Polymorphic-ish)
+  entityType  String?       // DTE, BANK_TRANSACTION, PROVIDER, MATCH
+  entityId    String?
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  resolvedAt  DateTime?
+  resolvedBy  String?       // User ID
+
+  @@index([status, severity])
+  @@map("financial_alerts")
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  IGNORED
+}
+
+// ==============================
+// 9. IDENTITY & ACCESS MANAGEMENT (IAM)
+// ==============================
+
+model Organization {
+  id            String    @id @default(uuid())
+  rut           String    @unique
+  name          String
+  plan          String    @default("PRO") // SaaS Plan
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  users         User[]
+  bankAccounts  BankAccount[]
+  providers     Provider[]
+  ledgerEntries FinancialLedgerEntry[]
+  auditLogs     AuditLog[]
+  
+  // Purchase Intelligence
+  products      Product[]
+  supplierProducts SupplierProduct[]
+  priceHistory  ProductPriceHistory[]
+  externalOffers ExternalOffer[]
+  recommendations PurchaseRecommendation[]
+  aliases       ProductAlias[]
+  costAlerts    CostAlert[]
+  
+  @@map("organizations")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  fullName      String
+  role          UserRole  @default(COMPRAS)
+  
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN         // Configuración total
+  GERENCIA      // Ver ahorro, aceptar recomendaciones
+  COMPRAS       // Ver y gestionar compras
+  CONTADOR      // Cierres, ajustes, exportación
+  AUDITOR       // Solo lectura
+}
+
+// ==============================
+// 10. SYSTEM AUDIT
+// ==============================
+
+model AuditLog {
+  id            String    @id @default(uuid())
+  action        String    // e.g. "CLOSE_PERIOD", "CONFIRM_MATCH"
+  
+  // Actor
+  userId        String?
+  systemEvent   Boolean   @default(false)
+  ipAddress     String?
+  userAgent     String?
+
+  // Context
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  // Target
+  entityType    String    // e.g. "FinancialLedgerEntry"
+  entityId      String
+  
+  // Data Changes
+  previousValue Json?
+  newValue      Json?
+  metadata      Json?
+
+  createdAt     DateTime  @default(now())
+
+  @@index([organizationId, action])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
