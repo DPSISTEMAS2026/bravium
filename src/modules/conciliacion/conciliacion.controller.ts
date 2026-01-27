@@ -1,5 +1,5 @@
 
-import { Controller, Post, Get, Body, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Logger, Query } from '@nestjs/common';
 import { ConciliacionService } from './conciliacion.service';
 
 interface AutoMatchDto {
@@ -13,9 +13,14 @@ export class ConciliacionController {
 
     constructor(private readonly conciliacionService: ConciliacionService) { }
 
+    @Get('files')
+    async getFiles() {
+        return this.conciliacionService.getIngestedFiles();
+    }
+
     @Get('overview')
-    async getOverview() {
-        return this.conciliacionService.getOverview();
+    async getOverview(@Query('filename') filename?: string) {
+        return this.conciliacionService.getOverview(100, filename);
     }
 
     @Post('run-auto-match')

@@ -58,8 +58,64 @@ export class ConciliacionService {
         return { processed: pendingTransactions.length, matches: matchCount };
     }
 
-    async getOverview(limit = 100) {
+    async getIngestedFiles() {
+        // Fetch minimal data to group by file
+        const txs = await this.prisma.bankTransaction.findMany({
+            where: { origin: 'N8N_AUTOMATION' },
+            select: {
+                id: true,
+                date: true,
+                status: true,
+                amount: true,
+                metadata: true,
+                bankAccount: { select: { bankName: true } }
+            },
+            orderBy: { date: 'desc' }
+        });
+
+        // Group by sourceFile
+        const groups: Record<string, any> = {};
+
+        for (const tx of txs) {
+            const meta = tx.metadata as any;
+            const filename = meta?.sourceFile || 'Desconocido';
+
+            if (!groups[filename]) {
+                groups[filename] = {
+                    filename,
+                    bankName: tx.bankAccount.bankName,
+                    count: 0,
+                    minDate: tx.date,
+                    maxDate: tx.date,
+                    totalAmount: 0,
+                    pendingCount: 0
+                };
+            }
+
+            const g = groups[filename];
+            g.count++;
+            if (tx.date < g.minDate) g.minDate = tx.date;
+            if (tx.date > g.maxDate) g.maxDate = tx.date;
+            g.totalAmount += tx.amount;
+            if (tx.status === 'PENDING') g.pendingCount++;
+        }
+
+        return Object.values(groups);
+    }
+
+    async getOverview(limit = 100, filename?: string) {
+        const where: any = {};
+
+        if (filename) {
+            // Prisma JSON filtering:
+            where.metadata = {
+                path: ['sourceFile'],
+                equals: filename
+            };
+        }
+
         return this.prisma.bankTransaction.findMany({
+            where,
             take: limit,
             orderBy: { date: 'desc' },
             include: {
