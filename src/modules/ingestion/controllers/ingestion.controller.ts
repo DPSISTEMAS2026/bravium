@@ -6,6 +6,7 @@ import { DriveIngestService, DriveIngestDto } from '../services/drive-ingest.ser
 interface SyncDteDto {
     fromDate: string;
     toDate: string;
+    dtes?: any[]; // Optional manual injection
 }
 
 @Controller('ingestion')
@@ -19,7 +20,13 @@ export class IngestionController {
 
     @Post('libredte/sync')
     async syncDtes(@Body() body: SyncDteDto) {
-        const { fromDate, toDate } = body;
+        const { fromDate, toDate, dtes } = body;
+
+        // Prioridad: Inyección manual
+        if (dtes && Array.isArray(dtes) && dtes.length > 0) {
+            this.logger.log(`Manual injection trigger: ${dtes.length} DTEs provided`);
+            return this.libreDteService.ingestDtes(dtes);
+        }
 
         if (!fromDate || !toDate) {
             return {

@@ -124,6 +124,35 @@ export class LibreDteService {
         }
     }
 
+    /**
+     * Manually ingest a list of DTEs (e.g. from local JSON or N8N webhook)
+     */
+    async ingestDtes(dtes: any[]) {
+        this.logger.log(`Manual ingestion of ${dtes.length} DTEs`);
+        let created = 0;
+        let skipped = 0;
+        let errors = 0;
+
+        for (const item of dtes) {
+            try {
+                const res = await this.processDteItem(item);
+                if (res === 'created') created++;
+                else if (res === 'skipped') skipped++;
+            } catch (e) {
+                errors++;
+                this.logger.error(`Error processing manual item: ${JSON.stringify(item).substring(0, 100)}`, e);
+            }
+        }
+
+        return {
+            success: true,
+            total: dtes.length,
+            created,
+            skipped,
+            errors
+        };
+    }
+
     private async processDteItem(item: any): Promise<'created' | 'skipped'> {
         // LibreDTE dte_recibidos/buscar response structure:
         // {
@@ -180,6 +209,7 @@ export class LibreDteService {
         }
 
         // 3. Create new DTE
+        // Hardcode company RUT if missing in env
         const companyRut = process.env.COMPANY_RUT || '77154188';
 
         await this.prisma.dTE.create({
