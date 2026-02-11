@@ -11,49 +11,65 @@ export class ConciliacionDashboardService {
      * Obtiene el dashboard completo de conciliación para un período
      */
     async getDashboard(fromDate?: string, toDate?: string) {
-        this.logger.log(`Getting dashboard for period: ${fromDate || 'all'} to ${toDate || 'all'}`);
+        try {
+            this.logger.log(`Getting dashboard for period: ${fromDate || 'all'} to ${toDate || 'all'}`);
 
-        // Ejecutar todas las queries en paralelo
-        const [
-            transactionStats,
-            dteStats,
-            matchStats,
-            pendingTransactions,
-            pendingDtes,
-            recentMatches,
-            topProviders,
-            unmatchedHighValue
-        ] = await Promise.all([
-            this.getTransactionStats(fromDate, toDate),
-            this.getDteStats(fromDate, toDate),
-            this.getMatchStats(),
-            this.getPendingTransactions(fromDate, toDate, 20),
-            this.getPendingDtes(fromDate, toDate, 20),
-            this.getRecentMatches(10),
-            this.getTopProviders(fromDate, toDate, 10),
-            this.getUnmatchedHighValue(fromDate, toDate, 10)
-        ]);
-
-        return {
-            period: {
-                from: fromDate || 'all',
-                to: toDate || 'all'
-            },
-            summary: {
-                transactions: transactionStats,
-                dtes: dteStats,
-                matches: matchStats
-            },
-            pending: {
-                transactions: pendingTransactions,
-                dtes: pendingDtes
-            },
-            recent_matches: recentMatches,
-            insights: {
-                top_providers: topProviders,
-                high_value_unmatched: unmatchedHighValue
+            // Validar fechas
+            if (fromDate && isNaN(Date.parse(fromDate))) {
+                this.logger.warn(`Invalid fromDate: ${fromDate}`);
+                fromDate = undefined;
             }
-        };
+            if (toDate && isNaN(Date.parse(toDate))) {
+                this.logger.warn(`Invalid toDate: ${toDate}`);
+                toDate = undefined;
+            }
+
+            // Ejecutar todas las queries en paralelo con manejo de errores individual (Promise.allSettled sería ideal pero Promise.all es más rápido si asumimos estabilidad)
+            // Usaremos Promise.all para fallar rápido si hay error de DB crítico
+            const [
+                transactionStats,
+                dteStats,
+                matchStats,
+                pendingTransactions,
+                pendingDtes,
+                recentMatches,
+                topProviders,
+                unmatchedHighValue
+            ] = await Promise.all([
+                this.getTransactionStats(fromDate, toDate),
+                this.getDteStats(fromDate, toDate),
+                this.getMatchStats(),
+                this.getPendingTransactions(fromDate, toDate, 20),
+                this.getPendingDtes(fromDate, toDate, 20),
+                this.getRecentMatches(10),
+                this.getTopProviders(fromDate, toDate, 10),
+                this.getUnmatchedHighValue(fromDate, toDate, 10)
+            ]);
+
+            return {
+                period: {
+                    from: fromDate || 'all',
+                    to: toDate || 'all'
+                },
+                summary: {
+                    transactions: transactionStats,
+                    dtes: dteStats,
+                    matches: matchStats
+                },
+                pending: {
+                    transactions: pendingTransactions,
+                    dtes: pendingDtes
+                },
+                recent_matches: recentMatches,
+                insights: {
+                    top_providers: topProviders,
+                    high_value_unmatched: unmatchedHighValue
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error getting dashboard: ${error.message}`, error.stack);
+            throw error;
+        }
     }
 
     /**

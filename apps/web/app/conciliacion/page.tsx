@@ -356,7 +356,7 @@ export default function ConciliacionPage() {
                 <div className="overflow-hidden rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 p-6 shadow-sm border border-amber-200">
                     <div className="flex items-center justify-between mb-3">
                         <div className="p-2 bg-amber-100 rounded-lg">
-                            <span className="text-2xl">💰</span>
+                            <CurrencyDollarIcon className="h-5 w-5 text-amber-600" />
                         </div>
                         <span className="text-xs font-semibold text-amber-700 bg-amber-200 px-2 py-1 rounded">
                             Pendiente
@@ -379,17 +379,21 @@ export default function ConciliacionPage() {
                         <DocumentTextIcon className="h-8 w-8 text-blue-600" />
                     </div>
                     <h3 className="text-lg font-semibold text-blue-900 mb-2">
-                        {backendStatus === 'offline' ? 'Backend Desplegándose' : 'Sistema Listo'}
+                        {backendStatus === 'offline' ? 'Backend Desplegándose' : 'Sistema al Día'}
                     </h3>
                     <p className="text-blue-700 mb-4">
                         {backendStatus === 'offline'
                             ? 'El backend está desplegándose. Los datos reales aparecerán en 1-2 minutos.'
-                            : 'Tienes 176 DTEs de Enero 2026 listos para conciliar.'}
+                            : dashboardData.summary.transactions.total > 0
+                                ? '¡Excelente! No tienes movimientos pendientes de conciliar con monto significativo.'
+                                : 'No se detectaron cartolas bancarias para este período.'}
                     </p>
                     <div className="space-y-2 text-sm text-blue-600">
-                        <p>✓ 176 DTEs cargados desde LibreDTE</p>
-                        <p>⏳ Esperando cartolas bancarias para matching</p>
-                        <p>💡 Ve a "Cargar Cartola" para subir transacciones bancarias</p>
+                        {dashboardData.summary.dtes.total > 0 && <p>✓ {dashboardData.summary.dtes.total} DTEs cargados</p>}
+                        {dashboardData.summary.transactions.total > 0
+                            ? <p>✓ {dashboardData.summary.transactions.total} Transacciones procesadas</p>
+                            : <p>⏳ Esperando carga de cartolas bancarias</p>
+                        }
                     </div>
                 </div>
             )}
