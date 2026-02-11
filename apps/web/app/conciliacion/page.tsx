@@ -47,12 +47,58 @@ export default function ConciliacionPage() {
     const [error, setError] = useState<string | null>(null);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [backendStatus, setBackendStatus] = useState<'online' | 'offline' | 'checking'>('checking');
-    const [syncing, setSyncing] = useState(false);
+    const [runMatchLoading, setRunMatchLoading] = useState(false);
 
-    // API URL con fallback
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://bravium-backend.onrender.com';
+    // ... (existing code)
 
-    // Estructura vacía para estado inicial/error (SIN datos inventados)
+    const handleAutoMatch = async () => {
+        if (!process.env.NEXT_PUBLIC_API_URL && backendStatus === 'offline') {
+            alert('El backend no está disponible.');
+            return;
+        }
+
+        setRunMatchLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/conciliacion/run-auto-match`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fromDate: '2026-01-01',
+                    toDate: '2026-01-31'
+                })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                const created = data.data?.matches_created ?? 0;
+                alert(`Auto-Match finalizado.\n\n✅ Se encontraron ${created} coincidencias nuevas.`);
+                setRefreshTrigger(p => p + 1);
+            } else {
+                alert(`Error al ejecutar Auto-Match: ${data.message || 'Error desconocido'}`);
+            }
+        } catch (e: any) {
+            console.error('Auto-Match error:', e);
+            alert(`Error de conexión: ${e.message}`);
+        } finally {
+            setRunMatchLoading(false);
+        }
+    };
+
+    // ... (renders)
+
+    <button
+        onClick={handleAutoMatch}
+        disabled={runMatchLoading || backendStatus === 'offline'}
+        className="btn btn-primary d-flex align-items-center gap-2"
+    >
+        {runMatchLoading ? (
+            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        ) : (
+            <CheckCircleIcon style={{ width: '16px', height: '16px' }} />
+        )}
+        Ejecutar Auto-Match
+    </button>
     const EMPTY_DATA: DashboardData = {
         period: { from: '', to: '' },
         summary: {
