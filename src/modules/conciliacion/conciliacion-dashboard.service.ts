@@ -24,8 +24,12 @@ export class ConciliacionDashboardService {
                 toDate = undefined;
             }
 
-            // Ejecutar todas las queries en paralelo con manejo de errores individual (Promise.allSettled sería ideal pero Promise.all es más rápido si asumimos estabilidad)
-            // Usaremos Promise.all para fallar rápido si hay error de DB crítico
+            // Defaults in case of failure
+            const defaultTransactionStats = { total: 0, matched: 0, pending: 0, match_rate: '0%', total_amount: 0 };
+            const defaultDteStats = { total: 0, paid: 0, unpaid: 0, partially_paid: 0, payment_rate: '0%', total_amount: 0, outstanding_amount: 0 };
+            const defaultMatchStats = { total: 0, confirmed: 0, draft: 0, automatic: 0, manual: 0, auto_rate: '0%' };
+
+            // Execute safely
             const [
                 transactionStats,
                 dteStats,
@@ -36,14 +40,14 @@ export class ConciliacionDashboardService {
                 topProviders,
                 unmatchedHighValue
             ] = await Promise.all([
-                this.getTransactionStats(fromDate, toDate),
-                this.getDteStats(fromDate, toDate),
-                this.getMatchStats(),
-                this.getPendingTransactions(fromDate, toDate, 20),
-                this.getPendingDtes(fromDate, toDate, 20),
-                this.getRecentMatches(10),
-                this.getTopProviders(fromDate, toDate, 10),
-                this.getUnmatchedHighValue(fromDate, toDate, 10)
+                this.safeRun(() => this.getTransactionStats(fromDate, toDate), defaultTransactionStats, 'TransactionStats'),
+                this.safeRun(() => this.getDteStats(fromDate, toDate), defaultDteStats, 'DteStats'),
+                this.safeRun(() => this.getMatchStats(), defaultMatchStats, 'MatchStats'),
+                this.safeRun(() => this.getPendingTransactions(fromDate, toDate, 20), [], 'PendingTransactions'),
+                this.safeRun(() => this.getPendingDtes(fromDate, toDate, 20), [], 'PendingDtes'),
+                this.safeRun(() => this.getRecentMatches(10), [], 'RecentMatches'),
+                this.safeRun(() => this.getTopProviders(fromDate, toDate, 10), [], 'TopProviders'),
+                this.safeRun(() => this.getUnmatchedHighValue(fromDate, toDate, 10), { transactions: [], dtes: [] }, 'UnmatchedHighValue')
             ]);
 
             return {
@@ -69,6 +73,15 @@ export class ConciliacionDashboardService {
         } catch (error) {
             this.logger.error(`Error getting dashboard: ${error.message}`, error.stack);
             throw error;
+        }
+    }
+
+    private async safeRun<T>(fn: () => Promise<T>, fallback: T, context: string): Promise<T> {
+        try {
+            return await fn();
+        } catch (error) {
+            this.logger.error(`Error in ${context}: ${error.message}`, error.stack);
+            return fallback;
         }
     }
 
