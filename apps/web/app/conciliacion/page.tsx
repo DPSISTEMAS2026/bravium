@@ -296,7 +296,7 @@ export default function ConciliacionPage() {
                 <div className="overflow-hidden rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 p-6 shadow-sm border border-blue-200">
                     <div className="flex items-center justify-between mb-3">
                         <div className="p-2 bg-blue-100 rounded-lg">
-                            <CurrencyDollarIcon className="h-6 w-6 text-blue-600" />
+                            <CurrencyDollarIcon className="h-5 w-5 text-blue-600" />
                         </div>
                         <span className="text-xs font-semibold text-blue-700 bg-blue-200 px-2 py-1 rounded">
                             {dashboardData.summary.transactions.match_rate}
@@ -316,7 +316,7 @@ export default function ConciliacionPage() {
                 <div className="overflow-hidden rounded-xl bg-gradient-to-br from-purple-50 to-purple-100 p-6 shadow-sm border border-purple-200">
                     <div className="flex items-center justify-between mb-3">
                         <div className="p-2 bg-purple-100 rounded-lg">
-                            <DocumentTextIcon className="h-6 w-6 text-purple-600" />
+                            <DocumentTextIcon className="h-5 w-5 text-purple-600" />
                         </div>
                         <span className="text-xs font-semibold text-purple-700 bg-purple-200 px-2 py-1 rounded">
                             {dashboardData.summary.dtes.payment_rate}
@@ -336,7 +336,7 @@ export default function ConciliacionPage() {
                 <div className="overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 p-6 shadow-sm border border-emerald-200">
                     <div className="flex items-center justify-between mb-3">
                         <div className="p-2 bg-emerald-100 rounded-lg">
-                            <LinkIcon className="h-6 w-6 text-emerald-600" />
+                            <LinkIcon className="h-5 w-5 text-emerald-600" />
                         </div>
                         <span className="text-xs font-semibold text-emerald-700 bg-emerald-200 px-2 py-1 rounded">
                             {dashboardData.summary.matches.auto_rate}
