@@ -1,6 +1,7 @@
 
 import { Controller, Post, Get, Body, Logger, Query } from '@nestjs/common';
 import { ConciliacionService } from './conciliacion.service';
+import { ConciliacionDashboardService } from './conciliacion-dashboard.service';
 
 interface AutoMatchDto {
     fromDate?: string;
@@ -11,7 +12,19 @@ interface AutoMatchDto {
 export class ConciliacionController {
     private readonly logger = new Logger(ConciliacionController.name);
 
-    constructor(private readonly conciliacionService: ConciliacionService) { }
+    constructor(
+        private readonly conciliacionService: ConciliacionService,
+        private readonly dashboardService: ConciliacionDashboardService
+    ) { }
+
+    @Get('dashboard')
+    async getDashboard(
+        @Query('fromDate') fromDate?: string,
+        @Query('toDate') toDate?: string
+    ) {
+        this.logger.log(`Dashboard requested for period: ${fromDate || 'all'} to ${toDate || 'all'}`);
+        return this.dashboardService.getDashboard(fromDate, toDate);
+    }
 
     @Get('files')
     async getFiles() {

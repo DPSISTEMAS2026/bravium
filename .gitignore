@@ -43,3 +43,8 @@ build/
 
 # N8n/Misc
 *.tmp
+
+# Data files (sensitive)
+/data/*.csv
+/data/*.xlsx
+/data/*.json

@@ -17,7 +17,9 @@ export class LibreDteService {
      */
     async fetchReceivedDTEs(fromDate: string, toDate: string) {
         const apiKey = process.env.LIBREDTE_API_KEY;
-        this.logger.log(`Using API Key: ${apiKey ? '***' + apiKey.slice(-4) : 'UNDEFINED'}`);
+        const companyRut = process.env.COMPANY_RUT || '77154188';
+
+        this.logger.log(`Fetching DTEs from ${fromDate} to ${toDate} for RUT ${companyRut}`);
 
         if (!apiKey) {
             this.logger.error('LIBREDTE_API_KEY not found in environment variables');
@@ -25,24 +27,13 @@ export class LibreDteService {
         }
 
         try {
-            // Trying endpoint found in search: /api/dte/registro_compras/buscar/{receptor} (using implicit auth receptor if possible or trying to find one)
-            // If the API requires the RUT in the URL, we need it. 
-            // Let's assume the API key is enough for some context, but the endpoint pattern suggests {receptor}.
-            // I'll try a generic `buscar` first if possible, or try to get company RUT.
+            // CORRECTED: Use the proper endpoint format with _contribuyente_rut parameter
+            // This is required when using user hash instead of contributor hash
+            const url = `${this.API_URL}/dte/dte_recibidos/buscar/${companyRut}?_contribuyente_rut=${companyRut}`;
 
-            // For now, let's try to query without RUT in path, or inspect if we have the RUT.
-            // If this fails, I will ask the user for the Company RUT.
+            this.logger.log(`Fetching DTEs from: ${url}`);
 
-            const url = `${this.API_URL}/dte/documentos_recibidos/listar`; // Last attempt with this common one via POST? No, tried that.
-
-            // Let's try the one from search:
-            // Need company RUT.
-            const companyRut = process.env.COMPANY_RUT || '76201228-5'; // Default or from env
-            const url2 = `${this.API_URL}/dte/registro_compras/buscar/${companyRut}`;
-
-            this.logger.log(`Fetching DTEs from: ${url2}`);
-
-            const response = await fetch(url2, {
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Basic ${apiKey}`,
@@ -50,8 +41,9 @@ export class LibreDteService {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    desde: fromDate,
-                    hasta: toDate,
+                    fecha_desde: fromDate,
+                    fecha_hasta: toDate,
+                    limit: 1000 // Adjust as needed
                 })
             });
 
@@ -61,50 +53,70 @@ export class LibreDteService {
                 const errorText = await response.text();
                 this.logger.error(`LibreDTE API Error: ${response.status} - ${errorText}`);
                 if (response.status === 402) {
-                    throw new Error('LibreDTE Plan Limit Reached or Feature Not Available (Payment Required)');
+                    throw new Error('LibreDTE: No autorizado para acceder a este recurso. Verifica el plan del contribuyente.');
                 }
-                throw new Error(`Failed to fetch DTEs: ${response.statusText}`);
+                if (response.status === 406) {
+                    throw new Error('LibreDTE: Argumentos insuficientes. Verifica los parámetros de la solicitud.');
+                }
+                throw new Error(`Failed to fetch DTEs: ${response.statusText} - ${errorText}`);
             }
 
             const rawText = await response.text();
             this.logger.log(`Raw Response length: ${rawText.length}`);
 
+            // LibreDTE sometimes includes PHP notices in the response, clean them
+            let cleanedText = rawText;
+            if (rawText.includes('<br />')) {
+                // Remove PHP notices/warnings
+                const jsonStart = rawText.indexOf('[');
+                if (jsonStart !== -1) {
+                    cleanedText = rawText.substring(jsonStart);
+                    this.logger.warn('Cleaned PHP notices from response');
+                }
+            }
+
             let data: any;
             try {
-                data = JSON.parse(rawText);
+                data = JSON.parse(cleanedText);
             } catch (e) {
                 this.logger.error('Failed to parse JSON response', e);
+                this.logger.error('Raw text:', rawText.substring(0, 500));
                 throw new Error('Invalid JSON from LibreDTE');
             }
 
-            // Validate response structure (response.data based on prompt instruction "Iterar response.data[]")
-            // Usually LibreDTE returns { code: 200, dtes: [...] } or just the array depending on endpoint version.
-            // Prompt says: "Iterar response.data[]". I will adhere to that.
-            // If response is the array directly, I'll adapt. logic: data.data || data
-
-            this.logger.log(`LibreDTE Response Keys: ${Object.keys(data).join(', ')}`);
-
-            // Adaptive extraction: 
-            // 1. Direct array
-            // 2. data.data (standard paginated)
-            // 3. data.dtes (common LibreDTE format)
+            // LibreDTE returns an array directly for this endpoint
             const dtes = Array.isArray(data) ? data : (data.data || data.dtes || []);
 
             this.logger.log(`Found ${dtes.length} DTEs from LibreDTE`);
 
             let processedCount = 0;
+            let skippedCount = 0;
+            let errorCount = 0;
 
             for (const item of dtes) {
                 try {
-                    await this.processDteItem(item);
-                    processedCount++;
+                    const result = await this.processDteItem(item);
+                    if (result === 'created') {
+                        processedCount++;
+                    } else if (result === 'skipped') {
+                        skippedCount++;
+                    }
                 } catch (itemError) {
-                    this.logger.error(`Failed to process item: ${JSON.stringify(item)}`, itemError);
+                    errorCount++;
+                    this.logger.error(`Failed to process DTE: ${JSON.stringify(item).substring(0, 200)}`, itemError);
                     // Continue to next item
                 }
             }
 
-            return { success: true, count: processedCount };
+            this.logger.log(`Processing complete: ${processedCount} created, ${skippedCount} skipped, ${errorCount} errors`);
+
+            return {
+                success: true,
+                total: dtes.length,
+                created: processedCount,
+                skipped: skippedCount,
+                errors: errorCount
+            };
 
         } catch (error) {
             this.logger.error('Error in fetchReceivedDTEs', error);
@@ -112,25 +124,28 @@ export class LibreDteService {
         }
     }
 
-    private async processDteItem(item: any) {
-        // Mapeo según Prompt:
-        // emisor.rut → rut_emisor
-        // emisor.razon_social → razon_social_emisor
-        // dte → tipo_dte
-        // folio → folio
-        // fecha → fecha_emision
-        // total → monto_total
+    private async processDteItem(item: any): Promise<'created' | 'skipped'> {
+        // LibreDTE dte_recibidos/buscar response structure:
+        // {
+        //   "emisor": 76594462,  // RUT as number
+        //   "razon_social": "SOCIEDAD TURISTICA...",
+        //   "dte": 33,  // Document type
+        //   "folio": 12345,
+        //   "fecha": "2026-02-11",
+        //   "total": 55979,
+        //   ... other fields
+        // }
 
-        const rutIssuer = item.emisor?.rut;
-        const nameIssuer = item.emisor?.razon_social; // "razon_social" usually comes from API
-        const dteType = Number(item.dte); // "dte" field in API is the type (e.g. 33)
+        const rutIssuer = String(item.emisor); // Convert to string
+        const nameIssuer = item.razon_social;
+        const dteType = Number(item.dte);
         const folio = Number(item.folio);
         const issuedDateStr = item.fecha; // YYYY-MM-DD
-        const totalAmount = Number(item.total);
+        const totalAmount = Number(item.total || 0);
 
         if (!rutIssuer || !dteType || !folio) {
-            this.logger.warn(`Skipping invalid item: ${JSON.stringify(item)}`);
-            return;
+            this.logger.warn(`Skipping invalid DTE: missing required fields - ${JSON.stringify(item).substring(0, 100)}`);
+            return 'skipped';
         }
 
         // 1. Upsert Provider
@@ -143,15 +158,12 @@ export class LibreDteService {
                 data: {
                     rut: rutIssuer,
                     name: nameIssuer || `Provider ${rutIssuer}`,
-                    // organizationId: ??? (Leaving nullable as per current context, or assuming context user?)
-                    // For backend task, we might not have user context here yet.
                 }
             });
-            this.logger.debug(`Created new provider: ${rutIssuer}`);
+            this.logger.debug(`Created new provider: ${rutIssuer} - ${nameIssuer}`);
         }
 
-        // 2. Persist DTE
-        // check uniqueness using the composite key defined in schema: @@unique([rutIssuer, type, folio])
+        // 2. Check if DTE already exists
         const existingDTE = await this.prisma.dTE.findUnique({
             where: {
                 rutIssuer_type_folio: {
@@ -162,28 +174,32 @@ export class LibreDteService {
             }
         });
 
-        if (!existingDTE) {
-            await this.prisma.dTE.create({
-                data: {
-                    folio: folio,
-                    type: dteType,
-                    rutIssuer: rutIssuer,
-                    rutReceiver: item.receptor?.rut || 'UNKNOWN', // Field not specified in prompt but required by schema?
-                    // Schema: rutReceiver String. I need to populate it. LibreDTE response usually has receptor.
-                    // If not present, I'll put a placeholder or env value (our company RUT).
-                    // I will look for 'receptor.rut' in item.
-
-                    totalAmount: totalAmount,
-                    outstandingAmount: totalAmount,
-                    issuedDate: new Date(issuedDateStr),
-                    siiStatus: 'RECIBIDO', // Prompt: status='pendiente'. Storing 'RECIBIDO' as semantic status.
-                    paymentStatus: DtePaymentStatus.UNPAID, // Maps to 'pendiente' payment logic
-
-                    provider: { connect: { id: provider.id } },
-                    origin: DataOrigin.API_INTEGRATION,
-                    metadata: item // Store raw for audit
-                }
-            });
+        if (existingDTE) {
+            this.logger.debug(`DTE already exists: ${rutIssuer}-${dteType}-${folio}`);
+            return 'skipped';
         }
+
+        // 3. Create new DTE
+        const companyRut = process.env.COMPANY_RUT || '77154188';
+
+        await this.prisma.dTE.create({
+            data: {
+                folio: folio,
+                type: dteType,
+                rutIssuer: rutIssuer,
+                rutReceiver: companyRut, // Our company RUT
+                totalAmount: totalAmount,
+                outstandingAmount: totalAmount,
+                issuedDate: new Date(issuedDateStr),
+                siiStatus: 'RECIBIDO',
+                paymentStatus: DtePaymentStatus.UNPAID,
+                provider: { connect: { id: provider.id } },
+                origin: DataOrigin.API_INTEGRATION,
+                metadata: item // Store raw data for audit
+            }
+        });
+
+        this.logger.debug(`Created DTE: ${rutIssuer}-${dteType}-${folio} - $${totalAmount}`);
+        return 'created';
     }
 }
