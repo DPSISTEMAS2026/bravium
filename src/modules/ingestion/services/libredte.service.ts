@@ -16,12 +16,14 @@ export class LibreDteService {
      * @param toDate End date in YYYY-MM-DD format
      */
     async fetchReceivedDTEs(fromDate: string, toDate: string) {
-        const apiKey = process.env.LIBREDTE_API_KEY;
+        // HARDCODED CREDENTIALS AS FALLBACK (Requested by User for Production Fix)
+        const apiKey = process.env.LIBREDTE_API_KEY || 'WDpyVTFteDRiZDFTUnRVT3BLNE9oWnZSeU5BT1V3WkM4MA==';
         const companyRut = process.env.COMPANY_RUT || '77154188';
 
         this.logger.log(`Fetching DTEs from ${fromDate} to ${toDate} for RUT ${companyRut}`);
 
         if (!apiKey) {
+            // Should not happen with fallback
             this.logger.error('LIBREDTE_API_KEY not found in environment variables');
             throw new Error('Configuration error: Missing LibreDTE API Key');
         }
