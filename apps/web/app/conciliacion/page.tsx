@@ -51,12 +51,12 @@ export default function ConciliacionPage() {
     // API URL con fallback
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://bravium-backend.onrender.com';
 
-    // Mock Data para fallback visual (Mismo que antes)
-    const MOCK_DATA: DashboardData = {
-        period: { from: '2026-01-01', to: '2026-01-31' },
+    // Estructura vacía para estado inicial/error (SIN datos inventados)
+    const EMPTY_DATA: DashboardData = {
+        period: { from: '', to: '' },
         summary: {
             transactions: { total: 0, matched: 0, pending: 0, total_amount: 0, match_rate: '0%' },
-            dtes: { total: 176, paid: 45, unpaid: 131, partially_paid: 0, total_amount: 456789000, outstanding_amount: 125628546 },
+            dtes: { total: 0, paid: 0, unpaid: 0, partially_paid: 0, total_amount: 0, outstanding_amount: 0 },
             matches: { total: 0, automatic: 0, manual: 0, match_rate: '0%' }
         },
         pending: { transactions: [], dtes: [] },
@@ -91,10 +91,12 @@ export default function ConciliacionPage() {
 
             if (!isHealthy) {
                 if (isMounted) {
-                    console.warn('Backend offline o desplegándose. Usando Mock Data.');
-                    setDashboardData(MOCK_DATA);
+                    console.warn('Backend offline o inaccesible. Mostrando estado vacío.');
+                    // Usamos EMPTY_DATA para no mostrar números falsos
+                    setDashboardData(EMPTY_DATA);
+                    setBackendStatus('offline');
                     setLoading(false);
-                    // Reintentar en 30s
+                    // Reintentar conexión en 30s
                     setTimeout(() => setRefreshTrigger(prev => prev + 1), 30000);
                 }
                 return;
@@ -102,7 +104,7 @@ export default function ConciliacionPage() {
 
             // 2. Fetch Dashboard Real
             try {
-                // Fechas Hardcoded Enero 2026 (Demo)
+                // Fechas fijadas para Enero 2026 (Datos Reales)
                 const res = await fetch(`${API_URL}/conciliacion/dashboard?fromDate=2026-01-01&toDate=2026-01-31`);
 
                 if (!res.ok) {
@@ -112,14 +114,15 @@ export default function ConciliacionPage() {
                 const data = await res.json();
                 if (isMounted) {
                     setDashboardData(data);
+                    setBackendStatus('online'); // Confirmamos conexión exitosa
                     setError(null);
                 }
             } catch (err: any) {
                 console.error('Error fetching dashboard:', err);
                 if (isMounted) {
-                    // Fallback visual si falla el endpoint específico
-                    setDashboardData(MOCK_DATA);
-                    setBackendStatus('offline'); // Marcar como offline para mostrar warning
+                    // Si falla la carga de datos, mostramos vacío, no inventado
+                    setDashboardData(EMPTY_DATA);
+                    setBackendStatus('offline');
                 }
             } finally {
                 if (isMounted) setLoading(false);
