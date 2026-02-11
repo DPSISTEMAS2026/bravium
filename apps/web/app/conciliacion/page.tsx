@@ -36,6 +36,7 @@ interface DashboardData {
         transactions: any[];
         dtes: any[];
     };
+    recent_matches: any[];
     insights: {
         top_providers: any[];
     };
@@ -49,6 +50,8 @@ export default function ConciliacionPage() {
     const [backendStatus, setBackendStatus] = useState<'online' | 'offline' | 'checking'>('checking');
     const [runMatchLoading, setRunMatchLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
+    const [showMatches, setShowMatches] = useState(false);
+    const [matchFilter, setMatchFilter] = useState('');
 
     // API URL con fallback
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://bravium-backend.onrender.com';
@@ -101,6 +104,7 @@ export default function ConciliacionPage() {
             matches: { total: 0, automatic: 0, manual: 0, match_rate: '0%' }
         },
         pending: { transactions: [], dtes: [] },
+        recent_matches: [],
         insights: { top_providers: [] }
     };
 
@@ -370,6 +374,126 @@ export default function ConciliacionPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Pareos Realizados Section */}
+            {dashboardData.recent_matches && dashboardData.recent_matches.length > 0 && (
+                <div className="card border-0 shadow-sm mb-4">
+                    <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                        <h5 className="mb-0 fw-bold">
+                            <LinkIcon style={{ width: '20px', height: '20px', display: 'inline', marginRight: '8px' }} />
+                            Pareos Realizados ({dashboardData.summary.matches.total})
+                        </h5>
+                        <button
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={() => setShowMatches(!showMatches)}
+                        >
+                            {showMatches ? 'Ocultar' : 'Ver Detalles'}
+                        </button>
+                    </div>
+
+                    {showMatches && (
+                        <div className="card-body">
+                            {/* Filter */}
+                            <div className="mb-3">
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    placeholder="Buscar por descripción, folio, proveedor..."
+                                    value={matchFilter}
+                                    onChange={(e) => setMatchFilter(e.target.value)}
+                                />
+                            </div>
+
+                            {/* Matches Table */}
+                            <div className="table-responsive">
+                                <table className="table table-hover align-middle">
+                                    <thead className="table-light">
+                                        <tr>
+                                            <th>Fecha TX</th>
+                                            <th>Descripción</th>
+                                            <th>Monto TX</th>
+                                            <th>Folio DTE</th>
+                                            <th>Proveedor</th>
+                                            <th>Monto DTE</th>
+                                            <th>Tipo</th>
+                                            <th>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {dashboardData.recent_matches
+                                            .filter((match) => {
+                                                if (!matchFilter) return true;
+                                                const searchLower = matchFilter.toLowerCase();
+                                                return (
+                                                    match.transaction?.description?.toLowerCase().includes(searchLower) ||
+                                                    match.dte?.folio?.toString().includes(searchLower) ||
+                                                    match.dte?.provider?.name?.toLowerCase().includes(searchLower)
+                                                );
+                                            })
+                                            .map((match, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="text-nowrap">
+                                                        {match.transaction?.date ? new Date(match.transaction.date).toLocaleDateString('es-CL') : 'N/A'}
+                                                    </td>
+                                                    <td>
+                                                        <div className="text-truncate" style={{ maxWidth: '200px' }}>
+                                                            {match.transaction?.description || 'N/A'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="text-end">
+                                                        <span className="text-danger fw-bold">
+                                                            {formatCurrency(Math.abs(match.transaction?.amount || 0))}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <span className="badge bg-secondary">
+                                                            #{match.dte?.folio || 'N/A'}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <div className="text-truncate" style={{ maxWidth: '150px' }}>
+                                                            {match.dte?.provider?.name || 'N/A'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="text-end">
+                                                        <span className="fw-bold">
+                                                            {formatCurrency(match.dte?.totalAmount || 0)}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <span className={`badge ${match.matchType === 'AUTOMATIC' ? 'bg-success' : 'bg-info'}`}>
+                                                            {match.matchType === 'AUTOMATIC' ? 'Auto' : 'Manual'}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <span className={`badge ${match.status === 'CONFIRMED' ? 'bg-success' : 'bg-warning'}`}>
+                                                            {match.status === 'CONFIRMED' ? 'Confirmado' : 'Borrador'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* No results message */}
+                            {dashboardData.recent_matches.filter((match) => {
+                                if (!matchFilter) return true;
+                                const searchLower = matchFilter.toLowerCase();
+                                return (
+                                    match.transaction?.description?.toLowerCase().includes(searchLower) ||
+                                    match.dte?.folio?.toString().includes(searchLower) ||
+                                    match.dte?.provider?.name?.toLowerCase().includes(searchLower)
+                                );
+                            }).length === 0 && (
+                                    <div className="text-center text-muted py-4">
+                                        No se encontraron pareos que coincidan con "{matchFilter}"
+                                    </div>
+                                )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Empty State / Status Message */}
             {
