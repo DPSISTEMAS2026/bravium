@@ -11,8 +11,6 @@ export class ConciliacionDashboardService {
      * Obtiene el dashboard completo de conciliación para un período
      */
     async getDashboard(fromDate?: string, toDate?: string) {
-        const dateFilter = this.buildDateFilter(fromDate, toDate);
-
         this.logger.log(`Getting dashboard for period: ${fromDate || 'all'} to ${toDate || 'all'}`);
 
         // Ejecutar todas las queries en paralelo
@@ -26,14 +24,14 @@ export class ConciliacionDashboardService {
             topProviders,
             unmatchedHighValue
         ] = await Promise.all([
-            this.getTransactionStats(dateFilter),
-            this.getDteStats(dateFilter),
-            this.getMatchStats(dateFilter),
-            this.getPendingTransactions(dateFilter, 20),
-            this.getPendingDtes(dateFilter, 20),
+            this.getTransactionStats(fromDate, toDate),
+            this.getDteStats(fromDate, toDate),
+            this.getMatchStats(),
+            this.getPendingTransactions(fromDate, toDate, 20),
+            this.getPendingDtes(fromDate, toDate, 20),
             this.getRecentMatches(10),
-            this.getTopProviders(dateFilter, 10),
-            this.getUnmatchedHighValue(dateFilter, 10)
+            this.getTopProviders(fromDate, toDate, 10),
+            this.getUnmatchedHighValue(fromDate, toDate, 10)
         ]);
 
         return {
@@ -61,7 +59,9 @@ export class ConciliacionDashboardService {
     /**
      * Estadísticas de transacciones bancarias
      */
-    private async getTransactionStats(dateFilter: any) {
+    private async getTransactionStats(fromDate?: string, toDate?: string) {
+        const dateFilter = this.buildTransactionDateFilter(fromDate, toDate);
+
         const [total, matched, pending, totalAmount] = await Promise.all([
             this.prisma.bankTransaction.count({ where: dateFilter }),
             this.prisma.bankTransaction.count({
@@ -94,7 +94,9 @@ export class ConciliacionDashboardService {
     /**
      * Estadísticas de DTEs
      */
-    private async getDteStats(dateFilter: any) {
+    private async getDteStats(fromDate?: string, toDate?: string) {
+        const dateFilter = this.buildDteDateFilter(fromDate, toDate);
+
         const [total, paid, unpaid, partiallyPaid, totalAmount, outstandingAmount] = await Promise.all([
             this.prisma.dTE.count({ where: dateFilter }),
             this.prisma.dTE.count({
@@ -139,7 +141,7 @@ export class ConciliacionDashboardService {
     /**
      * Estadísticas de matches
      */
-    private async getMatchStats(dateFilter: any) {
+    private async getMatchStats() {
         const [total, confirmed, draft, automatic, manual] = await Promise.all([
             this.prisma.reconciliationMatch.count(),
             this.prisma.reconciliationMatch.count({
@@ -169,7 +171,9 @@ export class ConciliacionDashboardService {
     /**
      * Transacciones bancarias pendientes de conciliar
      */
-    private async getPendingTransactions(dateFilter: any, limit: number) {
+    private async getPendingTransactions(fromDate?: string, toDate?: string, limit: number = 20) {
+        const dateFilter = this.buildTransactionDateFilter(fromDate, toDate);
+
         return this.prisma.bankTransaction.findMany({
             where: {
                 ...dateFilter,
@@ -200,7 +204,9 @@ export class ConciliacionDashboardService {
     /**
      * DTEs pendientes de pago
      */
-    private async getPendingDtes(dateFilter: any, limit: number) {
+    private async getPendingDtes(fromDate?: string, toDate?: string, limit: number = 20) {
+        const dateFilter = this.buildDteDateFilter(fromDate, toDate);
+
         return this.prisma.dTE.findMany({
             where: {
                 ...dateFilter,
@@ -280,7 +286,9 @@ export class ConciliacionDashboardService {
     /**
      * Top proveedores por monto pendiente
      */
-    private async getTopProviders(dateFilter: any, limit: number) {
+    private async getTopProviders(fromDate?: string, toDate?: string, limit: number = 10) {
+        const dateFilter = this.buildDteDateFilter(fromDate, toDate);
+
         const dtes = await this.prisma.dTE.findMany({
             where: {
                 ...dateFilter,
@@ -330,13 +338,15 @@ export class ConciliacionDashboardService {
     /**
      * Transacciones y DTEs de alto valor sin match
      */
-    private async getUnmatchedHighValue(dateFilter: any, limit: number) {
+    private async getUnmatchedHighValue(fromDate?: string, toDate?: string, limit: number = 10) {
         const threshold = 1000000; // $1M CLP
+        const txDateFilter = this.buildTransactionDateFilter(fromDate, toDate);
+        const dteDateFilter = this.buildDteDateFilter(fromDate, toDate);
 
         const [transactions, dtes] = await Promise.all([
             this.prisma.bankTransaction.findMany({
                 where: {
-                    ...dateFilter,
+                    ...txDateFilter,
                     status: 'PENDING',
                     amount: { gte: threshold }
                 },
@@ -352,7 +362,7 @@ export class ConciliacionDashboardService {
             }),
             this.prisma.dTE.findMany({
                 where: {
-                    ...dateFilter,
+                    ...dteDateFilter,
                     paymentStatus: 'UNPAID',
                     outstandingAmount: { gte: threshold }
                 },
@@ -380,31 +390,44 @@ export class ConciliacionDashboardService {
     }
 
     /**
-     * Construye filtro de fechas para queries
+     * Construye filtro de fechas para transacciones bancarias
      */
-    private buildDateFilter(fromDate?: string, toDate?: string) {
+    private buildTransactionDateFilter(fromDate?: string, toDate?: string) {
         if (!fromDate && !toDate) return {};
 
         const filter: any = {};
 
-        if (fromDate) {
-            filter.OR = [
-                { date: { gte: new Date(fromDate) } },
-                { issuedDate: { gte: new Date(fromDate) } }
-            ];
+        if (fromDate && toDate) {
+            filter.date = {
+                gte: new Date(fromDate),
+                lte: new Date(toDate)
+            };
+        } else if (fromDate) {
+            filter.date = { gte: new Date(fromDate) };
+        } else if (toDate) {
+            filter.date = { lte: new Date(toDate) };
         }
 
-        if (toDate) {
-            const orConditions = filter.OR || [];
-            filter.OR = orConditions.map((cond: any) => {
-                if (cond.date) {
-                    return { ...cond, date: { ...cond.date, lte: new Date(toDate) } };
-                }
-                if (cond.issuedDate) {
-                    return { ...cond, issuedDate: { ...cond.issuedDate, lte: new Date(toDate) } };
-                }
-                return cond;
-            });
+        return filter;
+    }
+
+    /**
+     * Construye filtro de fechas para DTEs
+     */
+    private buildDteDateFilter(fromDate?: string, toDate?: string) {
+        if (!fromDate && !toDate) return {};
+
+        const filter: any = {};
+
+        if (fromDate && toDate) {
+            filter.issuedDate = {
+                gte: new Date(fromDate),
+                lte: new Date(toDate)
+            };
+        } else if (fromDate) {
+            filter.issuedDate = { gte: new Date(fromDate) };
+        } else if (toDate) {
+            filter.issuedDate = { lte: new Date(toDate) };
         }
 
         return filter;
