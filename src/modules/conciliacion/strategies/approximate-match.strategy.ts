@@ -7,8 +7,9 @@ export class ApproximateMatchStrategy implements MatchingStrategy {
     public name = 'ApproximateMatch';
 
     // Configurable tolerances
-    private readonly DAYS_TOLERANCE = 3;
-    private readonly AMOUNT_TOLERANCE = 400; // CLP (User requested +/- 400)
+    // Configurable tolerances
+    private readonly DAYS_TOLERANCE = 120; // Expanded to ~4 months per user request
+    private readonly AMOUNT_TOLERANCE = 1000; // CLP (User requested +/- 1000)
 
     async findMatches(
         transaction: BankTransaction,
@@ -20,7 +21,7 @@ export class ApproximateMatchStrategy implements MatchingStrategy {
         // Check Payments
         for (const payment of payments) {
             const score = this.calculateScore(transaction, payment.amount, payment.paymentDate);
-            if (score > 0.6) { // Threshold
+            if (score >= 0.7) { // Threshold
                 candidates.push({
                     payment,
                     score,
@@ -32,7 +33,7 @@ export class ApproximateMatchStrategy implements MatchingStrategy {
         // Check DTEs
         for (const dte of dtes) {
             const score = this.calculateScore(transaction, dte.totalAmount, dte.issuedDate);
-            if (score > 0.6) {
+            if (score >= 0.7) {
                 candidates.push({
                     dte,
                     score,
@@ -67,25 +68,19 @@ export class ApproximateMatchStrategy implements MatchingStrategy {
         // Base 1.0
         let penalty = 0.0;
 
-        // Date Penalty: 0.1 for first day, 0.05 for subsequent?
-        // User example: 1 day -> 0.9 (0.1 penalty).
-        // User example: 3 days + amount -> 0.75.
+        // Date Penalty: Max 0.15 for full duration tolerance
+        // equation: (days / max_days) * weight
+        penalty += (daysDiff / this.DAYS_TOLERANCE) * 0.15;
 
-        // Let's use: 0.05 per day roughly.
-        // 3 days * 0.05 = 0.15.
-
-        penalty += (daysDiff * 0.05);
-
-        // Amount Penalty:
-        // If exact amount: 0.
-        // If diff exists: 0.1 flat?
+        // Amount Penalty: Max 0.15 for full amount tolerance
+        // equation: (diff / max_diff) * weight
         if (amountDiff > 0) {
-            penalty += 0.1;
+            penalty += (amountDiff / this.AMOUNT_TOLERANCE) * 0.15;
         }
 
-        // Example Check:
-        // 3 days (0.15) + diff (0.1) = 0.25. Score = 0.75. Matches user example.
-        // 1 day (0.05) + exact (0) = 0.05. Score = 0.95. (User said 0.9, close enough).
+        // Result:
+        // Worst case (Max Date + Max Amount diff): 1.0 - 0.15 - 0.15 = 0.70 (Accepted)
+        // Best case (0 diffs): 1.0
 
         return Math.max(0, 1.0 - penalty);
     }

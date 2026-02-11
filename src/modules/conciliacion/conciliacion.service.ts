@@ -132,9 +132,9 @@ export class ConciliacionService {
     }
 
     private async processTransaction(tx: BankTransaction): Promise<boolean> {
-        // 2. Fetch relevant candidates (Optimization: Search window of +/- 10 days)
-        // We fetch a bit wider than the strategy tolerance to be safe
-        const searchWindowDays = 10;
+        // 2. Fetch relevant candidates (Optimization: Search window of +/- 120 days ~4 months)
+        // User reports payments can be delayed by "months".
+        const searchWindowDays = 120;
         const dateStart = new Date(tx.date);
         dateStart.setDate(dateStart.getDate() - searchWindowDays);
         const dateEnd = new Date(tx.date);
