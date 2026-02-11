@@ -48,6 +48,11 @@ export default function ConciliacionPage() {
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [backendStatus, setBackendStatus] = useState<'online' | 'offline' | 'checking'>('checking');
     const [runMatchLoading, setRunMatchLoading] = useState(false);
+    const [syncing, setSyncing] = useState(false);
+
+    // API URL con fallback
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://bravium-backend.onrender.com';
+
 
     // ... (existing code)
 
@@ -87,18 +92,7 @@ export default function ConciliacionPage() {
 
     // ... (renders)
 
-    <button
-        onClick={handleAutoMatch}
-        disabled={runMatchLoading || backendStatus === 'offline'}
-        className="btn btn-primary d-flex align-items-center gap-2"
-    >
-        {runMatchLoading ? (
-            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-        ) : (
-            <CheckCircleIcon style={{ width: '16px', height: '16px' }} />
-        )}
-        Ejecutar Auto-Match
-    </button>
+
     const EMPTY_DATA: DashboardData = {
         period: { from: '', to: '' },
         summary: {
@@ -272,8 +266,16 @@ export default function ConciliacionPage() {
                         )}
                         Sincronizar DTEs
                     </button>
-                    <button className="btn btn-primary d-flex align-items-center gap-2">
-                        <CheckCircleIcon style={{ width: '16px', height: '16px' }} />
+                    <button
+                        onClick={handleAutoMatch}
+                        disabled={runMatchLoading || backendStatus === 'offline'}
+                        className="btn btn-primary d-flex align-items-center gap-2"
+                    >
+                        {runMatchLoading ? (
+                            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        ) : (
+                            <CheckCircleIcon style={{ width: '16px', height: '16px' }} />
+                        )}
                         Ejecutar Auto-Match
                     </button>
                 </div>
