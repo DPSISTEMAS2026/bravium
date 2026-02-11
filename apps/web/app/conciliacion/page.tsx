@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowPathIcon, CheckCircleIcon, DocumentTextIcon, CurrencyDollarIcon, LinkIcon } from '@heroicons/react/24/outline'; // Estos funcionan, pero necesitan estilo inline si Tailwind falla
+import { ArrowPathIcon, CheckCircleIcon, DocumentTextIcon, CurrencyDollarIcon, LinkIcon, CloudArrowDownIcon } from '@heroicons/react/24/outline'; // Estos funcionan, pero necesitan estilo inline si Tailwind falla
 
 // Interfaces (Mismas que antes)
 interface DashboardData {
@@ -47,6 +47,7 @@ export default function ConciliacionPage() {
     const [error, setError] = useState<string | null>(null);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [backendStatus, setBackendStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+    const [syncing, setSyncing] = useState(false);
 
     // API URL con fallback
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://bravium-backend.onrender.com';
@@ -138,6 +139,38 @@ export default function ConciliacionPage() {
         return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(amount);
     };
 
+    const handleSyncDtes = async () => {
+        if (!window.confirm('¿Deseas sincronizar los DTEs con LibreDTE para Enero 2026?')) return;
+
+        setSyncing(true);
+        try {
+            const res = await fetch(`${API_URL}/ingestion/libredte/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fromDate: '2026-01-01',
+                    toDate: '2026-01-31'
+                })
+            });
+
+            const data = await res.json();
+
+            if (res.ok && (data.status === 'success' || data.success)) {
+                const count = data.data?.created ?? data.created ?? 0;
+                alert(`Sincronización completada.\n\nNuevos DTEs: ${count}\nTotal procesados: ${data.data?.total ?? data.total ?? '?'}`);
+                setRefreshTrigger(p => p + 1);
+            } else {
+                console.error('Sync error:', data);
+                alert(`Error en la sincronización: ${data.message || 'Revise logs del servidor'}`);
+            }
+        } catch (e: any) {
+            console.error('Sync failed:', e);
+            alert(`Error de conexión: ${e.message}`);
+        } finally {
+            setSyncing(false);
+        }
+    };
+
     if (loading && !dashboardData) {
         return (
             <div className="container-fluid p-4">
@@ -180,6 +213,18 @@ export default function ConciliacionPage() {
                     >
                         <ArrowPathIcon style={{ width: '16px', height: '16px' }} />
                         Actualizar
+                    </button>
+                    <button
+                        onClick={handleSyncDtes}
+                        disabled={syncing || backendStatus === 'offline'}
+                        className="btn btn-outline-primary d-flex align-items-center gap-2"
+                    >
+                        {syncing ? (
+                            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        ) : (
+                            <CloudArrowDownIcon style={{ width: '16px', height: '16px' }} />
+                        )}
+                        Sincronizar DTEs
                     </button>
                     <button className="btn btn-primary d-flex align-items-center gap-2">
                         <CheckCircleIcon style={{ width: '16px', height: '16px' }} />
