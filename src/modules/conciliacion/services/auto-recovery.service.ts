@@ -43,13 +43,14 @@ export class AutoRecoveryService implements OnModuleInit {
                 this.logger.log('✅ Matches cleaned.');
 
                 // 3. Sincronización DTEs
-                this.logger.log('📥 Syncing DTEs from LibreDTE (Jan-Feb 2026)...');
-                await this.libreDte.fetchReceivedDTEs('2026-01-01', '2026-02-28');
+                this.logger.log('📥 Syncing DTEs from LibreDTE (Jan 2025 - Feb 2026)...');
+                // Sincronizar desde Enero 2025 (Histórico completo solicitado)
+                await this.libreDte.fetchReceivedDTEs('2025-01-01', '2026-02-28');
                 this.logger.log('✅ DTEs synced.');
 
                 // 4. Auto-Match
                 this.logger.log('🤖 Running Auto-Match...');
-                await this.conciliacion.runReconciliationCycle('2026-01-01', '2026-02-28');
+                await this.conciliacion.runReconciliationCycle('2025-01-01', '2026-02-28');
                 this.logger.log('✅ Auto-Match completed.');
 
                 this.logger.log('✨ SYSTEM REPAIRED SAFELY.');
