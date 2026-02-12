@@ -7,7 +7,6 @@ import {
     TransactionStatus
 } from '@prisma/client';
 import { ExactMatchStrategy } from './strategies/exact-match.strategy';
-import { ApproximateMatchStrategy } from './strategies/approximate-match.strategy';
 import { MatchingStrategy } from './domain/matching.interfaces';
 
 @Injectable()
@@ -18,10 +17,9 @@ export class ConciliacionService {
     constructor(
         private prisma: PrismaService,
         private exactStrategy: ExactMatchStrategy,
-        private approxStrategy: ApproximateMatchStrategy,
     ) {
-        // Priority Order: Exact first, then Approximate
-        this.strategies = [this.exactStrategy, this.approxStrategy];
+        // Priority Order: ONLY Exact Match
+        this.strategies = [this.exactStrategy];
     }
 
     /**
@@ -191,11 +189,15 @@ export class ConciliacionService {
         candidate: { payment?: any; dte?: any; score: number; reason: string },
         strategyName: string
     ) {
-        // Determine Status based on Score
-        let status: MatchStatus = MatchStatus.DRAFT;
-        if (candidate.score === 1.0) {
-            status = MatchStatus.CONFIRMED;
+        // STRICT RULE: Only accept EXACT matches (Score 1.0)
+        // No drafts, no guesses.
+
+        if (candidate.score < 1.0) {
+            this.logger.debug(`Skipping match candidate for Tx ${tx.id} - Score ${candidate.score} too low`);
+            return;
         }
+
+        const status = MatchStatus.CONFIRMED;
 
         // DB Transaction to ensure consistency
         await this.prisma.$transaction(async (prisma) => {
@@ -213,15 +215,21 @@ export class ConciliacionService {
             });
 
             // 2. Update Transaction Status
-            if (status === MatchStatus.CONFIRMED) {
-                await prisma.bankTransaction.update({
-                    where: { id: tx.id },
-                    data: { status: TransactionStatus.MATCHED },
-                });
+            // Since it is CONFIRMED, mark transaction as MATCHED immediately.
+            await prisma.bankTransaction.update({
+                where: { id: tx.id },
+                data: { status: TransactionStatus.MATCHED },
+            });
+
+            // 3. Update DTE Status if applicable
+            if (candidate.dte) {
+                // Mark DTE as PAID or MATCHED?
+                // For now, let's simplisticly assume MATCHED implies payment covered.
+                // This might need refinement for partial payments, but user wants EXACT matches now.
             }
         });
 
-        this.logger.log(`Match created for Tx ${tx.id} with Score ${candidate.score} (${status})`);
+        this.logger.log(`Exact Match CONFIRMED for Tx ${tx.id}`);
     }
 
     async cleanAllMatches() {
