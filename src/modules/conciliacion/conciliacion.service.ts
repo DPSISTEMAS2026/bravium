@@ -44,12 +44,23 @@ export class ConciliacionService {
         const pendingTransactions = await this.prisma.bankTransaction.findMany({
             where: whereClause,
             orderBy: { date: 'asc' },
+            include: { matches: true } // Incluir matches existentes
         });
 
         this.logger.log(`Found ${pendingTransactions.length} pending transactions.`);
         let matchCount = 0;
 
         for (const tx of pendingTransactions) {
+            // FIX: Limpiar matches previos en estado DRAFT para evitar duplicados fantasmas
+            if (tx.matches && tx.matches.length > 0) {
+                await this.prisma.reconciliationMatch.deleteMany({
+                    where: {
+                        transactionId: tx.id,
+                        status: { not: MatchStatus.CONFIRMED } // Solo borrar drafts/pendientes
+                    }
+                });
+            }
+
             const matchFound = await this.processTransaction(tx);
             if (matchFound) matchCount++;
         }
@@ -152,6 +163,9 @@ export class ConciliacionService {
             this.prisma.dTE.findMany({
                 where: {
                     issuedDate: { gte: dateStart, lte: dateEnd },
+                    // FIX: Asegurar que el DTE no haya sido conciliado previamente
+                    paymentStatus: 'UNPAID', // Solo facturas pendientes de pago
+                    // Opcional: siiStatus: { not: 'MATCHED' } si usas ese campo
                 },
             }),
         ]);
