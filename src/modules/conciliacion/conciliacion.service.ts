@@ -178,16 +178,9 @@ export class ConciliacionService {
         strategyName: string
     ) {
         // Determine Status based on Score
-        // e.g. Score 1.0 -> CONFIRMED (if Exact), else DRAFT
-        // User Requirement: "DRAFT (detectado automáticamente)" but "CONFIRMED (aceptado automáticamente)" implied if high confidence?
-        // Let's be conservative: 1.0 is PROBABLY safe, but user said "DRAFT (detectado)".
-        // However, "CONFIRMED (aceptado automáticamente)" is listed as a valid state.
-        // Policy: If Score == 1.0, Auto-Confirm. Else Draft.
-
         let status: MatchStatus = MatchStatus.DRAFT;
         if (candidate.score === 1.0) {
             status = MatchStatus.CONFIRMED;
-            // Also update transaction status immediately?
         }
 
         // DB Transaction to ensure consistency
@@ -206,12 +199,6 @@ export class ConciliacionService {
             });
 
             // 2. Update Transaction Status
-            // If Auto-Confirmed, mark as MATCHED. Else PENDING (or PARTIALLY_MATCHED / MATCH_PROPOSED??)
-            // Prisma schema has MATCHED, PENDING.
-            // Usually if a draft match exists, the transaction is strictly speaking still PENDING user action,
-            // OR we can add a status like "REVIEW_NEEDED".
-            // Given schema: PENDING, MATCHED.
-            // We'll leave it as PENDING if Draft.
             if (status === MatchStatus.CONFIRMED) {
                 await prisma.bankTransaction.update({
                     where: { id: tx.id },
@@ -221,5 +208,23 @@ export class ConciliacionService {
         });
 
         this.logger.log(`Match created for Tx ${tx.id} with Score ${candidate.score} (${status})`);
+    }
+
+    async cleanAllMatches() {
+        this.logger.warn('⚠️ CLEANING ALL RECONCILIATION MATCHES');
+
+        // Delete all matches
+        const result = await this.prisma.reconciliationMatch.deleteMany({});
+
+        // Reset all transaction statuses to PENDING
+        const updated = await this.prisma.bankTransaction.updateMany({
+            data: { status: TransactionStatus.PENDING }
+        });
+
+        return {
+            deletedMatches: result.count,
+            transactionsReset: updated.count,
+            message: 'All matches deleted and transactions reset to PENDING'
+        };
     }
 }
