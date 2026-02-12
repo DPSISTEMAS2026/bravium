@@ -55,7 +55,9 @@ export class ExactMatchStrategy implements MatchingStrategy {
     }
 
     private isSameAmount(a: number, b: number): boolean {
-        return Math.abs(a) === Math.abs(b);
+        // Tolerancia de +/- 1000 CLP según regla de negocio
+        const diff = Math.abs(Math.abs(a) - Math.abs(b));
+        return diff <= 1000;
     }
 
     private isSameDay(d1: Date, d2: Date): boolean {
