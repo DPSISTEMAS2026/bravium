@@ -19,15 +19,18 @@ export class SchedulerService {
      */
     @Cron(CronExpression.EVERY_DAY_AT_4AM)
     async handleDailySyncAndMatch() {
-        this.logger.log('⏰ DAILY CRON: Starting full sync cycle...');
+        this.logger.log('⏰ DAILY CRON: Starting incremental sync cycle...');
 
         try {
-            // 1. Definir rango de fechas (Desde Enero 2025 hasta Hoy)
-            const startDate = '2025-01-01';
+            // 1. Definir rango de fechas (Solo Ayer y Hoy para sincronizar nuevos datos)
             const today = new Date();
-            const endDate = today.toISOString().split('T')[0]; // YYYY-MM-DD
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
 
-            this.logger.log(`📥 Syncing DTEs from LibreDTE (${startDate} to ${endDate})...`);
+            const startDate = yesterday.toISOString().split('T')[0]; // Ayer
+            const endDate = today.toISOString().split('T')[0];       // Hoy
+
+            this.logger.log(`📥 Syncing NEW DTEs from LibreDTE (${startDate} to ${endDate})...`);
 
             // 2. Extraer Facturas (DTEs)
             const dteResult = await this.libreDteService.fetchReceivedDTEs(startDate, endDate);
