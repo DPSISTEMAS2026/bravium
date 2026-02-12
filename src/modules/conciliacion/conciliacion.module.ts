@@ -5,8 +5,11 @@ import { ExportService } from './services/export.service';
 import { ExactMatchStrategy } from './strategies/exact-match.strategy';
 import { ApproximateMatchStrategy } from './strategies/approximate-match.strategy';
 import { ConciliacionController } from './conciliacion.controller';
+import { AutoRecoveryService } from './services/auto-recovery.service';
+import { IngestionModule } from '../ingestion/ingestion.module';
 
 @Module({
+    imports: [IngestionModule],
     controllers: [ConciliacionController],
     providers: [
         ConciliacionService,
@@ -14,6 +17,7 @@ import { ConciliacionController } from './conciliacion.controller';
         ExportService,
         ExactMatchStrategy,
         ApproximateMatchStrategy,
+        AutoRecoveryService
     ],
     exports: [ConciliacionService, ConciliacionDashboardService, ExportService],
 })
