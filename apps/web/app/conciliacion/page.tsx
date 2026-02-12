@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowPathIcon, CheckCircleIcon, DocumentTextIcon, CurrencyDollarIcon, LinkIcon, CloudArrowDownIcon } from '@heroicons/react/24/outline'; // Estos funcionan, pero necesitan estilo inline si Tailwind falla
+import { ArrowPathIcon, CheckCircleIcon, DocumentTextIcon, CurrencyDollarIcon, LinkIcon, CloudArrowDownIcon } from '@heroicons/react/24/outline';
+import FilterPanel, { FilterState } from './components/FilterPanel';
+import ExportButtons from './components/ExportButtons';
 
 // Interfaces (Mismas que antes)
 interface DashboardData {
@@ -52,6 +54,12 @@ export default function ConciliacionPage() {
     const [syncing, setSyncing] = useState(false);
     const [showMatches, setShowMatches] = useState(false);
     const [matchFilter, setMatchFilter] = useState('');
+
+    // Filtros
+    const [filters, setFilters] = useState<FilterState>({
+        year: 2025,
+        status: 'ALL'
+    });
 
     // API URL con fallback
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://bravium-backend.onrender.com';
@@ -147,10 +155,23 @@ export default function ConciliacionPage() {
                 return;
             }
 
-            // 2. Fetch Dashboard Real
+            // 2. Fetch Dashboard Real con Filtros
             try {
-                // Fechas fijadas para Enero 2026 (Datos Reales)
-                const res = await fetch(`${API_URL}/conciliacion/dashboard?fromDate=2026-01-01&toDate=2026-01-31`);
+                // Construir query params desde filtros
+                const params = new URLSearchParams();
+                if (filters.year) params.append('year', filters.year.toString());
+                if (filters.months && filters.months.length > 0) {
+                    params.append('months', filters.months.join(','));
+                }
+                if (filters.status && filters.status !== 'ALL') {
+                    params.append('status', filters.status);
+                }
+                if (filters.minAmount) params.append('minAmount', filters.minAmount.toString());
+                if (filters.maxAmount) params.append('maxAmount', filters.maxAmount.toString());
+                if (filters.fromDate) params.append('fromDate', filters.fromDate);
+                if (filters.toDate) params.append('toDate', filters.toDate);
+
+                const res = await fetch(`${API_URL}/conciliacion/dashboard?${params.toString()}`);
 
                 if (!res.ok) {
                     throw new Error(`Error ${res.status}: ${res.statusText}`);
@@ -283,6 +304,17 @@ export default function ConciliacionPage() {
                         Ejecutar Auto-Match
                     </button>
                 </div>
+            </div>
+
+            {/* Filtros y Exportación */}
+            <FilterPanel
+                filters={filters}
+                onFiltersChange={setFilters}
+                onApply={() => setRefreshTrigger(prev => prev + 1)}
+            />
+
+            <div className="d-flex justify-content-end mb-3">
+                <ExportButtons filters={filters} apiUrl={API_URL} />
             </div>
 
             {/* KPI Cards Grid - Bootstrap */}
