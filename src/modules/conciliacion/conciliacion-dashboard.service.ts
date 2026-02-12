@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { DashboardFiltersDto } from './dto/dashboard-filters.dto';
 
 @Injectable()
 export class ConciliacionDashboardService {
@@ -8,9 +9,12 @@ export class ConciliacionDashboardService {
     constructor(private prisma: PrismaService) { }
 
     /**
-     * Obtiene el dashboard completo de conciliación para un período
+     * Obtiene el dashboard completo de conciliación con filtros avanzados
      */
-    async getDashboard(fromDate?: string, toDate?: string) {
+    async getDashboard(filters: DashboardFiltersDto = {}) {
+        // Backward compatibility: extract fromDate/toDate from filters
+        let fromDate = filters.fromDate;
+        let toDate = filters.toDate;
         try {
             this.logger.log(`Getting dashboard for period: ${fromDate || 'all'} to ${toDate || 'all'}`);
 

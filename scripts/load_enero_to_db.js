@@ -7,42 +7,30 @@
 
 const fs = require('fs');
 const path = require('path');
-const http = require('http');
+const https = require('https');
 
-const BACKEND_URL = process.env.BACKEND_URL || 'localhost:3000';
+const BACKEND_URL = process.env.BACKEND_URL || 'https://bravium-backend.onrender.com';
 const DATA_FILE = path.join(__dirname, '..', 'data', 'dtes_enero_2026.json');
 
-console.log('📤 CARGA DE DTEs DE ENERO 2026 A LA BASE DE DATOS');
-console.log('='.repeat(70));
-
-// Verificar que existe el archivo
-if (!fs.existsSync(DATA_FILE)) {
-    console.error('❌ Error: Archivo de datos no encontrado');
-    console.log('   Ejecuta primero: node scripts/extract_enero_dtes.js');
-    process.exit(1);
-}
-
-// Leer datos
-console.log('📖 Leyendo archivo de datos...\n');
-const rawData = fs.readFileSync(DATA_FILE, 'utf-8');
-const data = JSON.parse(rawData);
-
-console.log(`📊 Datos cargados:`);
-console.log(`   DTEs Recibidos: ${data.dtes_recibidos.length}`);
-console.log(`   Registro Compras: ${data.registro_compras.length}`);
-console.log(`   Proveedores únicos: ${data.estadisticas ? new Set(data.dtes_recibidos.map(d => d.emisor)).size : 'N/A'}`);
-console.log('');
+// ... (logs)
 
 async function loadToBackend() {
     try {
-        console.log('📡 Conectando al backend...\n');
+        console.log(`📡 Conectando al backend (${BACKEND_URL})...\n`);
 
-        const [host, port] = BACKEND_URL.split(':');
+        const isHttps = BACKEND_URL.startsWith('https');
+        const client = isHttps ? https : http;
 
-        // Preparar payload para el backend
-        // El backend espera fromDate y toDate, pero nosotros ya tenemos los datos
-        // Vamos a usar el endpoint de sincronización
+        let host = BACKEND_URL.replace('https://', '').replace('http://', '');
+        let port = isHttps ? 443 : 80;
 
+        if (host.includes(':')) {
+            const parts = host.split(':');
+            host = parts[0];
+            port = parseInt(parts[1]);
+        }
+
+        // Preparar payload para trigger de sincronización
         const payload = JSON.stringify({
             fromDate: '2026-01-01',
             toDate: '2026-01-31'
@@ -50,8 +38,8 @@ async function loadToBackend() {
 
         const options = {
             hostname: host,
-            port: port || 3000,
-            path: '/ingestion/libredte/sync',
+            port: port,
+            path: '/ingestion/libredte/sync', // Ajusta si tu ruta es diferente
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -59,7 +47,8 @@ async function loadToBackend() {
             }
         };
 
-        const req = http.request(options, (res) => {
+        const req = client.request(options, (res) => {
+            // ... (resto igual)
             let responseBody = '';
 
             res.on('data', (chunk) => {
