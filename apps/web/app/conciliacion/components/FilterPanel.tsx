@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { FunnelIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { FunnelIcon, XMarkIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 
 export interface FilterState {
     year?: number;
@@ -21,18 +21,18 @@ interface FilterPanelProps {
 }
 
 const MONTHS = [
-    { value: 1, label: 'Enero' },
-    { value: 2, label: 'Febrero' },
-    { value: 3, label: 'Marzo' },
-    { value: 4, label: 'Abril' },
-    { value: 5, label: 'Mayo' },
-    { value: 6, label: 'Junio' },
-    { value: 7, label: 'Julio' },
-    { value: 8, label: 'Agosto' },
-    { value: 9, label: 'Septiembre' },
-    { value: 10, label: 'Octubre' },
-    { value: 11, label: 'Noviembre' },
-    { value: 12, label: 'Diciembre' },
+    { value: 1, label: 'Ene', fullLabel: 'Enero' },
+    { value: 2, label: 'Feb', fullLabel: 'Febrero' },
+    { value: 3, label: 'Mar', fullLabel: 'Marzo' },
+    { value: 4, label: 'Abr', fullLabel: 'Abril' },
+    { value: 5, label: 'May', fullLabel: 'Mayo' },
+    { value: 6, label: 'Jun', fullLabel: 'Junio' },
+    { value: 7, label: 'Jul', fullLabel: 'Julio' },
+    { value: 8, label: 'Ago', fullLabel: 'Agosto' },
+    { value: 9, label: 'Sep', fullLabel: 'Septiembre' },
+    { value: 10, label: 'Oct', fullLabel: 'Octubre' },
+    { value: 11, label: 'Nov', fullLabel: 'Noviembre' },
+    { value: 12, label: 'Dic', fullLabel: 'Diciembre' },
 ];
 
 const YEARS = [2024, 2025, 2026];
@@ -71,49 +71,75 @@ export default function FilterPanel({ filters, onFiltersChange, onApply }: Filte
         filters.status && filters.status !== 'ALL',
         filters.minAmount,
         filters.maxAmount,
-        filters.fromDate,
-        filters.toDate,
     ].filter(Boolean).length;
 
+    const getFilterSummary = () => {
+        const parts = [];
+        if (filters.year) parts.push(`${filters.year}`);
+        if (filters.months && filters.months.length > 0) {
+            if (filters.months.length === 12) {
+                parts.push('Todos los meses');
+            } else if (filters.months.length <= 3) {
+                parts.push(filters.months.map(m => MONTHS.find(mo => mo.value === m)?.label).join(', '));
+            } else {
+                parts.push(`${filters.months.length} meses`);
+            }
+        }
+        if (filters.status && filters.status !== 'ALL') {
+            const statusLabels = { PENDING: 'Pendientes', MATCHED: 'Conciliados', CONFIRMED: 'Confirmados' };
+            parts.push(statusLabels[filters.status] || filters.status);
+        }
+        return parts.length > 0 ? parts.join(' • ') : 'Sin filtros aplicados';
+    };
+
     return (
-        <div className="card border-0 shadow-sm mb-4">
-            <div className="card-header bg-white border-bottom py-3">
+        <div className="card border-0 shadow-sm mb-3" style={{ background: '#f8f9fa' }}>
+            {/* Header Compacto */}
+            <div
+                className="card-body py-2 px-3"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
                 <div className="d-flex justify-content-between align-items-center">
                     <div className="d-flex align-items-center gap-2">
-                        <FunnelIcon style={{ width: '20px', height: '20px' }} />
-                        <h5 className="mb-0 fw-bold">Filtros</h5>
+                        <FunnelIcon style={{ width: '18px', height: '18px', color: '#6c757d' }} />
+                        <span className="fw-semibold text-dark" style={{ fontSize: '14px' }}>Filtros</span>
                         {activeFilterCount > 0 && (
-                            <span className="badge bg-primary">{activeFilterCount}</span>
+                            <span className="badge bg-primary" style={{ fontSize: '11px' }}>{activeFilterCount}</span>
                         )}
+                        <span className="text-muted" style={{ fontSize: '12px' }}>• {getFilterSummary()}</span>
                     </div>
-                    <div className="d-flex gap-2">
-                        {activeFilterCount > 0 && (
+                    <div className="d-flex align-items-center gap-2">
+                        {activeFilterCount > 0 && !isExpanded && (
                             <button
-                                onClick={handleClearFilters}
-                                className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                                onClick={(e) => { e.stopPropagation(); handleClearFilters(); }}
+                                className="btn btn-sm btn-link text-decoration-none p-0"
+                                style={{ fontSize: '12px' }}
                             >
-                                <XMarkIcon style={{ width: '16px', height: '16px' }} />
                                 Limpiar
                             </button>
                         )}
-                        <button
-                            onClick={() => setIsExpanded(!isExpanded)}
-                            className="btn btn-sm btn-outline-primary"
-                        >
-                            {isExpanded ? 'Ocultar' : 'Mostrar'}
-                        </button>
+                        <ChevronDownIcon
+                            style={{
+                                width: '16px',
+                                height: '16px',
+                                transition: 'transform 0.2s',
+                                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
+                            }}
+                        />
                     </div>
                 </div>
             </div>
 
+            {/* Panel Expandible */}
             {isExpanded && (
-                <div className="card-body">
-                    <div className="row g-3">
-                        {/* Año */}
-                        <div className="col-12 col-md-6 col-lg-3">
-                            <label className="form-label small fw-bold">Año</label>
+                <div className="card-body pt-0 px-3 pb-3">
+                    <div className="row g-2">
+                        {/* Año y Estado en una fila */}
+                        <div className="col-6 col-md-3">
+                            <label className="form-label mb-1" style={{ fontSize: '12px', fontWeight: 600 }}>Año</label>
                             <select
-                                className="form-select"
+                                className="form-select form-select-sm"
                                 value={filters.year || 2025}
                                 onChange={(e) => handleYearChange(Number(e.target.value))}
                             >
@@ -123,11 +149,10 @@ export default function FilterPanel({ filters, onFiltersChange, onApply }: Filte
                             </select>
                         </div>
 
-                        {/* Estado */}
-                        <div className="col-12 col-md-6 col-lg-3">
-                            <label className="form-label small fw-bold">Estado</label>
+                        <div className="col-6 col-md-3">
+                            <label className="form-label mb-1" style={{ fontSize: '12px', fontWeight: 600 }}>Estado</label>
                             <select
-                                className="form-select"
+                                className="form-select form-select-sm"
                                 value={filters.status || 'ALL'}
                                 onChange={(e) => handleStatusChange(e.target.value)}
                             >
@@ -138,13 +163,13 @@ export default function FilterPanel({ filters, onFiltersChange, onApply }: Filte
                             </select>
                         </div>
 
-                        {/* Monto Mínimo */}
-                        <div className="col-12 col-md-6 col-lg-3">
-                            <label className="form-label small fw-bold">Monto Mínimo</label>
+                        {/* Montos */}
+                        <div className="col-6 col-md-3">
+                            <label className="form-label mb-1" style={{ fontSize: '12px', fontWeight: 600 }}>Monto Mín</label>
                             <input
                                 type="number"
-                                className="form-control"
-                                placeholder="Ej: 1000000"
+                                className="form-control form-control-sm"
+                                placeholder="0"
                                 value={filters.minAmount || ''}
                                 onChange={(e) => onFiltersChange({
                                     ...filters,
@@ -153,13 +178,12 @@ export default function FilterPanel({ filters, onFiltersChange, onApply }: Filte
                             />
                         </div>
 
-                        {/* Monto Máximo */}
-                        <div className="col-12 col-md-6 col-lg-3">
-                            <label className="form-label small fw-bold">Monto Máximo</label>
+                        <div className="col-6 col-md-3">
+                            <label className="form-label mb-1" style={{ fontSize: '12px', fontWeight: 600 }}>Monto Máx</label>
                             <input
                                 type="number"
-                                className="form-control"
-                                placeholder="Ej: 10000000"
+                                className="form-control form-control-sm"
+                                placeholder="Sin límite"
                                 value={filters.maxAmount || ''}
                                 onChange={(e) => onFiltersChange({
                                     ...filters,
@@ -168,38 +192,49 @@ export default function FilterPanel({ filters, onFiltersChange, onApply }: Filte
                             />
                         </div>
 
-                        {/* Meses */}
+                        {/* Meses - Compacto */}
                         <div className="col-12">
-                            <label className="form-label small fw-bold">Meses</label>
-                            <div className="d-flex flex-wrap gap-2">
+                            <label className="form-label mb-1" style={{ fontSize: '12px', fontWeight: 600 }}>Meses</label>
+                            <div className="d-flex flex-wrap gap-1">
                                 {MONTHS.map(month => {
                                     const isSelected = filters.months?.includes(month.value);
                                     return (
                                         <button
                                             key={month.value}
                                             onClick={() => handleMonthToggle(month.value)}
-                                            className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                            className={`btn ${isSelected ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                            style={{
+                                                fontSize: '11px',
+                                                padding: '4px 10px',
+                                                minWidth: '45px'
+                                            }}
+                                            title={month.fullLabel}
                                         >
                                             {month.label}
                                         </button>
                                     );
                                 })}
                             </div>
-                            {filters.months && filters.months.length > 0 && (
-                                <small className="text-muted d-block mt-2">
-                                    Seleccionados: {filters.months.map(m => MONTHS.find(mo => mo.value === m)?.label).join(', ')}
-                                </small>
-                            )}
                         </div>
 
-                        {/* Botón Aplicar */}
-                        <div className="col-12">
+                        {/* Botones de acción */}
+                        <div className="col-12 d-flex gap-2 mt-2">
                             <button
                                 onClick={onApply}
-                                className="btn btn-primary w-100"
+                                className="btn btn-primary btn-sm flex-grow-1"
+                                style={{ fontSize: '13px' }}
                             >
                                 Aplicar Filtros
                             </button>
+                            {activeFilterCount > 0 && (
+                                <button
+                                    onClick={handleClearFilters}
+                                    className="btn btn-outline-secondary btn-sm"
+                                    style={{ fontSize: '13px' }}
+                                >
+                                    <XMarkIcon style={{ width: '14px', height: '14px' }} />
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

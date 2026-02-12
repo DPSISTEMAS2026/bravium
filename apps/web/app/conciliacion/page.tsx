@@ -317,91 +317,140 @@ export default function ConciliacionPage() {
                 <ExportButtons filters={filters} apiUrl={API_URL} />
             </div>
 
-            {/* KPI Cards Grid - Bootstrap */}
-            <div className="row g-4 mb-4">
-                {/* 1. Transacciones (Azul) */}
+            {/* KPI Cards Grid - Rediseñado */}
+            <div className="row g-3 mb-4">
+                {/* 1. Transacciones Bancarias */}
                 <div className="col-12 col-md-6 col-xl-3">
-                    <div className="card border-0 shadow-sm h-100" style={{ background: 'linear-gradient(to bottom right, #eff6ff, #dbeafe)', borderLeft: '4px solid #3b82f6' }}>
-                        <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <div className="p-2 rounded bg-white text-primary">
-                                    <CurrencyDollarIcon style={iconStyle} />
+                    <div className="card border-0 shadow-sm h-100" style={{ borderTop: '3px solid #3b82f6' }}>
+                        <div className="card-body p-3">
+                            <div className="d-flex align-items-center mb-2">
+                                <div className="p-2 rounded-circle" style={{ background: '#eff6ff' }}>
+                                    <CurrencyDollarIcon style={{ width: '20px', height: '20px', color: '#3b82f6' }} />
                                 </div>
-                                <span className="badge bg-primary bg-opacity-10 text-primary">
-                                    Tasa: {dashboardData.summary.transactions.match_rate}
-                                </span>
+                                <div className="ms-2 flex-grow-1">
+                                    <div className="text-muted" style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>
+                                        Movimientos Banco
+                                    </div>
+                                    <div className="text-dark fw-bold" style={{ fontSize: '24px', lineHeight: '1' }}>
+                                        {dashboardData.summary.transactions.total}
+                                    </div>
+                                </div>
                             </div>
-                            <h3 className="fw-bold text-dark mb-1">{dashboardData.summary.transactions.total}</h3>
-                            <div className="text-muted small mb-2">Transacciones Bancarias</div>
-                            <div className="small text-secondary">
-                                <div>✅ Conciliado: {dashboardData.summary.transactions.matched}</div>
-                                <div>⏳ Pendiente: {dashboardData.summary.transactions.pending}</div>
+                            <div className="mt-2 pt-2 border-top" style={{ fontSize: '12px' }}>
+                                <div className="d-flex justify-content-between mb-1">
+                                    <span className="text-success">✓ Conciliados</span>
+                                    <span className="fw-semibold">{dashboardData.summary.transactions.matched}</span>
+                                </div>
+                                <div className="d-flex justify-content-between">
+                                    <span className="text-warning">⏳ Por conciliar</span>
+                                    <span className="fw-semibold">{dashboardData.summary.transactions.pending}</span>
+                                </div>
+                            </div>
+                            <div className="mt-2 text-center">
+                                <small className="text-muted">Tasa de conciliación: <strong>{dashboardData.summary.transactions.match_rate}</strong></small>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* 2. DTEs (Púrpura) */}
+                {/* 2. Facturas (DTEs) */}
                 <div className="col-12 col-md-6 col-xl-3">
-                    <div className="card border-0 shadow-sm h-100" style={{ background: 'linear-gradient(to bottom right, #f3e8ff, #ede9fe)', borderLeft: '4px solid #8b5cf6' }}>
-                        <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <div className="p-2 rounded bg-white text-purple" style={{ color: '#6d28d9' }}>
-                                    <DocumentTextIcon style={iconStyle} />
+                    <div className="card border-0 shadow-sm h-100" style={{ borderTop: '3px solid #8b5cf6' }}>
+                        <div className="card-body p-3">
+                            <div className="d-flex align-items-center mb-2">
+                                <div className="p-2 rounded-circle" style={{ background: '#f3e8ff' }}>
+                                    <DocumentTextIcon style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
                                 </div>
-                                <span className="badge bg-success">
-                                    {dashboardData.summary.dtes.total} Total
-                                </span>
+                                <div className="ms-2 flex-grow-1">
+                                    <div className="text-muted" style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>
+                                        Facturas Recibidas
+                                    </div>
+                                    <div className="text-dark fw-bold" style={{ fontSize: '24px', lineHeight: '1' }}>
+                                        {dashboardData.summary.dtes.total}
+                                    </div>
+                                </div>
                             </div>
-                            <h3 className="fw-bold text-dark mb-1">{dashboardData.summary.dtes.unpaid}</h3>
-                            <div className="text-muted small mb-2">Facturas por Pagar</div>
-                            <div className="small text-secondary">
-                                <div>💰 Pagado: {dashboardData.summary.dtes.paid}</div>
-                                <div>⚠️ Pendiente: {dashboardData.summary.dtes.unpaid}</div>
+                            <div className="mt-2 pt-2 border-top" style={{ fontSize: '12px' }}>
+                                <div className="d-flex justify-content-between mb-1">
+                                    <span className="text-success">✓ Pagadas</span>
+                                    <span className="fw-semibold">{dashboardData.summary.dtes.paid}</span>
+                                </div>
+                                <div className="d-flex justify-content-between">
+                                    <span className="text-danger">⚠ Por pagar</span>
+                                    <span className="fw-semibold">{dashboardData.summary.dtes.unpaid}</span>
+                                </div>
+                            </div>
+                            <div className="mt-2 text-center">
+                                <small className="text-muted">Deuda pendiente: <strong>{formatCurrency(dashboardData.summary.dtes.outstanding_amount)}</strong></small>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* 3. Matches (Verde) */}
+                {/* 3. Conciliaciones Realizadas */}
                 <div className="col-12 col-md-6 col-xl-3">
-                    <div className="card border-0 shadow-sm h-100" style={{ background: 'linear-gradient(to bottom right, #f0fdf4, #dcfce7)', borderLeft: '4px solid #22c55e' }}>
-                        <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <div className="p-2 rounded bg-white text-success">
-                                    <LinkIcon style={iconStyle} />
+                    <div className="card border-0 shadow-sm h-100" style={{ borderTop: '3px solid #22c55e' }}>
+                        <div className="card-body p-3">
+                            <div className="d-flex align-items-center mb-2">
+                                <div className="p-2 rounded-circle" style={{ background: '#f0fdf4' }}>
+                                    <LinkIcon style={{ width: '20px', height: '20px', color: '#22c55e' }} />
                                 </div>
-                                <span className="badge bg-success bg-opacity-10 text-success">
-                                    Confirmados
-                                </span>
+                                <div className="ms-2 flex-grow-1">
+                                    <div className="text-muted" style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>
+                                        Conciliaciones
+                                    </div>
+                                    <div className="text-dark fw-bold" style={{ fontSize: '24px', lineHeight: '1' }}>
+                                        {dashboardData.summary.matches.total}
+                                    </div>
+                                </div>
                             </div>
-                            <h3 className="fw-bold text-dark mb-1">{dashboardData.summary.matches.total}</h3>
-                            <div className="text-muted small mb-2">Pareos Realizados</div>
-                            <div className="small text-secondary">
-                                <div>🤖 Auto: {dashboardData.summary.matches.automatic}</div>
-                                <div>👤 Manual: {dashboardData.summary.matches.manual}</div>
+                            <div className="mt-2 pt-2 border-top" style={{ fontSize: '12px' }}>
+                                <div className="d-flex justify-content-between mb-1">
+                                    <span className="text-primary">🤖 Automáticas</span>
+                                    <span className="fw-semibold">{dashboardData.summary.matches.automatic}</span>
+                                </div>
+                                <div className="d-flex justify-content-between">
+                                    <span className="text-secondary">👤 Manuales</span>
+                                    <span className="fw-semibold">{dashboardData.summary.matches.manual}</span>
+                                </div>
+                            </div>
+                            <div className="mt-2 text-center">
+                                <small className="text-muted">Parejas banco ↔ factura confirmadas</small>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* 4. Pendiente (Ámbar) */}
+                {/* 4. Resumen Financiero */}
                 <div className="col-12 col-md-6 col-xl-3">
-                    <div className="card border-0 shadow-sm h-100" style={{ background: 'linear-gradient(to bottom right, #fffbeb, #fef3c7)', borderLeft: '4px solid #f59e0b' }}>
-                        <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <div className="p-2 rounded bg-white text-warning" style={{ color: '#d97706' }}>
-                                    {/* ICONO CORREGIDO - Sin Emoji Gigante */}
-                                    <CurrencyDollarIcon style={iconStyle} />
+                    <div className="card border-0 shadow-sm h-100" style={{ borderTop: '3px solid #f59e0b' }}>
+                        <div className="card-body p-3">
+                            <div className="d-flex align-items-center mb-2">
+                                <div className="p-2 rounded-circle" style={{ background: '#fffbeb' }}>
+                                    <CurrencyDollarIcon style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
                                 </div>
-                                <span className="badge bg-warning bg-opacity-25 text-dark">
-                                    Deuda Flotante
-                                </span>
+                                <div className="ms-2 flex-grow-1">
+                                    <div className="text-muted" style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>
+                                        Por Pagar
+                                    </div>
+                                    <div className="text-dark fw-bold" style={{ fontSize: '20px', lineHeight: '1.2' }}>
+                                        {formatCurrency(dashboardData.summary.dtes.outstanding_amount)}
+                                    </div>
+                                </div>
                             </div>
-                            <h3 className="fw-bold text-dark mb-1" style={{ fontSize: '1.25rem' }}>
-                                {formatCurrency(dashboardData.summary.dtes.outstanding_amount)}
-                            </h3>
-                            <div className="text-muted small">Monto por Pagar</div>
+                            <div className="mt-2 pt-2 border-top" style={{ fontSize: '12px' }}>
+                                <div className="d-flex justify-content-between mb-1">
+                                    <span className="text-muted">Total facturado</span>
+                                    <span className="fw-semibold">{formatCurrency(dashboardData.summary.dtes.total_amount)}</span>
+                                </div>
+                                <div className="d-flex justify-content-between">
+                                    <span className="text-muted">Facturas pendientes</span>
+                                    <span className="fw-semibold">{dashboardData.summary.dtes.unpaid}</span>
+                                </div>
+                            </div>
+                            <div className="mt-2 text-center">
+                                <small className="text-muted">Saldo de facturas sin pagar</small>
+                            </div>
                         </div>
                     </div>
                 </div>
