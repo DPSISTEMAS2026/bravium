@@ -55,11 +55,40 @@ export default function ConciliacionPage() {
     const [showMatches, setShowMatches] = useState(false);
     const [matchFilter, setMatchFilter] = useState('');
 
-    // Filtros
+    // Filtros iniciales dinámicos
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1; // 1-12
+
     const [filters, setFilters] = useState<FilterState>({
-        year: 2025,
+        year: currentYear,
+        months: [currentMonth], // Por defecto mes actual
         status: 'ALL'
     });
+
+    // ...
+
+    // Helper para mostrar texto del periodo
+    const getPeriodText = () => {
+        if (!filters.year) return 'Periodo: Todos los años';
+
+        let text = `Periodo: ${filters.year}`;
+
+        if (filters.months && filters.months.length > 0) {
+            const monthsNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+            const selectedMonths = filters.months.sort((a, b) => a - b).map(m => monthsNames[m - 1]);
+
+            if (selectedMonths.length === 12) {
+                text += ' (Año completo)';
+            } else if (selectedMonths.length <= 3) {
+                text += ` - ${selectedMonths.join(', ')}`;
+            } else {
+                text += ` (${selectedMonths.length} meses seleccionados)`;
+            }
+        } else {
+            text += ' (Año completo)';
+        }
+        return text;
+    };
 
     // API URL con fallback
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://bravium-backend.onrender.com';
@@ -178,6 +207,10 @@ export default function ConciliacionPage() {
     const iconStyle = { width: '24px', height: '24px', minWidth: '24px' };
     const largeIconStyle = { width: '48px', height: '48px' };
 
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(amount);
+    };
+
     return (
         <div className="container-fluid p-4 bg-light min-vh-100">
             {/* Header */}
@@ -189,7 +222,7 @@ export default function ConciliacionPage() {
                             ? <span className="badge bg-warning text-dark">⚠️ Backend desplegándose - Modo Visualización</span>
                             : <span className="badge bg-success">✓ Conectado en tiempo real</span>
                         }
-                        <span className="ms-2">Periodo: Enero 2026</span>
+                        <span className="ms-2">{getPeriodText()}</span>
                     </p>
                 </div>
                 <div className="d-flex gap-2">
