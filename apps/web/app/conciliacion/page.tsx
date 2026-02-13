@@ -67,28 +67,52 @@ export default function ConciliacionPage() {
 
     // ... (existing code)
 
+    // Helper para obtener rango de fechas según filtros
+    const getFilterDateRange = () => {
+        const year = filters.year || new Date().getFullYear();
+        let fromDate = `${year}-01-01`;
+        let toDate = `${year}-12-31`;
+
+        if (filters.months && filters.months.length > 0) {
+            const minMonth = Math.min(...filters.months); // 1-12
+            const maxMonth = Math.max(...filters.months);
+
+            // Pad month with 0
+            const fromM = minMonth.toString().padStart(2, '0');
+            const toM = maxMonth.toString().padStart(2, '0');
+
+            // Update dates
+            // Last day of maxMonth? (Simple approx: Use 1st of next month - 1 day, or hardcode 31/30/28)
+            // Better: new Date(year, month, 0).getDate()
+            const lastDay = new Date(year, maxMonth, 0).getDate();
+
+            fromDate = `${year}-${fromM}-01`;
+            toDate = `${year}-${toM}-${lastDay}`;
+        }
+        return { fromDate, toDate };
+    };
+
     const handleAutoMatch = async () => {
         if (!process.env.NEXT_PUBLIC_API_URL && backendStatus === 'offline') {
             alert('El backend no está disponible.');
             return;
         }
 
+        const { fromDate, toDate } = getFilterDateRange();
+
         setRunMatchLoading(true);
         try {
             const res = await fetch(`${API_URL}/conciliacion/run-auto-match`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    fromDate: '2026-01-01',
-                    toDate: '2026-01-31'
-                })
+                body: JSON.stringify({ fromDate, toDate })
             });
 
             const data = await res.json();
 
             if (res.ok) {
                 const created = data.data?.matches_created ?? 0;
-                alert(`Auto-Match finalizado.\n\n✅ Se encontraron ${created} coincidencias nuevas.`);
+                alert(`Auto-Match finalizado (${fromDate} a ${toDate}).\n\n✅ Se encontraron ${created} coincidencias nuevas.`);
                 setRefreshTrigger(p => p + 1);
             } else {
                 alert(`Error al ejecutar Auto-Match: ${data.message || 'Error desconocido'}`);
@@ -101,121 +125,18 @@ export default function ConciliacionPage() {
         }
     };
 
-    // ... (renders)
-
-
-    const EMPTY_DATA: DashboardData = {
-        period: { from: '', to: '' },
-        summary: {
-            transactions: { total: 0, matched: 0, pending: 0, total_amount: 0, match_rate: '0%' },
-            dtes: { total: 0, paid: 0, unpaid: 0, partially_paid: 0, total_amount: 0, outstanding_amount: 0 },
-            matches: { total: 0, automatic: 0, manual: 0, match_rate: '0%' }
-        },
-        pending: { transactions: [], dtes: [] },
-        recent_matches: [],
-        insights: { top_providers: [] }
-    };
-
-    // Health Check Logic
-    const checkBackendHealth = useCallback(async () => {
-        try {
-            const res = await fetch(`${API_URL}/conciliacion/overview`);
-            if (res.ok) {
-                setBackendStatus('online');
-                return true;
-            }
-            return false;
-        } catch (e) {
-            setBackendStatus('offline');
-            return false;
-        }
-    }, [API_URL]);
-
-    // Main Fetch Logic
-    useEffect(() => {
-        let isMounted = true;
-
-        const fetchData = async () => {
-            if (!isMounted) return;
-            setLoading(true);
-
-            // 1. Check Health
-            const isHealthy = await checkBackendHealth();
-
-            if (!isHealthy) {
-                if (isMounted) {
-                    console.warn('Backend offline o inaccesible. Mostrando estado vacío.');
-                    // Usamos EMPTY_DATA para no mostrar números falsos
-                    setDashboardData(EMPTY_DATA);
-                    setBackendStatus('offline');
-                    setLoading(false);
-                    // Reintentar conexión en 30s
-                    setTimeout(() => setRefreshTrigger(prev => prev + 1), 30000);
-                }
-                return;
-            }
-
-            // 2. Fetch Dashboard Real con Filtros
-            try {
-                // Construir query params desde filtros
-                const params = new URLSearchParams();
-                if (filters.year) params.append('year', filters.year.toString());
-                if (filters.months && filters.months.length > 0) {
-                    params.append('months', filters.months.join(','));
-                }
-                if (filters.status && filters.status !== 'ALL') {
-                    params.append('status', filters.status);
-                }
-                if (filters.minAmount) params.append('minAmount', filters.minAmount.toString());
-                if (filters.maxAmount) params.append('maxAmount', filters.maxAmount.toString());
-                if (filters.fromDate) params.append('fromDate', filters.fromDate);
-                if (filters.toDate) params.append('toDate', filters.toDate);
-
-                const res = await fetch(`${API_URL}/conciliacion/dashboard?${params.toString()}`);
-
-                if (!res.ok) {
-                    throw new Error(`Error ${res.status}: ${res.statusText}`);
-                }
-
-                const data = await res.json();
-                if (isMounted) {
-                    setDashboardData(data);
-                    setBackendStatus('online'); // Confirmamos conexión exitosa
-                    setError(null);
-                }
-            } catch (err: any) {
-                console.error('Error fetching dashboard:', err);
-                if (isMounted) {
-                    // Si falla la carga de datos, mostramos vacío, no inventado
-                    setDashboardData(EMPTY_DATA);
-                    setBackendStatus('offline');
-                }
-            } finally {
-                if (isMounted) setLoading(false);
-            }
-        };
-
-        fetchData();
-
-        return () => { isMounted = false; };
-    }, [refreshTrigger, checkBackendHealth, API_URL]);
-
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(amount);
-    };
+    // ...
 
     const handleSyncDtes = async () => {
-        if (!window.confirm('¿Deseas sincronizar los DTEs con LibreDTE para Enero 2026?')) return;
+        const { fromDate, toDate } = getFilterDateRange();
+        if (!window.confirm(`¿Deseas sincronizar los DTEs con LibreDTE para el periodo ${fromDate} a ${toDate}?`)) return;
 
         setSyncing(true);
         try {
             const res = await fetch(`${API_URL}/ingestion/libredte/sync`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    fromDate: '2026-01-01',
-                    toDate: '2026-01-31'
-                })
+                body: JSON.stringify({ fromDate, toDate })
             });
 
             const data = await res.json();
