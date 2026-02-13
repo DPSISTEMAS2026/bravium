@@ -49,12 +49,14 @@ export class ConciliacionService {
         let matchCount = 0;
 
         for (const tx of pendingTransactions) {
-            // FIX: Limpiar matches previos en estado DRAFT para evitar duplicados fantasmas
+            // HARD FIX: Limpieza TOTAL de matches automáticos previos
+            // Esto garantiza idempotencia: Si corro el match de nuevo, borro lo anterior y recalculo.
+            // Borramos cualquier match automático asociado a esta transacción, confirmado o no.
             if (tx.matches && tx.matches.length > 0) {
                 await this.prisma.reconciliationMatch.deleteMany({
                     where: {
                         transactionId: tx.id,
-                        status: { not: MatchStatus.CONFIRMED } // Solo borrar drafts/pendientes
+                        origin: 'AUTOMATIC' // Solo borrar los generados por el sistema, respetar manuales
                     }
                 });
             }

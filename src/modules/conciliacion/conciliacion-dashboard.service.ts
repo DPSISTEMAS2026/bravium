@@ -46,7 +46,7 @@ export class ConciliacionDashboardService {
             ] = await Promise.all([
                 this.safeRun(() => this.getTransactionStats(fromDate, toDate), defaultTransactionStats, 'TransactionStats'),
                 this.safeRun(() => this.getDteStats(fromDate, toDate), defaultDteStats, 'DteStats'),
-                this.safeRun(() => this.getMatchStats(), defaultMatchStats, 'MatchStats'),
+                this.safeRun(() => this.getMatchStats(fromDate, toDate), defaultMatchStats, 'MatchStats'),
                 this.safeRun(() => this.getPendingTransactions(fromDate, toDate, 20), [], 'PendingTransactions'),
                 this.safeRun(() => this.getPendingDtes(fromDate, toDate, 20), [], 'PendingDtes'),
                 this.safeRun(() => this.getRecentMatches(10), [], 'RecentMatches'),
@@ -174,20 +174,33 @@ export class ConciliacionDashboardService {
     /**
      * Estadísticas de matches
      */
-    private async getMatchStats() {
+    /**
+     * Estadísticas de matches filtradas por periodo
+     */
+    private async getMatchStats(fromDate?: string, toDate?: string) {
+        // Construir filtro basado en la fecha de la transacción asociada
+        const dateFilter: any = {};
+        if (fromDate || toDate) {
+            dateFilter.transaction = {
+                date: this.buildTransactionDateFilter(fromDate, toDate).date
+            };
+        }
+
         const [total, confirmed, draft, automatic, manual] = await Promise.all([
-            this.prisma.reconciliationMatch.count(),
             this.prisma.reconciliationMatch.count({
-                where: { status: 'CONFIRMED' }
+                where: dateFilter
             }),
             this.prisma.reconciliationMatch.count({
-                where: { status: 'DRAFT' }
+                where: { ...dateFilter, status: 'CONFIRMED' }
             }),
             this.prisma.reconciliationMatch.count({
-                where: { origin: 'AUTOMATIC' }
+                where: { ...dateFilter, status: 'DRAFT' } // Aunque ya no debería haber drafts
             }),
             this.prisma.reconciliationMatch.count({
-                where: { origin: 'MANUAL' }
+                where: { ...dateFilter, origin: 'AUTOMATIC' }
+            }),
+            this.prisma.reconciliationMatch.count({
+                where: { ...dateFilter, origin: 'MANUAL' }
             })
         ]);
 
