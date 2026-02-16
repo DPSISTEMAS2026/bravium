@@ -11,6 +11,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { SchedulerService } from './common/services/scheduler.service'; // Importar Servicio de Cron
+import { ReportesModule } from './modules/reportes/reportes.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { SchedulerService } from './common/services/scheduler.service'; // Impor
     FinancialControlModule,
     AuditModule,
     AuthModule,
+    ReportesModule,
   ],
   controllers: [],
   providers: [SchedulerService], // Registrar el servicio de Cron

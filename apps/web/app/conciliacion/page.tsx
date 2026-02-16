@@ -94,7 +94,43 @@ export default function ConciliacionPage() {
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://bravium-backend.onrender.com';
 
 
-    // ... (existing code)
+    useEffect(() => {
+        const fetchDashboard = async () => {
+            setLoading(true);
+            try {
+                const queryParams = new URLSearchParams();
+                if (filters.year) queryParams.append('year', filters.year.toString());
+                if (filters.months && filters.months.length > 0) {
+                    filters.months.forEach(m => queryParams.append('months', m.toString()));
+                }
+
+                // Añadir status si aplica
+                if (filters.status && filters.status !== 'ALL') queryParams.append('status', filters.status);
+
+                const res = await fetch(`${API_URL}/conciliacion/dashboard?${queryParams.toString()}`);
+
+                if (!res.ok) {
+                    // Si falla, verificar si es por backend offline
+                    throw new Error(`Error ${res.status}: ${res.statusText}`);
+                }
+
+                const data = await res.json();
+                setDashboardData(data);
+                setBackendStatus('online');
+            } catch (err: any) {
+                console.error('Error fetching dashboard:', err);
+                setError(err.message);
+                // Si falla la conexión, podría ser backend offline o red
+                if (err.message.includes('fetch') || err.message.includes('connect')) {
+                    setBackendStatus('offline');
+                }
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchDashboard();
+    }, [refreshTrigger, filters, API_URL]);
 
     // Helper para obtener rango de fechas según filtros
     const getFilterDateRange = () => {
