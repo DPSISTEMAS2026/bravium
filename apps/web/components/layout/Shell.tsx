@@ -2,8 +2,8 @@
 
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Sidebar } from './Sidebar';
-import { Header } from './Header';
+import Sidebar from './Sidebar';
+import Header from './Header';
 import { usePathname, useRouter } from 'next/navigation';
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -19,10 +19,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
     if (isLoading) {
         return (
-            <div className="d-flex justify-content-center align-items-center vh-100">
-                <div className="spinner-border text-primary" role="status">
-                    <span className="visually-hidden">Loading...</span>
-                </div>
+            <div className="flex h-screen items-center justify-center bg-slate-50">
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
             </div>
         );
     }
