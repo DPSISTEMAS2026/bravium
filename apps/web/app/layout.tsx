@@ -1,30 +1,26 @@
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import './globals.css'
-import { AuthProvider } from '../contexts/AuthContext';
-import { Shell } from '../components/layout/Shell';
+import Sidebar from '../components/layout/Sidebar';
+import Header from '../components/layout/Header';
+import '../globals.css';
 
-const inter = Inter({ subsets: ['latin'] })
-
-export const metadata: Metadata = {
-  title: 'Bravium Internal System',
-  description: 'Sistema de Gestión Financiera',
-}
+export const metadata = {
+    title: 'Bravium | Conciliación Inteligente',
+    description: 'Sistema financiero para empresas modernas',
+};
 
 export default function RootLayout({
-  children,
+    children,
 }: {
-  children: React.ReactNode
+    children: React.ReactNode;
 }) {
-  return (
-    <html lang="es">
-      <body className={inter.className}>
-        <AuthProvider>
-          <Shell>
-            {children}
-          </Shell>
-        </AuthProvider>
-      </body>
-    </html>
-  )
+    return (
+        <html lang="es">
+            <body className="bg-slate-50 text-slate-900 font-sans antialiased">
+                <Sidebar />
+                <Header />
+                <main className="ml-64 mt-16 p-8 h-[calc(100vh-64px)] overflow-y-auto">
+                    {children}
+                </main>
+            </body>
+        </html>
+    );
 }
