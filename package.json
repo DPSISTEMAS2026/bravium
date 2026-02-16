@@ -1,10 +1,13 @@
 {
-  "name": "bravium-backend",
+  "name": "bravium-monorepo",
   "version": "0.0.1",
   "description": "Bravium Backend - Sistema de Conciliación Bancaria y Contabilidad",
   "author": "Bravium Team",
   "private": true,
   "license": "UNLICENSED",
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
