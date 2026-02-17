@@ -37,9 +37,9 @@ export default function Sidebar() {
 
     return (
         <div className="d-flex flex-column flex-shrink-0 p-3 text-white sidebar">
-            <div className="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-white text-decoration-none px-3 mt-2">
+            <div className="d-flex align-items-center mb-0 text-white text-decoration-none px-3 mt-2" style={{ height: '40px' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo.svg" alt="Bravium" className="h-8 w-auto" style={{ maxHeight: '40px' }} />
+                <img src="/logo.svg" alt="Bravium" style={{ height: '32px', width: 'auto', display: 'block' }} />
             </div>
             <hr />
             <ul className="nav nav-pills flex-column mb-auto">

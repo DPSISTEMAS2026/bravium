@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* globals.css */
 /* Import Bootstrap 5 */
 @import 'bootstrap/dist/css/bootstrap.min.css';
@@ -28,6 +32,22 @@ body {
   overflow-y: auto;
 }
 
+/* Fix for huge icons when Tailwind is slow/missing classes */
+svg {
+  display: inline-block;
+  vertical-align: middle;
+  width: 1.5rem;
+  /* Default size (h-6) */
+  height: 1.5rem;
+}
+
+/* Allow heroicons with tailwind classes to override */
+svg[class*='h-'],
+svg[class*='w-'] {
+  width: unset;
+  height: unset;
+}
+
 .main-content {
   margin-left: var(--sidebar-width);
   min-height: 100vh;
@@ -36,41 +56,47 @@ body {
 }
 
 .nav-link {
-  color: rgba(255, 255, 255, .75);
+  color: rgba(255, 255, 255, .75) !important;
 }
 
 .nav-link:hover,
 .nav-link.active {
-  color: #fff;
-  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 .nav-link.active {
-  background-color: #0d6efd;
+  background-color: #0d6efd !important;
 }
 
 /* Card Styling for Dashboard */
 .card {
-  border: none;
-  border-radius: 8px;
-  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-  margin-bottom: 1.5rem;
+  border: none !important;
+  border-radius: 8px !important;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+  margin-bottom: 1.5rem !important;
 }
 
 .kpi-card {
-  transition: transform 0.2s;
+  transition: transform 0.2s !important;
 }
 
 .kpi-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-2px) !important;
 }
 
 .badge-soft-success {
-    background-color: #d1e7dd;
-    color: #0f5132;
+  background-color: #d1e7dd !important;
+  color: #0f5132 !important;
 }
 
 .badge-soft-warning {
-    background-color: #fff3cd;
-    color: #664d03;
+  background-color: #fff3cd !important;
+  color: #664d03 !important;
+}
+
+/* Ensure Logo is visible */
+.sidebar img {
+  filter: brightness(0) invert(1);
+  /* Force to white if it's dark */
 }
