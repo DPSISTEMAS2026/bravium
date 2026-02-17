@@ -19,8 +19,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
     if (isLoading) {
         return (
-            <div className="flex h-screen items-center justify-center bg-slate-50">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+            <div className="d-flex justify-content-center align-items-center vh-100 bg-light">
+                <div className="spinner-border text-primary" role="status">
+                    <span className="visually-hidden">Cargando...</span>
+                </div>
             </div>
         );
     }
@@ -30,23 +32,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
         return <>{children}</>;
     }
 
-    // If not authenticated and not on login page, we should ideally redirect,
-    // but the LoginPage itself already handles some logic.
-    // For the Shell, if no user, we might show a minimal layout or nothing.
     if (!user && pathname !== '/login') {
-        // The AuthContext effect will handle the redirect eventually, 
-        // but we return nothing here to avoid flashing the dashboard.
-        return null;
+        return null; // Avoid flashing dashboard
     }
 
     return (
         <div className="d-flex w-100">
-            <aside>
-                <Sidebar />
-            </aside>
+            <Sidebar />
             <div className="main-content w-100">
                 <Header />
-                <main className="container-fluid px-4 py-4">
+                <main className="container-fluid px-4 py-3">
                     {children}
                 </main>
             </div>

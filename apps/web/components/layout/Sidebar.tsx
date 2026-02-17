@@ -5,88 +5,80 @@ import { usePathname } from 'next/navigation';
 import {
     HomeIcon,
     BanknotesIcon,
-    DocumentTextIcon,
-    ClipboardDocumentCheckIcon,
-    ArrowPathIcon,
-    ChartBarIcon,
-    UserGroupIcon,
-    SparklesIcon
+    UsersIcon,
+    CreditCardIcon,
+    DocumentChartBarIcon,
+    ArrowDownTrayIcon,
+    ArrowLeftOnRectangleIcon,
+    ShoppingBagIcon
 } from '@heroicons/react/24/outline';
+import { useAuth } from '../../contexts/AuthContext';
 
 const navigation = [
     { name: 'Dashboard', href: '/', icon: HomeIcon },
-    { name: 'Conciliación', href: '/conciliacion', icon: ClipboardDocumentCheckIcon },
-    { name: 'Proveedores', href: '/proveedores', icon: UserGroupIcon },
-    { name: 'Facturas (DTE)', href: '/facturas', icon: DocumentTextIcon },
-    { name: 'Pagos', href: '/pagos', icon: BanknotesIcon },
-    { name: 'Cartolas Bancarias', href: '/cartolas', icon: ArrowPathIcon },
-    { name: 'Reportes', href: '/reportes', icon: ChartBarIcon },
+    { name: 'Conciliación', href: '/conciliacion', icon: BanknotesIcon },
+    { name: 'Monitor de Compras', href: '/monitor-compras', icon: ShoppingBagIcon },
+    { name: 'Cargar Cartola', href: '/ingestion/cartolas', icon: ArrowDownTrayIcon },
+    { name: 'Proveedores', href: '/proveedores', icon: UsersIcon },
+    { name: 'Pagos', href: '/pagos', icon: CreditCardIcon },
+    { name: 'Reportes', href: '/reportes', icon: DocumentChartBarIcon },
+    { name: 'Exportar', href: '/exportar', icon: ArrowDownTrayIcon },
 ];
 
 export default function Sidebar() {
     const pathname = usePathname();
+    const { user, logout } = useAuth();
 
-    const isActive = (href: string) => {
-        if (href === '/') {
-            return pathname === '/';
-        }
-        return pathname?.startsWith(href);
-    };
+    const initials = user?.fullName
+        ?.split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase() || '??';
 
     return (
-        <div className="flex flex-col w-64 h-screen bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white shadow-2xl fixed left-0 top-0 border-r border-slate-800">
-            {/* Logo */}
-            <div className="h-16 flex items-center px-6 bg-gradient-to-r from-blue-600 to-purple-600 relative overflow-hidden">
-                <SparklesIcon className="h-6 w-6 mr-2 text-white animate-pulse" />
-                <span className="font-bold text-xl tracking-wider">BRAVIUM</span>
-                <div className="absolute inset-0 bg-white/10 shimmer"></div>
+        <div className="d-flex flex-column flex-shrink-0 p-3 text-white sidebar">
+            <div className="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-white text-decoration-none px-3 mt-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/logo.svg" alt="Bravium" className="h-8 w-auto" style={{ maxHeight: '40px' }} />
             </div>
-
-            {/* Navigation */}
-            <div className="flex-1 overflow-y-auto py-6 scrollbar-thin">
-                <nav className="space-y-1 px-3">
-                    {navigation.map((item) => {
-                        const active = isActive(item.href);
-                        return (
+            <hr />
+            <ul className="nav nav-pills flex-column mb-auto">
+                {navigation.map((item) => {
+                    const isActive = pathname === item.href;
+                    return (
+                        <li className="nav-item mb-1" key={item.name}>
                             <Link
-                                key={item.name}
                                 href={item.href}
-                                className={`
-                                    group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200
-                                    ${active
-                                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/50'
-                                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                                    }
-                                `}
+                                className={`nav-link d-flex align-items-center gap-2 py-2 ${isActive ? 'active shadow-sm' : ''}`}
+                                aria-current={isActive ? 'page' : undefined}
                             >
-                                <item.icon
-                                    className={`mr-3 h-5 w-5 flex-shrink-0 transition-transform duration-200 ${active ? 'scale-110' : 'group-hover:scale-110'
-                                        }`}
-                                    aria-hidden="true"
-                                />
-                                <span className="flex-1">{item.name}</span>
-                                {active && (
-                                    <div className="w-2 h-2 rounded-full bg-white animate-pulse"></div>
-                                )}
+                                <item.icon style={{ width: '18px', height: '18px' }} />
+                                <span style={{ fontSize: '14px' }}>{item.name}</span>
                             </Link>
-                        );
-                    })}
-                </nav>
-            </div>
-
-            {/* User Profile */}
-            <div className="p-4 border-t border-slate-800 bg-slate-900/50 backdrop-blur-sm">
-                <div className="flex items-center group cursor-pointer hover:bg-slate-800 p-2 rounded-lg transition-all duration-200">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-sm font-bold shadow-lg">
-                        AD
+                        </li>
+                    );
+                })}
+            </ul>
+            <hr />
+            <div className="px-1 mt-auto">
+                <div className="d-flex align-items-center justify-content-between">
+                    <div className="d-flex align-items-center">
+                        <div className="rounded-circle bg-primary d-flex justify-content-center align-items-center me-2 text-white shadow-sm" style={{ width: 32, height: 32 }}>
+                            <span className="small fw-bold">{initials}</span>
+                        </div>
+                        <div className="overflow-hidden">
+                            <div className="small fw-bold text-truncate" style={{ fontSize: '13px', maxWidth: '100px' }}>{user?.fullName || 'Usuario'}</div>
+                            <div className="text-white-50 text-truncate" style={{ fontSize: '10px' }}>{user?.role}</div>
+                        </div>
                     </div>
-                    <div className="ml-3 flex-1">
-                        <p className="text-sm font-semibold text-white">Admin User</p>
-                        <p className="text-xs text-slate-400 group-hover:text-slate-300 transition-colors">
-                            Ver Perfil
-                        </p>
-                    </div>
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <button
+                        onClick={logout}
+                        className="btn btn-link text-white-50 p-0 ms-2 hover-white"
+                        title="Cerrar Sesión"
+                        style={{ border: 'none', background: 'none' }}
+                    >
+                        <ArrowLeftOnRectangleIcon style={{ width: 18, height: 18 }} />
+                    </button>
                 </div>
             </div>
         </div>
