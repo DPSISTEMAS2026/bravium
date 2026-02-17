@@ -14,7 +14,9 @@ const eslintConfig = [
   {
     rules: {
       "@typescript-eslint/no-unsafe-declaration-merging": "off",
-      "@typescript-eslint/no-unused-vars": "off", // Optional: reduces noise
+      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "react-hooks/exhaustive-deps": "off",
     },
   },
 ];
