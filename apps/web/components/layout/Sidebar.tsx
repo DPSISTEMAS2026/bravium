@@ -10,19 +10,52 @@ import {
     DocumentChartBarIcon,
     ArrowDownTrayIcon,
     ArrowLeftOnRectangleIcon,
-    ShoppingBagIcon
+    ShoppingBagIcon,
+    ChevronRightIcon,
+    SparklesIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
 
-const navigation = [
-    { name: 'Dashboard', href: '/', icon: HomeIcon },
-    { name: 'Conciliación', href: '/conciliacion', icon: BanknotesIcon },
-    { name: 'Monitor de Compras', href: '/monitor-compras', icon: ShoppingBagIcon },
-    { name: 'Cargar Cartola', href: '/ingestion/cartolas', icon: ArrowDownTrayIcon },
-    { name: 'Proveedores', href: '/proveedores', icon: UsersIcon },
-    { name: 'Pagos', href: '/pagos', icon: CreditCardIcon },
-    { name: 'Reportes', href: '/reportes', icon: DocumentChartBarIcon },
-    { name: 'Exportar', href: '/exportar', icon: ArrowDownTrayIcon },
+interface NavItem {
+    name: string;
+    href: string;
+    icon: any;
+}
+
+interface NavSection {
+    title: string;
+    items: NavItem[];
+}
+
+const sections: NavSection[] = [
+    {
+        title: 'Mi Cuenta',
+        items: [
+            { name: 'Dashboard', href: '/', icon: HomeIcon },
+        ]
+    },
+    {
+        title: 'Gestión Financiera',
+        items: [
+            { name: 'Conciliación', href: '/conciliacion', icon: BanknotesIcon },
+            { name: 'Facturas (DTE)', href: '/facturas', icon: ShoppingBagIcon },
+            { name: 'Pagos', href: '/pagos', icon: CreditCardIcon },
+        ]
+    }, {
+        title: 'Operaciones',
+        items: [
+            { name: 'Monitor de Compras', href: '/monitor-compras', icon: ShoppingBagIcon },
+            { name: 'Cargar Cartola', href: '/ingestion/cartolas', icon: ArrowDownTrayIcon },
+            { name: 'Exportar Datos', href: '/exportar', icon: ArrowDownTrayIcon },
+        ]
+    },
+    {
+        title: 'Administración',
+        items: [
+            { name: 'Proveedores', href: '/proveedores', icon: UsersIcon },
+            { name: 'Reportes', href: '/reportes', icon: DocumentChartBarIcon },
+        ]
+    }
 ];
 
 export default function Sidebar() {
@@ -36,48 +69,54 @@ export default function Sidebar() {
         .toUpperCase() || '??';
 
     return (
-        <div className="d-flex flex-column flex-shrink-0 p-3 text-white sidebar">
-            <div className="d-flex align-items-center mb-0 text-white text-decoration-none px-3 mt-2" style={{ height: '40px' }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo.svg" alt="Bravium" style={{ height: '32px', width: 'auto', display: 'block' }} />
+        <div className="sidebar d-flex flex-column">
+            {/* Logo Section */}
+            <div className="px-4 mb-4 d-flex align-items-center gap-2">
+                <div className="bg-primary rounded-lg d-flex align-items-center justify-content-center p-1" style={{ width: '32px', height: '32px' }}>
+                    <SparklesIcon className="text-white w-5 h-5" />
+                </div>
+                <span className="fs-5 fw-bold text-white tracking-tight uppercase" style={{ letterSpacing: '2px' }}>BRAVIUM</span>
             </div>
-            <hr />
-            <ul className="nav nav-pills flex-column mb-auto">
-                {navigation.map((item) => {
-                    const isActive = pathname === item.href;
-                    return (
-                        <li className="nav-item mb-1" key={item.name}>
-                            <Link
-                                href={item.href}
-                                className={`nav-link d-flex align-items-center gap-2 py-2 ${isActive ? 'active shadow-sm' : ''}`}
-                                aria-current={isActive ? 'page' : undefined}
-                            >
-                                <item.icon style={{ width: '18px', height: '18px' }} />
-                                <span style={{ fontSize: '14px' }}>{item.name}</span>
-                            </Link>
-                        </li>
-                    );
-                })}
-            </ul>
-            <hr />
-            <div className="px-1 mt-auto">
+
+            {/* Sections */}
+            <div className="flex-grow-1 overflow-auto px-2">
+                {sections.map((section) => (
+                    <div key={section.title} className="mb-4">
+                        <div className="nav-section-title">{section.title}</div>
+                        <ul className="nav nav-pills flex-column">
+                            {section.items.map((item) => {
+                                const active = pathname === item.href;
+                                return (
+                                    <li key={item.name} className="nav-item">
+                                        <Link
+                                            href={item.href}
+                                            className={`nav-link ${active ? 'active' : ''}`}
+                                        >
+                                            <item.icon className="icon" />
+                                            <span className="flex-grow-1">{item.name}</span>
+                                            {active && <ChevronRightIcon style={{ width: '12px', height: '12px', opacity: 0.6 }} />}
+                                        </Link>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </div>
+                ))}
+            </div>
+
+            {/* Logout Footer Layer */}
+            <div className="mt-auto pt-3 border-top border-white opacity-10 px-3 pb-3">
                 <div className="d-flex align-items-center justify-content-between">
-                    <div className="d-flex align-items-center">
-                        <div className="rounded-circle bg-primary d-flex justify-content-center align-items-center me-2 text-white shadow-sm" style={{ width: 32, height: 32 }}>
-                            <span className="small fw-bold">{initials}</span>
+                    <div className="d-flex align-items-center gap-2">
+                        <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
+                            <span className="small fw-bold text-white">{initials}</span>
                         </div>
                         <div className="overflow-hidden">
-                            <div className="small fw-bold text-truncate" style={{ fontSize: '13px', maxWidth: '100px' }}>{user?.fullName || 'Usuario'}</div>
-                            <div className="text-white-50 text-truncate" style={{ fontSize: '10px' }}>{user?.role}</div>
+                            <div className="text-white fw-medium text-truncate" style={{ fontSize: '0.8rem', maxWidth: '100px' }}>{user?.fullName}</div>
                         </div>
                     </div>
-                    <button
-                        onClick={logout}
-                        className="btn btn-link text-white-50 p-0 ms-2 hover-white"
-                        title="Cerrar Sesión"
-                        style={{ border: 'none', background: 'none' }}
-                    >
-                        <ArrowLeftOnRectangleIcon style={{ width: 18, height: 18 }} />
+                    <button onClick={logout} className="p-1 text-white opacity-50 hover-opacity-100 transition-all bg-transparent border-0">
+                        <ArrowLeftOnRectangleIcon style={{ width: '18px', height: '18px' }} />
                     </button>
                 </div>
             </div>

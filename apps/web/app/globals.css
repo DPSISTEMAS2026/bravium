@@ -2,52 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
-/* globals.css */
-/* Import Bootstrap 5 */
+/* globals.css - Mercat Inspired Professional Theme */
 @import 'bootstrap/dist/css/bootstrap.min.css';
 
 :root {
-  --bravium-blue: #0d6efd;
-  /* Bootstrap Primary Blue similar */
-  --sidebar-width: 250px;
+  --mercat-sidebar-bg: #1c2237;
+  --mercat-active-blue: #2e5cf5;
+  --mercat-bg-light: #f4f7fa;
+  --mercat-text-dark: #1e293b;
+  --mercat-text-muted: #64748b;
+  --sidebar-width: 260px;
 }
 
 body {
-  background-color: #f8f9fa;
-  /* Bootstrap bg-light */
+  background-color: var(--mercat-bg-light);
+  color: var(--mercat-text-dark);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   min-height: 100vh;
 }
 
-/* Sidebar Specifics */
+/* Sidebar Styling */
 .sidebar {
   width: var(--sidebar-width);
   height: 100vh;
   position: fixed;
   top: 0;
   left: 0;
-  background-color: #212529;
-  /* Darker Bootstrap bg-dark */
+  background-color: var(--mercat-sidebar-bg);
   color: #fff;
   z-index: 1000;
+  padding: 1.5rem 0.75rem;
+  box-shadow: 4px 0 10px rgba(0, 0, 0, 0.1);
   overflow-y: auto;
 }
 
-/* Fix for huge icons when Tailwind is slow/missing classes */
-svg {
-  display: inline-block;
-  vertical-align: middle;
-  width: 1.5rem;
-  /* Default size (h-6) */
-  height: 1.5rem;
+.sidebar .nav-section-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 1.5rem 1rem 0.5rem;
+  letter-spacing: 0.05em;
 }
 
-/* Allow heroicons with tailwind classes to override */
-svg[class*='h-'],
-svg[class*='w-'] {
-  width: unset;
-  height: unset;
+.sidebar .nav-link {
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-weight: 500;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.25rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  font-size: 0.9rem;
 }
 
+.sidebar .nav-link:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #fff !important;
+}
+
+.sidebar .nav-link.active {
+  background-color: var(--mercat-active-blue) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(46, 92, 245, 0.3);
+}
+
+.sidebar .nav-link svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-right: 0.75rem;
+  opacity: 0.8;
+}
+
+/* Main Content Wrapper */
 .main-content {
   margin-left: var(--sidebar-width);
   min-height: 100vh;
@@ -55,48 +83,105 @@ svg[class*='w-'] {
   flex-direction: column;
 }
 
-.nav-link {
-  color: rgba(255, 255, 255, .75) !important;
+/* Header Styling */
+.header {
+  height: 70px;
+  background-color: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  position: sticky;
+  top: 0;
+  z-index: 900;
 }
 
-.nav-link:hover,
-.nav-link.active {
-  color: #fff !important;
-  background-color: rgba(255, 255, 255, 0.1) !important;
+.header .user-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.875rem;
+  color: var(--mercat-text-muted);
 }
 
-.nav-link.active {
-  background-color: #0d6efd !important;
-}
-
-/* Card Styling for Dashboard */
+/* Card & Component Styling */
 .card {
-  border: none !important;
-  border-radius: 8px !important;
-  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
-  margin-bottom: 1.5rem !important;
+  background: #fff;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
+  margin-bottom: 1.5rem;
 }
 
-.kpi-card {
-  transition: transform 0.2s !important;
+.page-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--mercat-text-dark);
+  margin-bottom: 0.5rem;
 }
 
-.kpi-card:hover {
-  transform: translateY(-2px) !important;
+.page-subtitle {
+  color: var(--mercat-text-muted);
+  font-size: 0.95rem;
+  margin-bottom: 2rem;
+}
+
+/* Inputs & Form Elements */
+.form-control,
+.form-select {
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  padding: 0.625rem 1rem;
+  font-size: 0.9rem;
+  color: var(--mercat-text-dark);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--mercat-active-blue);
+  box-shadow: 0 0 0 3px rgba(46, 92, 245, 0.1);
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: var(--mercat-active-blue);
+  border: none;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1.25rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background-color: #1e4bd6;
+  transform: translateY(-1px);
+}
+
+/* Badges */
+.badge-soft {
+  padding: 0.4em 0.8em;
+  font-weight: 600;
+  border-radius: 0.5rem;
 }
 
 .badge-soft-success {
-  background-color: #d1e7dd !important;
-  color: #0f5132 !important;
+  background-color: #ecfdf5;
+  color: #059669;
 }
 
 .badge-soft-warning {
-  background-color: #fff3cd !important;
-  color: #664d03 !important;
+  background-color: #fffbeb;
+  color: #d97706;
 }
 
-/* Ensure Logo is visible */
-.sidebar img {
-  filter: brightness(0) invert(1);
-  /* Force to white if it's dark */
+.badge-soft-primary {
+  background-color: #eff6ff;
+  color: var(--mercat-active-blue);
+}
+
+/* Global SVG Fix */
+svg {
+  display: inline-block;
+  vertical-align: middle;
 }

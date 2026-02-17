@@ -19,8 +19,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
     if (isLoading) {
         return (
-            <div className="d-flex justify-content-center align-items-center vh-100 bg-light">
-                <div className="spinner-border text-primary" role="status">
+            <div className="d-flex justify-content-center align-items-center vh-100 bg-white">
+                <div className="spinner-border text-primary" role="status" style={{ width: '3rem', height: '3rem' }}>
                     <span className="visually-hidden">Cargando...</span>
                 </div>
             </div>
@@ -37,11 +37,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
     }
 
     return (
-        <div className="d-flex w-100">
+        <div className="d-flex w-100 min-vh-100">
             <Sidebar />
-            <div className="main-content w-100">
+            <div className="main-content flex-grow-1 d-flex flex-column">
                 <Header />
-                <main className="container-fluid px-4 py-3">
+                <main className="flex-grow-1 p-4 p-lg-5">
                     {children}
                 </main>
             </div>
