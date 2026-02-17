@@ -29,31 +29,32 @@ interface NavSection {
 
 const sections: NavSection[] = [
     {
-        title: 'Mi Cuenta',
+        title: 'Reportes',
         items: [
             { name: 'Dashboard', href: '/', icon: HomeIcon },
+            { name: 'Reportes', href: '/reportes', icon: DocumentChartBarIcon },
         ]
     },
     {
-        title: 'Gestión Financiera',
+        title: 'Ventas',
+        items: [
+            { name: 'Facturas (DTE)', href: '/facturas', icon: ShoppingBagIcon },
+            { name: 'Monitor de Compras', href: '/monitor-compras', icon: ShoppingBagIcon },
+        ]
+    },
+    {
+        title: 'Pagos',
         items: [
             { name: 'Conciliación', href: '/conciliacion', icon: BanknotesIcon },
-            { name: 'Facturas (DTE)', href: '/facturas', icon: ShoppingBagIcon },
             { name: 'Pagos', href: '/pagos', icon: CreditCardIcon },
-        ]
-    }, {
-        title: 'Operaciones',
-        items: [
-            { name: 'Monitor de Compras', href: '/monitor-compras', icon: ShoppingBagIcon },
-            { name: 'Cargar Cartola', href: '/ingestion/cartolas', icon: ArrowDownTrayIcon },
-            { name: 'Exportar Datos', href: '/exportar', icon: ArrowDownTrayIcon },
         ]
     },
     {
-        title: 'Administración',
+        title: 'Configuración',
         items: [
+            { name: 'Cargar Cartola', href: '/ingestion/cartolas', icon: ArrowDownTrayIcon },
             { name: 'Proveedores', href: '/proveedores', icon: UsersIcon },
-            { name: 'Reportes', href: '/reportes', icon: DocumentChartBarIcon },
+            { name: 'Exportar Datos', href: '/exportar', icon: ArrowDownTrayIcon },
         ]
     }
 ];
