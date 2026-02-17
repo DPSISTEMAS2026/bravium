@@ -1,6 +1,6 @@
 import Sidebar from '../components/layout/Sidebar';
 import Header from '../components/layout/Header';
-import '../globals.css';
+import './globals.css';
 
 export const metadata = {
     title: 'Bravium | Conciliación Inteligente',
