@@ -14,7 +14,7 @@ const https = require('https');
 // Configuración
 const API_KEY = 'WDpyVTFteDRiZDFTUnRVT3BLNE9oWnZSeU5BT1V3WkM4MA==';
 const COMPANY_RUT = '77154188';
-const BACKEND_URL = process.env.BACKEND_URL || 'localhost:3000';
+const BACKEND_URL = process.env.BACKEND_URL || 'localhost:3001';
 
 // Parsear argumentos de línea de comandos
 const args = process.argv.slice(2);

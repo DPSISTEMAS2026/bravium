@@ -2,21 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
-/* globals.css - Mercat Inspired Professional Theme */
-@import 'bootstrap/dist/css/bootstrap.min.css';
-
 :root {
-  --mercat-sidebar-bg: #1c2237;
-  --mercat-active-blue: #2e5cf5;
-  --mercat-bg-light: #f4f7fa;
-  --mercat-text-dark: #1e293b;
-  --mercat-text-muted: #64748b;
-  --sidebar-width: 260px;
+  --bravium-sidebar-bg: #0f172a;
+  /* Slate 900 - Mas profundo y sobrio */
+  --bravium-active-indigo: #6366f1;
+  /* Indigo 500 */
+  --bravium-active-violet: #8b5cf6;
+  /* Violet 600 */
+  --bravium-bg-light: #f8fafc;
+  /* Slate 50 */
+  --bravium-text-dark: #020617;
+  /* Slate 950 */
+  --bravium-text-muted: #64748b;
+  /* Slate 500 */
+  --sidebar-width: 280px;
 }
 
 body {
-  background-color: var(--mercat-bg-light);
-  color: var(--mercat-text-dark);
+  background-color: var(--bravium-bg-light);
+  color: var(--bravium-text-dark);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   min-height: 100vh;
 }
@@ -28,12 +32,13 @@ body {
   position: fixed;
   top: 0;
   left: 0;
-  background-color: var(--mercat-sidebar-bg);
+  background: linear-gradient(180deg, var(--bravium-sidebar-bg) 0%, #1e1b4b 100%);
   color: #fff;
   z-index: 1000;
   padding: 1.5rem 0.75rem;
-  box-shadow: 4px 0 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 4px 0 15px rgba(0, 0, 0, 0.4);
   overflow-y: auto;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .sidebar .nav-section-title {
@@ -58,14 +63,15 @@ body {
 }
 
 .sidebar .nav-link:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: rgba(255, 255, 255, 0.08);
   color: #fff !important;
+  transform: translateX(4px);
 }
 
 .sidebar .nav-link.active {
-  background-color: var(--mercat-active-blue) !important;
+  background: linear-gradient(90deg, var(--bravium-active-indigo) 0%, var(--bravium-active-violet) 100%) !important;
   color: #fff !important;
-  box-shadow: 0 4px 12px rgba(46, 92, 245, 0.3);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
 }
 
 .sidebar .nav-link svg {
@@ -83,26 +89,19 @@ body {
   flex-direction: column;
 }
 
-/* Header Styling */
+/* Header: no scroll, elementos derecha siempre visibles */
 .header {
   height: 70px;
+  min-height: 70px;
+  flex-shrink: 0;
   background-color: #fff;
   border-bottom: 1px solid #e2e8f0;
-  padding: 0 2rem;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   position: sticky;
   top: 0;
   z-index: 900;
-}
-
-.header .user-info {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  font-size: 0.875rem;
-  color: var(--mercat-text-muted);
 }
 
 /* Card & Component Styling */
@@ -143,19 +142,41 @@ body {
   box-shadow: 0 0 0 3px rgba(46, 92, 245, 0.1);
 }
 
+.input-field {
+  @apply w-full rounded-xl border border-slate-300 py-2.5 px-4 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm transition-all bg-white;
+}
+
+.select-field {
+  @apply w-full rounded-xl border border-slate-300 py-2.5 px-4 focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium bg-white cursor-pointer hover:border-slate-400 transition-colors;
+}
+
 /* Buttons */
 .btn-primary {
-  background-color: var(--mercat-active-blue);
+  background: linear-gradient(90deg, var(--bravium-active-indigo) 0%, var(--bravium-active-violet) 100%);
   border: none;
   border-radius: 0.75rem;
   padding: 0.625rem 1.25rem;
   font-weight: 600;
-  transition: all 0.2s ease;
+  color: white;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .btn-primary:hover {
-  background-color: #1e4bd6;
-  transform: translateY(-1px);
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 15px rgba(99, 102, 241, 0.3);
+}
+
+.btn-ghost {
+  @apply px-4 py-2 rounded-xl text-slate-600 font-medium hover:bg-slate-100 transition-all border border-slate-200 hover:border-slate-300;
+}
+
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-blue-600;
+}
+
+.card-glass {
+  @apply bg-white/70 backdrop-blur-md border border-white/20 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300;
 }
 
 /* Badges */

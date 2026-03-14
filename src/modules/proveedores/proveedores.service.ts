@@ -1,16 +1,30 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { DataVisibilityService } from '../../common/services/data-visibility.service';
+
+/** Fecha mínima por defecto para listado e informes de proveedores: solo 2026 (LibreDTE vs cartolas). */
+const DEFAULT_REPORT_FROM = new Date('2026-01-01');
 
 @Injectable()
 export class ProveedoresService {
     private readonly logger = new Logger(ProveedoresService.name);
 
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly visibility: DataVisibilityService,
+    ) { }
+
+    private getMinDate(): Date | null {
+        return this.visibility.getVisibleFromDate() ?? DEFAULT_REPORT_FROM;
+    }
+
+    /** Tamaño de página por defecto para listado de proveedores */
+    private static readonly DEFAULT_PAGE_SIZE = 20;
 
     /**
-     * Obtener todos los proveedores con información de deuda
+     * Obtener proveedores con información de deuda (paginado)
      */
-    async getAllProviders(search?: string) {
+    async getAllProviders(search?: string, page: number = 1, limit: number = ProveedoresService.DEFAULT_PAGE_SIZE) {
         const where = search
             ? {
                 OR: [
@@ -20,33 +34,44 @@ export class ProveedoresService {
             }
             : {};
 
-        const providers = await this.prisma.provider.findMany({
-            where,
-            include: {
-                dtes: {
-                    select: {
-                        id: true,
-                        folio: true,
-                        totalAmount: true,
-                        outstandingAmount: true,
-                        paymentStatus: true,
-                        issuedDate: true,
+        const minDate = this.getMinDate();
+        const skip = Math.max(0, (page - 1) * limit);
+        const take = Math.min(100, Math.max(1, limit));
+
+        const [providers, total] = await Promise.all([
+            this.prisma.provider.findMany({
+                where,
+                skip,
+                take,
+                include: {
+                    dtes: {
+                        where: minDate ? { issuedDate: { gte: minDate } } : undefined,
+                        select: {
+                            id: true,
+                            folio: true,
+                            totalAmount: true,
+                            outstandingAmount: true,
+                            paymentStatus: true,
+                            issuedDate: true,
+                            dueDate: true,
+                        },
+                    },
+                    _count: {
+                        select: {
+                            dtes: minDate ? { where: { issuedDate: { gte: minDate } } } : true,
+                            payments: true,
+                        },
                     },
                 },
-                _count: {
-                    select: {
-                        dtes: true,
-                        payments: true,
-                    },
+                orderBy: {
+                    name: 'asc',
                 },
-            },
-            orderBy: {
-                name: 'asc',
-            },
-        });
+            }),
+            this.prisma.provider.count({ where }),
+        ]);
 
         // Calcular métricas por proveedor
-        return providers.map((provider) => {
+        const data = providers.map((provider) => {
             const totalDebt = provider.dtes.reduce(
                 (sum, dte) => sum + dte.outstandingAmount,
                 0
@@ -94,16 +119,27 @@ export class ProveedoresService {
                 updatedAt: provider.updatedAt,
             };
         });
+
+        const totalPages = Math.ceil(total / take);
+        return {
+            data,
+            total,
+            page,
+            limit: take,
+            totalPages,
+        };
     }
 
     /**
      * Obtener detalle de un proveedor específico
      */
     async getProviderDetail(providerId: string) {
+        const minDate = this.getMinDate();
         const provider = await this.prisma.provider.findUnique({
             where: { id: providerId },
             include: {
                 dtes: {
+                    where: minDate ? { issuedDate: { gte: minDate } } : undefined,
                     orderBy: { issuedDate: 'desc' },
                     include: {
                         matches: {
@@ -152,13 +188,26 @@ export class ProveedoresService {
         };
     }
 
+    async updateProvider(providerId: string, data: {
+        transferBankName?: string;
+        transferAccountNumber?: string;
+        transferAccountType?: string;
+        transferRut?: string;
+        transferEmail?: string;
+    }) {
+        return this.prisma.provider.update({
+            where: { id: providerId },
+            data,
+        });
+    }
+
     /**
-     * Obtener top proveedores por deuda
+     * Obtener top proveedores por deuda (usa una página amplia para ordenar por deuda)
      */
     async getTopProvidersByDebt(limit: number = 10) {
-        const providers = await this.getAllProviders();
+        const { data } = await this.getAllProviders(undefined, 1, Math.max(500, limit));
 
-        return providers
+        return data
             .sort((a, b) => b.totalDebt - a.totalDebt)
             .slice(0, limit);
     }

@@ -1,0 +1,13 @@
+# Netlify: frontend Next.js (Bravium)
+# El backend NestJS se despliega aparte (ej. Render con render.yaml).
+
+[build]
+  base    = "apps/web"
+  command = "npm run build"
+
+# Netlify detecta Next.js y usa el runtime adecuado (no hace falta publish).
+
+[build.environment]
+  NODE_VERSION = "20"
+  # En Netlify Dashboard → Site settings → Environment variables añade:
+  # NEXT_PUBLIC_API_URL = https://tu-backend.onrender.com

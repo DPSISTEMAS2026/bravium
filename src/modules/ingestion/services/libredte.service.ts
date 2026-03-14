@@ -11,11 +11,36 @@ export class LibreDteService {
     constructor(private prisma: PrismaService) { }
 
     /**
-     * Fetches received DTEs from LibreDTE API and persists them.
-     * @param fromDate Start date in YYYY-MM-DD format
-     * @param toDate End date in YYYY-MM-DD format
+     * Incremental sync: find latest DTE and pull from there to today.
      */
-    async fetchReceivedDTEs(fromDate: string, toDate: string) {
+    async syncRecentlyReceivedDTEs() {
+        const lastDte = await this.prisma.dTE.findFirst({
+            orderBy: { issuedDate: 'desc' },
+            select: { issuedDate: true }
+        });
+
+        const today = new Date().toISOString().split('T')[0];
+        // Default to last 30 days if DB is empty, or pull from last issuedDate - 1 day for safety
+        let fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+        if (lastDte) {
+            const lastDate = new Date(lastDte.issuedDate);
+            lastDate.setDate(lastDate.getDate() - 1); // Overlap by 1 day to catch any same-day misses
+            fromDate = lastDate.toISOString().split('T')[0];
+        }
+
+        this.logger.log(`Running INCREMENTAL sync from ${fromDate} to ${today}`);
+        return this.fetchReceivedDTEs(fromDate, today);
+    }
+
+    /**
+     * Fetches received DTEs from LibreDTE API and persists them.
+     */
+    async fetchReceivedDTEs(fromDate?: string, toDate?: string) {
+        // Fallback dates: Last 7 days if not provided
+        const start = fromDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const end = toDate || new Date().toISOString().split('T')[0];
+
         // HARDCODED CREDENTIALS AS FALLBACK (Requested by User for Production Fix)
         const apiKey = process.env.LIBREDTE_API_KEY || 'WDpyVTFteDRiZDFTUnRVT3BLNE9oWnZSeU5BT1V3WkM4MA==';
         const companyRut = process.env.COMPANY_RUT || '77154188';
@@ -43,8 +68,8 @@ export class LibreDteService {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    fecha_desde: fromDate,
-                    fecha_hasta: toDate,
+                    fecha_desde: start,
+                    fecha_hasta: end,
                     limit: 1000 // Adjust as needed
                 })
             });
@@ -223,6 +248,7 @@ export class LibreDteService {
                 totalAmount: totalAmount,
                 outstandingAmount: totalAmount,
                 issuedDate: new Date(issuedDateStr),
+                dueDate: item.vencimiento ? new Date(item.vencimiento) : null,
                 siiStatus: 'RECIBIDO',
                 paymentStatus: DtePaymentStatus.UNPAID,
                 provider: { connect: { id: provider.id } },
@@ -233,5 +259,34 @@ export class LibreDteService {
 
         this.logger.debug(`Created DTE: ${rutIssuer}-${dteType}-${folio} - $${totalAmount}`);
         return 'created';
+    }
+    /**
+     * Generates or fetches the PDF for a received DTE.
+     */
+    async getDtePdf(rutIssuer: string, type: number, folio: number): Promise<Buffer> {
+        const apiKey = process.env.LIBREDTE_API_KEY || 'WDpyVTFteDRiZDFTUnRVT3BLNE9oWnZSeU5BT1V3WkM4MA==';
+        const companyRut = process.env.COMPANY_RUT || '77154188';
+
+        this.logger.log(`Requesting PDF for DTE: ${rutIssuer}-${type}-${folio}`);
+
+        // For dte_recibidos, the correct pattern requires 4 path params:
+        // /dte/dte_recibidos/pdf/{emisor}/{dte}/{folio}/{receptor}
+        const url = `${this.API_URL}/dte/dte_recibidos/pdf/${rutIssuer}/${type}/${folio}/${companyRut}?_contribuyente_rut=${companyRut}`;
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Basic ${apiKey}`,
+            }
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            this.logger.error(`LibreDTE PDF Error: ${response.status} - ${errorText}`);
+            throw new Error(`LibreDTE no pudo generar el PDF. Verifica que el documento esté en el portal de LibreDTE.`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
     }
 }

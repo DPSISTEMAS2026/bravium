@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
-import * as ExcelJS from 'exceljs';
 import { ExportType } from '../dto/export-filters.dto';
 import { DashboardFiltersDto } from '../dto/dashboard-filters.dto';
 
@@ -13,7 +12,8 @@ export class ExportService {
     async exportToExcel(
         type: ExportType,
         filters: DashboardFiltersDto,
-    ): Promise<ExcelJS.Buffer> {
+    ): Promise<Buffer> {
+        const ExcelJS = await import('exceljs');
         const workbook = new ExcelJS.Workbook();
         workbook.creator = 'Bravium - Sistema de Conciliación';
         workbook.created = new Date();
@@ -35,28 +35,31 @@ export class ExportService {
                 break;
         }
 
-        return await workbook.xlsx.writeBuffer();
+        const buf = await workbook.xlsx.writeBuffer();
+        return Buffer.from(buf);
     }
 
     private async addTransactionsSheet(
-        workbook: ExcelJS.Workbook,
+        workbook: any,
         filters: DashboardFiltersDto,
     ) {
-        const sheet = workbook.addWorksheet('Transacciones Bancarias');
+        const sheet = workbook.addWorksheet('Libro de Pagos');
 
-        // Configurar columnas
         sheet.columns = [
             { header: 'Fecha', key: 'date', width: 12 },
-            { header: 'Descripción', key: 'description', width: 40 },
-            { header: 'Referencia', key: 'reference', width: 20 },
-            { header: 'Banco', key: 'bank', width: 20 },
-            { header: 'Cuenta', key: 'account', width: 15 },
+            { header: 'Descripción Banco', key: 'description', width: 35 },
+            { header: 'Empresa / Item', key: 'empresa', width: 25 },
+            { header: 'Detalle', key: 'detalle', width: 30 },
+            { header: 'Comentario', key: 'comentario', width: 30 },
+            { header: 'Medio de Pago', key: 'medioPago', width: 22 },
+            { header: 'Folio Factura', key: 'folio', width: 14 },
             { header: 'Monto', key: 'amount', width: 15 },
             { header: 'Tipo', key: 'type', width: 10 },
             { header: 'Estado', key: 'status', width: 12 },
+            { header: 'Proveedor Match', key: 'matchProvider', width: 25 },
+            { header: 'Referencia', key: 'reference', width: 18 },
         ];
 
-        // Estilo del header
         sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
         sheet.getRow(1).fill = {
             type: 'pattern',
@@ -65,51 +68,54 @@ export class ExportService {
         };
         sheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
 
-        // Obtener datos
         const where = this.buildTransactionWhere(filters);
         const transactions = await this.prisma.bankTransaction.findMany({
             where,
             include: {
                 bankAccount: true,
+                matches: { include: { dte: { include: { provider: true } } } },
             },
             orderBy: { date: 'desc' },
-            take: 50000, // Límite de seguridad
+            take: 50000,
         });
 
-        // Agregar datos
         transactions.forEach((tx) => {
+            const meta = (tx.metadata as any) || {};
+            const matchProvider = tx.matches?.[0]?.dte?.provider?.name || '';
+
             const row = sheet.addRow({
                 date: tx.date.toISOString().split('T')[0],
                 description: tx.description,
-                reference: tx.reference || '',
-                bank: tx.bankAccount?.bankName || 'N/A',
-                account: tx.bankAccount?.accountNumber || 'N/A',
+                empresa: meta.empresaExcel || '',
+                detalle: meta.detalleExcel || '',
+                comentario: meta.comentarioExcel || '',
+                medioPago: meta.medioPago || '',
+                folio: meta.folioExcel || '',
                 amount: Math.abs(tx.amount),
                 type: tx.type === 'DEBIT' ? 'Cargo' : 'Abono',
                 status: this.translateStatus(tx.status),
+                matchProvider,
+                reference: tx.reference || '',
             });
 
-            // Formato condicional
             if (tx.type === 'DEBIT') {
                 row.getCell('amount').font = { color: { argb: 'FFDC3545' } };
             } else {
                 row.getCell('amount').font = { color: { argb: 'FF28A745' } };
             }
-
             row.getCell('amount').numFmt = '$#,##0';
         });
 
-        // Auto-filtro
         sheet.autoFilter = {
             from: 'A1',
-            to: `H${sheet.rowCount}`,
+            to: `L${sheet.rowCount}`,
         };
 
-        this.logger.log(`Exported ${transactions.length} transactions to Excel`);
+        this.logger.log(`Exported ${transactions.length} transactions to Excel (Libro de Pagos)`);
     }
 
     private async addDtesSheet(
-        workbook: ExcelJS.Workbook,
+        workbook: any,
         filters: DashboardFiltersDto,
     ) {
         const sheet = workbook.addWorksheet('DTEs (Facturas)');
@@ -178,7 +184,7 @@ export class ExportService {
     }
 
     private async addMatchesSheet(
-        workbook: ExcelJS.Workbook,
+        workbook: any,
         filters: DashboardFiltersDto,
     ) {
         const sheet = workbook.addWorksheet('Matches (Conciliaciones)');
@@ -341,7 +347,7 @@ export class ExportService {
             if (filters.status === 'PENDING') {
                 where.paymentStatus = 'UNPAID';
             } else if (filters.status === 'MATCHED') {
-                where.paymentStatus = { in: ['PAID', 'PARTIALLY_PAID'] };
+                where.paymentStatus = { in: ['PAID', 'PARTIAL'] };
             }
         }
 
@@ -402,7 +408,7 @@ export class ExportService {
     private translatePaymentStatus(status: string): string {
         const map = {
             UNPAID: 'Sin Pagar',
-            PARTIALLY_PAID: 'Pago Parcial',
+            PARTIAL: 'Pago Parcial',
             PAID: 'Pagado',
         };
         return map[status] || status;

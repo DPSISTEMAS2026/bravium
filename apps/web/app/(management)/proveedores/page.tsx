@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import useSWR from 'swr';
 import {
     MagnifyingGlassIcon,
     FunnelIcon,
@@ -8,7 +9,12 @@ import {
     ExclamationTriangleIcon,
     CheckCircleIcon,
     ClockIcon,
+    BanknotesIcon,
+    ArrowDownTrayIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
 } from '@heroicons/react/24/outline';
+import { getApiUrl } from '@/lib/api';
 import Link from 'next/link';
 
 interface Provider {
@@ -26,29 +32,34 @@ interface Provider {
     status: 'CRITICAL' | 'WARNING' | 'OK';
 }
 
+interface PaginatedResponse {
+    data: Provider[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+}
+
+const PAGE_SIZE = 20;
+
 export default function ProveedoresPage() {
-    const [providers, setProviders] = useState<Provider[]>([]);
-    const [loading, setLoading] = useState(true);
+    const API_URL = getApiUrl();
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('ALL');
+    const [page, setPage] = useState(1);
+
+    const { data: response, isLoading: loading } = useSWR<PaginatedResponse>(
+        `${API_URL}/proveedores?page=${page}&limit=${PAGE_SIZE}${search ? `&search=${encodeURIComponent(search)}` : ''}`
+    );
 
     useEffect(() => {
-        loadProviders();
-    }, []);
+        setPage(1);
+    }, [search]);
 
-    const loadProviders = async () => {
-        try {
-            setLoading(true);
-            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-            const response = await fetch(`${API_URL}/proveedores`);
-            const data = await response.json();
-            setProviders(data);
-        } catch (error) {
-            console.error('Error loading providers:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const providers = response?.data ?? [];
+    const total = response?.total ?? 0;
+    const totalPages = Math.max(1, response?.totalPages ?? 1);
+    const currentPage = Math.min(page, totalPages);
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('es-CL', {
@@ -58,26 +69,23 @@ export default function ProveedoresPage() {
         }).format(amount);
     };
 
-    const filteredProviders = providers.filter((p) => {
-        const matchesSearch =
-            p.name.toLowerCase().includes(search.toLowerCase()) ||
-            p.rut.toLowerCase().includes(search.toLowerCase());
+    const filteredProviders = useMemo(() => {
+        return providers.filter((p) => {
+            const matchesStatus =
+                statusFilter === 'ALL' ||
+                (statusFilter === 'CRITICAL' && p.status === 'CRITICAL') ||
+                (statusFilter === 'WARNING' && p.status === 'WARNING') ||
+                (statusFilter === 'OK' && p.status === 'OK');
+            return matchesStatus;
+        });
+    }, [providers, statusFilter]);
 
-        const matchesStatus =
-            statusFilter === 'ALL' ||
-            (statusFilter === 'CRITICAL' && p.status === 'CRITICAL') ||
-            (statusFilter === 'WARNING' && p.status === 'WARNING') ||
-            (statusFilter === 'OK' && p.status === 'OK');
-
-        return matchesSearch && matchesStatus;
-    });
-
-    const stats = {
-        total: providers.length,
+    const stats = useMemo(() => ({
+        total,
         conDeuda: providers.filter((p) => p.totalDebt > 0).length,
         deudaTotal: providers.reduce((sum, p) => sum + p.totalDebt, 0),
         critical: providers.filter((p) => p.status === 'CRITICAL').length,
-    };
+    }), [total, providers]);
 
     if (loading) {
         return (
@@ -95,48 +103,76 @@ export default function ProveedoresPage() {
             {/* Header */}
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-bold gradient-text">Proveedores</h1>
+                    <h1 className="text-3xl font-bold text-slate-900">Proveedores</h1>
                     <p className="text-slate-600 mt-1">
                         Gestión de saldos y deuda histórica
                     </p>
                 </div>
+                <button
+                    onClick={async () => {
+                        try {
+                            const API_URL = getApiUrl();
+                            const res = await fetch(`${API_URL}/proveedores/export/pago-masivo`);
+                            if (!res.ok) throw new Error('Error al exportar');
+                            const blob = await res.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `pago_masivo_${new Date().toISOString().split('T')[0]}.xlsx`;
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                            window.URL.revokeObjectURL(url);
+                        } catch (err) {
+                            alert('Error al exportar pago masivo');
+                        }
+                    }}
+                    className="flex items-center px-4 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all transform hover:scale-105 text-sm"
+                >
+                    <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
+                    Exportar Pago Masivo
+                </button>
             </div>
 
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="card p-5 bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200">
-                    <div className="text-3xl font-bold text-blue-900 mb-1">
-                        {stats.total}
+                <div className="card-glass p-5 flex items-center space-x-4">
+                    <div className="bg-slate-100 p-3 rounded-xl text-slate-600">
+                        <ChartBarIcon className="h-6 w-6" />
                     </div>
-                    <div className="text-sm text-blue-700 font-medium">
-                        Proveedores Totales
-                    </div>
-                </div>
-
-                <div className="card p-5 bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-200">
-                    <div className="text-3xl font-bold text-purple-900 mb-1">
-                        {stats.conDeuda}
-                    </div>
-                    <div className="text-sm text-purple-700 font-medium">
-                        Con Deuda Pendiente
+                    <div>
+                        <div className="text-2xl font-bold text-slate-900">{stats.total}</div>
+                        <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Registrados</div>
                     </div>
                 </div>
 
-                <div className="card p-5 bg-gradient-to-br from-amber-50 to-amber-100 border-2 border-amber-200">
-                    <div className="text-2xl font-bold text-amber-900 mb-1">
-                        {formatCurrency(stats.deudaTotal)}
+                <div className="card-glass p-5 flex items-center space-x-4">
+                    <div className="bg-indigo-50 p-3 rounded-xl text-indigo-600">
+                        <ExclamationTriangleIcon className="h-6 w-6" />
                     </div>
-                    <div className="text-sm text-amber-700 font-medium">
-                        Deuda Total
+                    <div>
+                        <div className="text-2xl font-bold text-indigo-900">{stats.conDeuda}</div>
+                        <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Con Deuda (pág.)</div>
                     </div>
                 </div>
 
-                <div className="card p-5 bg-gradient-to-br from-red-50 to-red-100 border-2 border-red-200">
-                    <div className="text-3xl font-bold text-red-900 mb-1">
-                        {stats.critical}
+                <div className="card-glass p-5 flex items-center space-x-4 border-2 border-indigo-100">
+                    <div className="bg-indigo-600 p-3 rounded-xl text-white">
+                        <BanknotesIcon className="h-6 w-6" />
                     </div>
-                    <div className="text-sm text-red-700 font-medium">
-                        Estado Crítico
+                    <div>
+                        <div className="text-2xl font-bold text-indigo-900">{formatCurrency(stats.deudaTotal)}</div>
+                        <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Deuda (pág.)</div>
+                    </div>
+                </div>
+
+                <div className="card-glass p-5 flex items-center space-x-4">
+                    <div className="bg-red-50 p-3 rounded-xl text-red-500">
+                        <ExclamationTriangleIcon className="h-6 w-6" />
+                    </div>
+                    <div>
+                        <div className="text-2xl font-bold text-red-600">{stats.critical}</div>
+                        <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Crítico (pág.)</div>
                     </div>
                 </div>
             </div>
@@ -175,16 +211,16 @@ export default function ProveedoresPage() {
             <div className="card overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                        <thead className="bg-gradient-to-r from-slate-50 to-slate-100 text-slate-700 font-semibold border-b-2 border-slate-200">
+                        <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100 uppercase tracking-tight text-[11px]">
                             <tr>
                                 <th className="px-6 py-4">Proveedor / RUT</th>
                                 <th className="px-6 py-4">Categoría</th>
                                 <th className="px-6 py-4 text-right">Facturado</th>
                                 <th className="px-6 py-4 text-right">Pagado</th>
-                                <th className="px-6 py-4 text-right">Deuda</th>
-                                <th className="px-6 py-4 text-center">Facturas</th>
+                                <th className="px-6 py-4 text-right">Deuda Pendiente</th>
+                                <th className="px-6 py-4 text-center">Docs</th>
                                 <th className="px-6 py-4 text-center">Estado</th>
-                                <th className="px-6 py-4 text-right">Acciones</th>
+                                <th className="px-6 py-4 text-right"></th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -266,7 +302,7 @@ export default function ProveedoresPage() {
                                     <td className="px-6 py-4 text-right">
                                         <Link
                                             href={`/proveedores/${provider.id}`}
-                                            className="text-blue-600 font-semibold hover:text-blue-800 hover:underline transition-colors"
+                                            className="text-indigo-600 font-bold hover:text-indigo-900 transition-colors uppercase text-[10px] tracking-widest bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100"
                                         >
                                             Ver Detalle
                                         </Link>
@@ -284,8 +320,44 @@ export default function ProveedoresPage() {
                             No se encontraron proveedores
                         </p>
                         <p className="text-sm text-slate-400 mt-1">
-                            Intenta ajustar los filtros de búsqueda
+                            {total === 0 ? 'No hay proveedores registrados' : 'Intenta ajustar los filtros de búsqueda'}
                         </p>
+                    </div>
+                )}
+
+                {/* Paginación */}
+                {total > 0 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+                        <p className="text-sm text-slate-600">
+                            Mostrando <span className="font-semibold">{(currentPage - 1) * PAGE_SIZE + 1}</span>
+                            {' – '}
+                            <span className="font-semibold">{Math.min(currentPage * PAGE_SIZE, total)}</span>
+                            {' de '}
+                            <span className="font-semibold">{total}</span> proveedores
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                disabled={currentPage <= 1}
+                                className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                                aria-label="Página anterior"
+                            >
+                                <ChevronLeftIcon className="h-5 w-5" />
+                            </button>
+                            <span className="text-sm font-medium text-slate-700 min-w-[120px] text-center">
+                                Página {currentPage} de {totalPages}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                                disabled={currentPage >= totalPages}
+                                className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                                aria-label="Página siguiente"
+                            >
+                                <ChevronRightIcon className="h-5 w-5" />
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>

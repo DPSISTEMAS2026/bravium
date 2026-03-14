@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { DataVisibilityService } from '../../common/services/data-visibility.service';
 import { DashboardFiltersDto } from './dto/dashboard-filters.dto';
 
 @Injectable()
 export class ConciliacionDashboardService {
     private readonly logger = new Logger(ConciliacionDashboardService.name);
 
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private readonly visibility: DataVisibilityService,
+    ) { }
 
     /**
      * Obtiene el dashboard completo de conciliación con filtros avanzados
@@ -49,7 +53,7 @@ export class ConciliacionDashboardService {
                 this.safeRun(() => this.getMatchStats(fromDate, toDate), defaultMatchStats, 'MatchStats'),
                 this.safeRun(() => this.getPendingTransactions(fromDate, toDate, 20), [], 'PendingTransactions'),
                 this.safeRun(() => this.getPendingDtes(fromDate, toDate, 20), [], 'PendingDtes'),
-                this.safeRun(() => this.getRecentMatches(10), [], 'RecentMatches'),
+                this.safeRun(() => this.getRecentMatches(fromDate, toDate, 50), [], 'RecentMatches'),
                 this.safeRun(() => this.getTopProviders(fromDate, toDate, 10), [], 'TopProviders'),
                 this.safeRun(() => this.getUnmatchedHighValue(fromDate, toDate, 10), { transactions: [], dtes: [] }, 'UnmatchedHighValue')
             ]);
@@ -147,7 +151,7 @@ export class ConciliacionDashboardService {
             this.prisma.dTE.count({
                 where: {
                     ...dateFilter,
-                    paymentStatus: 'PARTIALLY_PAID'
+                    paymentStatus: 'PARTIAL'
                 }
             }),
             this.prisma.dTE.aggregate({
@@ -282,10 +286,18 @@ export class ConciliacionDashboardService {
     }
 
     /**
-     * Matches recientes
+     * Matches filtrados por periodo de la transacción
      */
-    private async getRecentMatches(limit: number) {
+    private async getRecentMatches(fromDate?: string, toDate?: string, limit: number = 50) {
+        const where: any = {};
+        if (fromDate || toDate) {
+            where.transaction = { date: {} };
+            if (fromDate) where.transaction.date.gte = new Date(fromDate);
+            if (toDate) where.transaction.date.lte = new Date(toDate);
+        }
+
         return this.prisma.reconciliationMatch.findMany({
+            where,
             orderBy: { createdAt: 'desc' },
             take: limit,
             select: {
@@ -294,9 +306,14 @@ export class ConciliacionDashboardService {
                 origin: true,
                 confidence: true,
                 ruleApplied: true,
+                notes: true,
+                confirmedAt: true,
+                confirmedBy: true,
+                createdBy: true,
                 createdAt: true,
                 transaction: {
                     select: {
+                        id: true,
                         date: true,
                         amount: true,
                         description: true
@@ -304,6 +321,7 @@ export class ConciliacionDashboardService {
                 },
                 dte: {
                     select: {
+                        id: true,
                         folio: true,
                         type: true,
                         totalAmount: true,
@@ -316,6 +334,7 @@ export class ConciliacionDashboardService {
                 },
                 payment: {
                     select: {
+                        id: true,
                         amount: true,
                         paymentDate: true,
                         provider: {
@@ -338,7 +357,7 @@ export class ConciliacionDashboardService {
         const dtes = await this.prisma.dTE.findMany({
             where: {
                 ...dateFilter,
-                paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] }
+                paymentStatus: { in: ['UNPAID', 'PARTIAL'] }
             },
             select: {
                 outstandingAmount: true,
@@ -439,20 +458,15 @@ export class ConciliacionDashboardService {
      * Construye filtro de fechas para transacciones bancarias
      */
     private buildTransactionDateFilter(fromDate?: string, toDate?: string) {
-        if (!fromDate && !toDate) return {};
+        const minDate = this.visibility.applyMinDate(
+            fromDate ? new Date(fromDate) : undefined,
+        );
 
-        const filter: any = {};
+        if (!minDate && !toDate) return {};
 
-        if (fromDate && toDate) {
-            filter.date = {
-                gte: new Date(fromDate),
-                lte: new Date(toDate)
-            };
-        } else if (fromDate) {
-            filter.date = { gte: new Date(fromDate) };
-        } else if (toDate) {
-            filter.date = { lte: new Date(toDate) };
-        }
+        const filter: any = { date: {} };
+        if (minDate) filter.date.gte = minDate;
+        if (toDate) filter.date.lte = new Date(toDate);
 
         return filter;
     }
@@ -461,20 +475,15 @@ export class ConciliacionDashboardService {
      * Construye filtro de fechas para DTEs
      */
     private buildDteDateFilter(fromDate?: string, toDate?: string) {
-        if (!fromDate && !toDate) return {};
+        const minDate = this.visibility.applyMinDate(
+            fromDate ? new Date(fromDate) : undefined,
+        );
 
-        const filter: any = {};
+        if (!minDate && !toDate) return {};
 
-        if (fromDate && toDate) {
-            filter.issuedDate = {
-                gte: new Date(fromDate),
-                lte: new Date(toDate)
-            };
-        } else if (fromDate) {
-            filter.issuedDate = { gte: new Date(fromDate) };
-        } else if (toDate) {
-            filter.issuedDate = { lte: new Date(toDate) };
-        }
+        const filter: any = { issuedDate: {} };
+        if (minDate) filter.issuedDate.gte = minDate;
+        if (toDate) filter.issuedDate.lte = new Date(toDate);
 
         return filter;
     }

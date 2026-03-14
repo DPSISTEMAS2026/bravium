@@ -1,25 +1,42 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { DataVisibilityService } from '../../common/services/data-visibility.service';
 import {
     BankTransaction,
     MatchStatus,
     ReconciliationMatch,
-    TransactionStatus
+    TransactionStatus,
+    Payment,
+    DTE
 } from '@prisma/client';
+import * as fs from 'fs';
 import { ExactMatchStrategy } from './strategies/exact-match.strategy';
+import { AmountMatchStrategy } from './strategies/amount-match.strategy';
+import { SumMatchStrategy } from './strategies/sum-match.strategy';
+import { SplitPaymentMatchStrategy } from './strategies/split-payment-match.strategy';
 import { MatchingStrategy } from './domain/matching.interfaces';
 
 @Injectable()
 export class ConciliacionService {
     private readonly logger = new Logger(ConciliacionService.name);
     private strategies: MatchingStrategy[];
+    private isRunning = false;
 
     constructor(
         private prisma: PrismaService,
         private exactStrategy: ExactMatchStrategy,
+        private amountStrategy: AmountMatchStrategy,
+        private sumMatchStrategy: SumMatchStrategy,
+        private splitPaymentStrategy: SplitPaymentMatchStrategy,
+        private readonly visibility: DataVisibilityService,
     ) {
-        // Priority Order: ONLY Exact Match
-        this.strategies = [this.exactStrategy];
+        this.strategies = [this.exactStrategy, this.amountStrategy];
+    }
+
+    private fileLog(msg: string) {
+        try {
+            fs.appendFileSync('d:/BRAVIUM-PRODUCCION/debug_recon.log', `[${new Date().toISOString()}] ${msg}\n`);
+        } catch (err) { /* ignore */ }
     }
 
     /**
@@ -27,46 +44,215 @@ export class ConciliacionService {
      * Processes all PENDING bank transactions.
      */
     async runReconciliationCycle(fromDate?: string, toDate?: string) {
-        this.logger.log('Starting Reconciliation Cycle...');
-
-        const whereClause: any = { status: TransactionStatus.PENDING };
-
-        if (fromDate && toDate) {
-            whereClause.date = {
-                gte: new Date(fromDate),
-                lte: new Date(toDate)
-            };
+        if (this.isRunning) {
+            this.fileLog('SKIPPING: Already running');
+            this.logger.warn('Reconciliation cycle is already running. Skipping.');
+            return { status: 'busy', message: 'Process already in progress' };
         }
 
-        // 1. Fetch pending transactions
-        const pendingTransactions = await this.prisma.bankTransaction.findMany({
-            where: whereClause,
-            orderBy: { date: 'asc' },
-            include: { matches: true } // Incluir matches existentes
-        });
+        this.isRunning = true;
+        this.fileLog(`STARTING: cycle for ${fromDate} to ${toDate}`);
+        this.logger.log('Starting Reconciliation Cycle (Optimized)...');
 
-        this.logger.log(`Found ${pendingTransactions.length} pending transactions.`);
-        let matchCount = 0;
+        // Solo los CONFIRMED bloquean; consideramos PENDING y PARTIALLY_MATCHED (DRAFT) para re-buscar la mejor opción
+        const whereClause: any = {
+            status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
+        };
+        const minDate = this.visibility.applyMinDate(
+            fromDate ? new Date(fromDate) : undefined,
+        );
+        if (minDate || toDate) {
+            whereClause.date = {};
+            if (minDate) whereClause.date.gte = minDate;
+            if (toDate) whereClause.date.lte = new Date(toDate);
+        }
 
-        for (const tx of pendingTransactions) {
-            // HARD FIX: Limpieza TOTAL de matches automáticos previos
-            // Esto garantiza idempotencia: Si corro el match de nuevo, borro lo anterior y recalculo.
-            // Borramos cualquier match automático asociado a esta transacción, confirmado o no.
-            if (tx.matches && tx.matches.length > 0) {
-                await this.prisma.reconciliationMatch.deleteMany({
+        // Incluir DTEs desde N días antes del inicio del período (ej. movimientos ene 2026 pueden matchear facturas nov/dic 2025)
+        const lookbackRaw = process.env.MATCH_DTE_LOOKBACK_DAYS;
+        const dteLookbackDays = lookbackRaw && Number(lookbackRaw) >= 0 ? Number(lookbackRaw) : 90;
+        const dteMinDate = minDate
+            ? new Date(minDate.getTime() - dteLookbackDays * 24 * 60 * 60 * 1000)
+            : undefined;
+
+        try {
+            // 1. Fetch EVERYTHING needed once to avoid N+1 queries
+            this.fileLog('FETCHING: Transactions, DTEs and Payments...');
+            const [pendingTransactions, allUnpaidDtes, allRecentPayments] = await Promise.all([
+                this.prisma.bankTransaction.findMany({
+                    where: whereClause,
+                    orderBy: { date: 'asc' },
+                    include: { bankAccount: { select: { bankName: true, accountNumber: true } } },
+                }),
+                this.prisma.dTE.findMany({
                     where: {
-                        transactionId: tx.id,
-                        origin: 'AUTOMATIC' // Solo borrar los generados por el sistema, respetar manuales
+                        paymentStatus: 'UNPAID',
+                        ...(dteMinDate && { issuedDate: { gte: dteMinDate } }),
+                    },
+                    include: { provider: { select: { name: true } } }
+                }),
+                this.prisma.payment.findMany({
+                    where: {
+                        paymentDate: {
+                            gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)
+                        }
                     }
-                });
+                })
+            ]);
+
+            const byAccount = new Map<string, number>();
+            for (const tx of pendingTransactions) {
+                const key = `${tx.bankAccount?.bankName ?? '?'} - ${tx.bankAccount?.accountNumber ?? '?'}`;
+                byAccount.set(key, (byAccount.get(key) ?? 0) + 1);
+            }
+            this.fileLog(`FOUND: ${pendingTransactions.length} pending tx, ${allUnpaidDtes.length} unpaid DTEs, ${allRecentPayments.length} payments.`);
+            this.fileLog(`BY ACCOUNT: ${[...byAccount.entries()].map(([k, n]) => `${k}=${n}`).join(', ')}`);
+
+            // Quitar DRAFT previos para que el motor vuelva a asignar la mejor opción (solo CONFIRMED bloquean)
+            const txIds = pendingTransactions.map((t) => t.id);
+            const deletedDraft = await this.prisma.reconciliationMatch.deleteMany({
+                where: {
+                    transactionId: { in: txIds },
+                    status: MatchStatus.DRAFT,
+                },
+            });
+            if (deletedDraft.count > 0) {
+                this.fileLog(`CLEARED ${deletedDraft.count} DRAFT matches to re-run best assignment.`);
             }
 
-            const matchFound = await this.processTransaction(tx);
-            if (matchFound) matchCount++;
-        }
+            const usedDteIds = new Set<string>();
+            const usedTxIds = new Set<string>();
+            const usedPaymentIds = new Set<string>();
+            let matchCount = 0;
 
-        this.logger.log(`Cycle completed. Created ${matchCount} matches.`);
-        return { processed: pendingTransactions.length, matches: matchCount };
+            // Recolectar todos los pares (TX, DTE) candidatos con diferencia de días para priorizar por fecha cercana
+            type Pair = { tx: BankTransaction; dte: DTE & { provider?: { name: string } | null }; score: number; reason: string; strategyName: string; dateDiffDays: number };
+            const allPairs: Pair[] = [];
+            for (const tx of pendingTransactions) {
+                const result = await this.getBestCandidatesForTransaction(tx, allRecentPayments, allUnpaidDtes);
+                if (!result || result.candidates.length === 0) continue;
+                const strategyName = result.strategyName;
+                for (const c of result.candidates) {
+                    if (!c.dte) continue;
+                    const dateDiffDays = Math.abs(Math.round((new Date(tx.date).getTime() - new Date(c.dte.issuedDate).getTime()) / 86400000));
+                    allPairs.push({
+                        tx,
+                        dte: c.dte,
+                        score: c.score,
+                        reason: c.reason,
+                        strategyName,
+                        dateDiffDays,
+                    });
+                }
+            }
+
+            // Ordenar por proximidad de fecha (menor dateDiff primero) y luego por score descendente
+            allPairs.sort((a, b) => {
+                if (a.dateDiffDays !== b.dateDiffDays) return a.dateDiffDays - b.dateDiffDays;
+                return b.score - a.score;
+            });
+
+            // Asignar en ese orden: el par más cercano en fecha tiene prioridad (no bloquea un match mejor)
+            // Todos los matches quedan en DRAFT hasta confirmación manual del usuario
+            for (const pair of allPairs) {
+                if (usedTxIds.has(pair.tx.id) || usedDteIds.has(pair.dte.id)) continue;
+                const candidate = { dte: pair.dte, score: pair.score, reason: pair.reason };
+                if (pair.score >= 0.55) {
+                    await this.createMatch(pair.tx, candidate, pair.strategyName, MatchStatus.DRAFT);
+                    matchCount++;
+                    usedTxIds.add(pair.tx.id);
+                    usedDteIds.add(pair.dte.id);
+                    this.fileLog(`DRAFT (${pair.dateDiffDays}d): ${pair.tx.description} | ${pair.tx.amount} -> ${pair.reason}`);
+                }
+            }
+
+            // Segunda pasada: matches contra Payment (1:1, sin conflicto de “quién se queda el DTE”)
+            for (const tx of pendingTransactions) {
+                if (usedTxIds.has(tx.id)) continue;
+                const currentDtes = allUnpaidDtes.filter(d => !usedDteIds.has(d.id));
+                const result = await this.tryMatchTransaction(tx, allRecentPayments, currentDtes);
+                if (result) {
+                    this.fileLog(`MATCH (2ª pasada): ${tx.description} | ${tx.amount} -> ${result.reason}`);
+                    matchCount++;
+                    usedTxIds.add(tx.id);
+                    if (result.dteId) usedDteIds.add(result.dteId);
+                    if (result.paymentId) usedPaymentIds.add(result.paymentId);
+                }
+            }
+
+            // === Segunda pasada: SumMatchStrategy (N:1) === (mismo rango de fechas que la primera, con visibility)
+            let suggestionsCount = 0;
+            let sumAutoConfirmed = 0;
+            try {
+                const sumWhere: any = {
+                    status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
+                };
+                if (minDate || toDate) {
+                    sumWhere.date = {};
+                    if (minDate) sumWhere.date.gte = minDate;
+                    if (toDate) sumWhere.date.lte = new Date(toDate);
+                }
+                const remainingTx = await this.prisma.bankTransaction.findMany({
+                    where: sumWhere,
+                });
+                const remainingDtes = await this.prisma.dTE.findMany({
+                    where: { paymentStatus: 'UNPAID' },
+                    include: { provider: { select: { name: true } } },
+                });
+                const suggestions = await this.sumMatchStrategy.findSumSuggestions(remainingTx, remainingDtes);
+                const sumResult = await this.sumMatchStrategy.persistSuggestions(suggestions);
+                suggestionsCount = sumResult.suggestions;
+                sumAutoConfirmed = sumResult.autoConfirmed;
+                this.fileLog(`SUM MATCH: ${sumAutoConfirmed} auto-confirmed, ${suggestionsCount} suggestions created.`);
+            } catch (sumErr) {
+                this.fileLog(`SUM STRATEGY ERROR: ${sumErr.message}`);
+                this.logger.warn(`SumMatchStrategy error: ${sumErr.message}`);
+            }
+
+            // === Tercera pasada: SplitPaymentMatch (1:N) === (mismo rango de fechas)
+            let splitSuggestions = 0;
+            let splitAutoConfirmed = 0;
+            try {
+                const splitWhere: any = {
+                    status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
+                };
+                if (minDate || toDate) {
+                    splitWhere.date = {};
+                    if (minDate) splitWhere.date.gte = minDate;
+                    if (toDate) splitWhere.date.lte = new Date(toDate);
+                }
+                const remainingTx2 = await this.prisma.bankTransaction.findMany({
+                    where: splitWhere,
+                });
+                const remainingDtes2 = await this.prisma.dTE.findMany({
+                    where: { paymentStatus: 'UNPAID' },
+                    include: { provider: { select: { name: true } } },
+                });
+                const splits = await this.splitPaymentStrategy.findSplitPaymentSuggestions(remainingTx2, remainingDtes2);
+                const splitResult = await this.splitPaymentStrategy.persistSuggestions(splits);
+                splitSuggestions = splitResult.suggestions;
+                splitAutoConfirmed = splitResult.autoConfirmed;
+                this.fileLog(`SPLIT PAYMENT: ${splitAutoConfirmed} auto-confirmed, ${splitSuggestions} suggestions created.`);
+            } catch (splitErr) {
+                this.fileLog(`SPLIT STRATEGY ERROR: ${splitErr.message}`);
+                this.logger.warn(`SplitPaymentMatchStrategy error: ${splitErr.message}`);
+            }
+
+            const totalAutoMatches = matchCount + sumAutoConfirmed + splitAutoConfirmed;
+            const totalSuggestions = suggestionsCount + splitSuggestions;
+            this.fileLog(`COMPLETED: ${totalAutoMatches} total auto-matches, ${totalSuggestions} suggestions.`);
+            return {
+                processed: pendingTransactions.length,
+                matches: totalAutoMatches,
+                suggestions: totalSuggestions,
+                detail: { exact: matchCount, sumAuto: sumAutoConfirmed, splitAuto: splitAutoConfirmed, sumSuggestions: suggestionsCount, splitSuggestions },
+            };
+        } catch (err) {
+            this.fileLog(`ERROR: ${err.message}`);
+            this.logger.error(`Cycle failed: ${err.message}`, err.stack);
+            throw err;
+        } finally {
+            this.isRunning = false;
+        }
     }
 
     async getIngestedFiles() {
@@ -108,7 +294,7 @@ export class ConciliacionService {
             if (tx.date < g.minDate) g.minDate = tx.date;
             if (tx.date > g.maxDate) g.maxDate = tx.date;
             g.totalAmount += tx.amount;
-            if (tx.status === 'PENDING') g.pendingCount++;
+            if (tx.status === 'PENDING' || tx.status === 'PARTIALLY_MATCHED') g.pendingCount++;
         }
 
         return Object.values(groups);
@@ -128,7 +314,7 @@ export class ConciliacionService {
         return this.prisma.bankTransaction.findMany({
             where,
             take: limit,
-            orderBy: { date: 'desc' },
+            orderBy: { date: 'asc' },
             include: {
                 matches: {
                     include: {
@@ -142,96 +328,136 @@ export class ConciliacionService {
         });
     }
 
-    private async processTransaction(tx: BankTransaction): Promise<boolean> {
-        // 2. Fetch relevant candidates (Optimization: Search window of +/- 120 days ~4 months)
-        // User reports payments can be delayed by "months".
-        const searchWindowDays = 120;
-        const dateStart = new Date(tx.date);
-        dateStart.setDate(dateStart.getDate() - searchWindowDays);
-        const dateEnd = new Date(tx.date);
-        dateEnd.setDate(dateEnd.getDate() + searchWindowDays);
-
-        const [payments, dtes] = await Promise.all([
-            this.prisma.payment.findMany({
-                where: {
-                    paymentDate: { gte: dateStart, lte: dateEnd },
-                    // OPTIONAL: status: { not: 'RECONCILED' } if we tracked that on Payment
-                    // For now, we assume we check against all, but ideally we filter out already fully matched ones.
-                    // Since Payment -> Match is 1:N? No, Match -> Payment is N:1.
-                },
-            }),
-            this.prisma.dTE.findMany({
-                where: {
-                    issuedDate: { gte: dateStart, lte: dateEnd },
-                    // FIX: Asegurar que el DTE no haya sido conciliado previamente
-                    paymentStatus: 'UNPAID', // Solo facturas pendientes de pago
-                    // Opcional: siiStatus: { not: 'MATCHED' } si usas ese campo
-                },
-            }),
-        ]);
-
-        // 3. Apply Strategies
+    private async tryMatchTransaction(
+        tx: BankTransaction,
+        payments: Payment[],
+        dtes: (DTE & { provider?: { name: string } | null })[]
+    ): Promise<{ dteId?: string, paymentId?: string, reason: string } | null> {
         for (const strategy of this.strategies) {
             const result = await strategy.findMatches(tx, payments, dtes);
+            if (!result || result.candidates.length === 0) continue;
 
-            if (result && result.candidates.length > 0) {
-                // Take the best candidate (highest score)
-                const bestCandidate = result.candidates[0]; // Assumes strategy sorted them
+            const best = result.candidates[0];
 
-                await this.createMatch(tx, bestCandidate, strategy.name);
-                return true; // Stop after first successful strategy match
+            // Todos los matches requieren confirmación manual → siempre DRAFT
+            if (best.score >= 0.55) {
+                await this.createMatch(tx, best, strategy.name, MatchStatus.DRAFT);
+                this.fileLog(`DRAFT: ${tx.description} | ${tx.amount} -> ${best.reason} (score: ${best.score})`);
+
+                // If there are alternatives, save them as suggestions too
+                if (result.candidates.length > 1) {
+                    await this.createSuggestionFromCandidates(tx, result.candidates.slice(1), strategy.name);
+                }
+                return {
+                    dteId: best.dte?.id,
+                    paymentId: best.payment?.id,
+                    reason: `${strategy.name} [DRAFT]: ${best.reason}`
+                };
             }
         }
+        return null;
+    }
 
-        return false;
+    /**
+     * Devuelve los candidatos (solo DTE) de la primera estrategia que encuentre algo.
+     * No persiste ningún match; se usa para construir pares (TX, DTE) y ordenar por fecha.
+     */
+    private async getBestCandidatesForTransaction(
+        tx: BankTransaction,
+        payments: Payment[],
+        dtes: (DTE & { provider?: { name: string } | null })[],
+    ): Promise<{ candidates: { dte?: any; score: number; reason: string }[]; strategyName: string } | null> {
+        for (const strategy of this.strategies) {
+            const result = await strategy.findMatches(tx, payments, dtes);
+            if (!result || result.candidates.length === 0) continue;
+            const dteCandidates = result.candidates.filter(c => c.dte);
+            if (dteCandidates.length === 0) continue;
+            return { candidates: dteCandidates, strategyName: strategy.name };
+        }
+        return null;
+    }
+
+    private async createSuggestionFromCandidates(
+        tx: BankTransaction,
+        candidates: { payment?: any; dte?: any; score: number; reason: string }[],
+        strategyName: string
+    ) {
+        for (const candidate of candidates.slice(0, 5)) {
+            if (!candidate.dte) continue;
+
+            try {
+                const existing = await this.prisma.matchSuggestion.findFirst({
+                    where: {
+                        dteId: candidate.dte.id,
+                        transactionIds: { equals: [tx.id] },
+                        status: 'PENDING',
+                    }
+                });
+                if (existing) continue;
+
+                await this.prisma.matchSuggestion.create({
+                    data: {
+                        type: 'SCORED',
+                        dteId: candidate.dte.id,
+                        transactionIds: [tx.id],
+                        totalAmount: Math.abs(tx.amount),
+                        confidence: candidate.score,
+                        status: 'PENDING',
+                        reason: `${strategyName}: ${candidate.reason}`,
+                    }
+                });
+            } catch (err) {
+                this.logger.warn(`Failed to create suggestion: ${err.message}`);
+            }
+        }
     }
 
     private async createMatch(
         tx: BankTransaction,
         candidate: { payment?: any; dte?: any; score: number; reason: string },
-        strategyName: string
+        strategyName: string,
+        status: MatchStatus = MatchStatus.CONFIRMED,
     ) {
-        // STRICT RULE: Only accept EXACT matches (Score 1.0)
-        // No drafts, no guesses.
-
-        if (candidate.score < 1.0) {
-            this.logger.debug(`Skipping match candidate for Tx ${tx.id} - Score ${candidate.score} too low`);
-            return;
-        }
-
-        const status = MatchStatus.CONFIRMED;
-
-        // DB Transaction to ensure consistency
         await this.prisma.$transaction(async (prisma) => {
-            // 1. Create the Match Record
+            const freshTx = await prisma.bankTransaction.findUnique({
+                where: { id: tx.id },
+                select: { status: true }
+            });
+            if (freshTx?.status === 'MATCHED') return;
+
             await prisma.reconciliationMatch.create({
                 data: {
                     transactionId: tx.id,
                     paymentId: candidate.payment?.id,
                     dteId: candidate.dte?.id,
                     origin: 'AUTOMATIC',
-                    status: status,
+                    status,
                     confidence: candidate.score,
                     ruleApplied: strategyName + ` - ${candidate.reason}`,
                 },
             });
 
-            // 2. Update Transaction Status
-            // Since it is CONFIRMED, mark transaction as MATCHED immediately.
-            await prisma.bankTransaction.update({
-                where: { id: tx.id },
-                data: { status: TransactionStatus.MATCHED },
-            });
+            if (status === MatchStatus.CONFIRMED) {
+                await prisma.bankTransaction.update({
+                    where: { id: tx.id },
+                    data: { status: TransactionStatus.MATCHED },
+                });
 
-            // 3. Update DTE Status if applicable
-            if (candidate.dte) {
-                // Mark DTE as PAID or MATCHED?
-                // For now, let's simplisticly assume MATCHED implies payment covered.
-                // This might need refinement for partial payments, but user wants EXACT matches now.
+                if (candidate.dte) {
+                    await prisma.dTE.update({
+                        where: { id: candidate.dte.id },
+                        data: { paymentStatus: 'PAID', outstandingAmount: 0 }
+                    });
+                }
+            } else {
+                await prisma.bankTransaction.update({
+                    where: { id: tx.id },
+                    data: { status: TransactionStatus.PARTIALLY_MATCHED },
+                });
             }
         });
 
-        this.logger.log(`Exact Match CONFIRMED for Tx ${tx.id}`);
+        this.logger.log(`Match ${status} for Tx ${tx.id} (score: ${candidate.score})`);
     }
 
     async cleanAllMatches() {

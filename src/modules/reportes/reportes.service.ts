@@ -1,21 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { DataVisibilityService } from '../../common/services/data-visibility.service';
 
 @Injectable()
 export class ReportesService {
     private readonly logger = new Logger(ReportesService.name);
 
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly visibility: DataVisibilityService,
+    ) { }
 
     /**
      * Reporte de deuda por proveedor
      */
     async getDeudaPorProveedor(fromDate?: string, toDate?: string) {
         const where: any = {};
+        const minDate = this.visibility.applyMinDate(
+            fromDate ? new Date(fromDate) : undefined,
+        );
 
-        if (fromDate || toDate) {
+        if (minDate || toDate) {
             where.issuedDate = {};
-            if (fromDate) where.issuedDate.gte = new Date(fromDate);
+            if (minDate) where.issuedDate.gte = minDate;
             if (toDate) where.issuedDate.lte = new Date(toDate);
         }
 
@@ -93,10 +100,13 @@ export class ReportesService {
      */
     async getFlujoCaja(fromDate?: string, toDate?: string) {
         const where: any = {};
+        const minDate = this.visibility.applyMinDate(
+            fromDate ? new Date(fromDate) : undefined,
+        );
 
-        if (fromDate || toDate) {
+        if (minDate || toDate) {
             where.date = {};
-            if (fromDate) where.date.gte = new Date(fromDate);
+            if (minDate) where.date.gte = minDate;
             if (toDate) where.date.lte = new Date(toDate);
         }
 
@@ -180,6 +190,7 @@ export class ReportesService {
     async getFacturasVencidas() {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const minDate = this.visibility.getVisibleFromDate();
 
         const overdueInvoices = await this.prisma.dTE.findMany({
             where: {
@@ -188,6 +199,7 @@ export class ReportesService {
                 },
                 issuedDate: {
                     lte: thirtyDaysAgo,
+                    ...(minDate && { gte: minDate }),
                 },
             },
             include: {

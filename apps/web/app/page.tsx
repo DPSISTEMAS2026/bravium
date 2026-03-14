@@ -1,17 +1,22 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
 import {
-    ChartBarIcon,
+    ArrowTrendingUpIcon,
+    ArrowTrendingDownIcon,
+    CheckCircleIcon,
+    ClockIcon,
     CurrencyDollarIcon,
     DocumentTextIcon,
     UserGroupIcon,
-    ArrowTrendingUpIcon,
-    ArrowTrendingDownIcon,
+    ChartBarIcon,
     ExclamationTriangleIcon,
-    CheckCircleIcon,
+    SparklesIcon,
+    ArrowPathIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { getApiUrl } from '../lib/api';
 
 interface DashboardStats {
     proveedores: {
@@ -50,35 +55,38 @@ export default function HomePage() {
     const loadDashboardData = async () => {
         try {
             setLoading(true);
-            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+            const API_URL = getApiUrl();
 
-            // Cargar datos en paralelo
+            // Cargar datos reales (resumen DTEs con rango que incluya 2025 y 2026 para ver datos)
             const [proveedoresRes, dtesRes, transactionsRes] = await Promise.all([
                 fetch(`${API_URL}/proveedores`),
-                fetch(`${API_URL}/dtes/summary?fromDate=2026-01-01&toDate=2026-01-31`),
-                fetch(`${API_URL}/transactions/summary?fromDate=2026-01-01&toDate=2026-01-31`),
+                fetch(`${API_URL}/dtes/summary?fromDate=2025-01-01&toDate=2026-12-31`),
+                fetch(`${API_URL}/transactions/summary`),
             ]);
 
-            const [proveedores, dtesSummary, txSummary] = await Promise.all([
+            const [proveedoresPayload, dtesSummary, txSummary] = await Promise.all([
                 proveedoresRes.json(),
                 dtesRes.json(),
                 transactionsRes.json(),
             ]);
 
-            // Calcular estadísticas
-            const proveedoresConDeuda = proveedores.filter((p: any) => p.totalDebt > 0);
-            const deudaTotal = proveedores.reduce((sum: number, p: any) => sum + p.totalDebt, 0);
+            // API devuelve { data, total, page, limit, totalPages }; usar data para cálculos
+            const proveedoresList = Array.isArray(proveedoresPayload) ? proveedoresPayload : (proveedoresPayload?.data ?? []);
+            const proveedoresTotal = typeof proveedoresPayload?.total === 'number' ? proveedoresPayload.total : proveedoresList.length;
+
+            const proveedoresConDeuda = proveedoresList.filter((p: any) => p.totalDebt > 0);
+            const deudaTotal = proveedoresList.reduce((sum: number, p: any) => sum + p.totalDebt, 0);
 
             setStats({
                 proveedores: {
-                    total: proveedores.length,
+                    total: proveedoresTotal,
                     conDeuda: proveedoresConDeuda.length,
                     deudaTotal,
                 },
                 facturas: {
                     total: dtesSummary.total || 0,
                     pendientes: dtesSummary.byStatus?.UNPAID || 0,
-                    vencidas: 0, // Calcularemos esto después
+                    vencidas: 0,
                     montoTotal: dtesSummary.totalAmount || 0,
                     montoPendiente: dtesSummary.totalOutstanding || 0,
                 },
@@ -113,8 +121,8 @@ export default function HomePage() {
         return (
             <div className="flex items-center justify-center h-96">
                 <div className="text-center">
-                    <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-slate-600 font-medium">Cargando dashboard...</p>
+                    <ArrowPathIcon className="h-12 w-12 text-indigo-500 animate-spin mx-auto mb-4" />
+                    <p className="text-slate-600 font-medium tracking-tight uppercase text-xs">Sincronizando Dashboard...</p>
                 </div>
             </div>
         );
@@ -123,7 +131,7 @@ export default function HomePage() {
     if (!stats) {
         return (
             <div className="bg-red-50 border border-red-200 rounded-xl p-6">
-                <p className="text-red-800 font-semibold">Error al cargar el dashboard</p>
+                <p className="text-red-800 font-semibold">Error al conectar con la API de Bravium</p>
             </div>
         );
     }
@@ -131,187 +139,127 @@ export default function HomePage() {
     return (
         <div className="space-y-8">
             {/* Header */}
-            <div>
-                <h1 className="text-3xl font-bold gradient-text mb-2">
-                    Dashboard Financiero
-                </h1>
-                <p className="text-slate-600">
-                    Resumen ejecutivo de tu gestión financiera - Enero 2026
-                </p>
+            <div className="flex justify-between items-end">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900 mb-1">
+                        Dashboard Financiero
+                    </h1>
+                    <p className="text-slate-500 text-sm font-medium">
+                        Resumen ejecutivo de gestión empresarial en tiempo real
+                    </p>
+                </div>
+                <button onClick={loadDashboardData} className="btn-ghost flex items-center space-x-2">
+                    <ArrowPathIcon className="h-4 w-4" />
+                    <span>Actualizar</span>
+                </button>
             </div>
 
             {/* Main Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* Proveedores */}
-                <Link href="/proveedores" className="stat-card bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 hover:shadow-2xl hover:scale-105 transition-all duration-300">
+                <Link href="/proveedores" className="card-glass p-6 hover:shadow-xl transition-all group">
                     <div className="flex items-center justify-between mb-4">
-                        <UserGroupIcon className="h-10 w-10 text-blue-600" />
-                        <span className="text-xs font-bold text-blue-700 bg-blue-200 px-3 py-1 rounded-full">
-                            {stats.proveedores.conDeuda} con deuda
+                        <div className="p-3 bg-slate-100 rounded-xl group-hover:bg-indigo-50 transition-colors">
+                            <UserGroupIcon className="h-6 w-6 text-slate-600 group-hover:text-indigo-600" />
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                            {stats.proveedores.conDeuda} ACTIVOS
                         </span>
                     </div>
-                    <div className="text-4xl font-bold text-blue-900 mb-2">
-                        {stats.proveedores.total}
-                    </div>
-                    <div className="text-sm text-blue-700 font-medium mb-3">Proveedores Activos</div>
-                    <div className="text-xs text-blue-600">
-                        Deuda total: {formatCurrency(stats.proveedores.deudaTotal)}
-                    </div>
+                    <div className="text-4xl font-bold text-slate-900 mb-1">{stats.proveedores.total}</div>
+                    <div className="text-xs text-slate-500 font-bold uppercase tracking-widest">Proveedores</div>
+                    <div className="mt-4 text-[11px] text-slate-400 font-medium">Deuda: {formatCurrency(stats.proveedores.deudaTotal)}</div>
                 </Link>
 
                 {/* Facturas */}
-                <Link href="/facturas" className="stat-card bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-200 hover:shadow-2xl hover:scale-105 transition-all duration-300">
+                <Link href="/facturas" className="card-glass p-6 hover:shadow-xl transition-all group">
                     <div className="flex items-center justify-between mb-4">
-                        <DocumentTextIcon className="h-10 w-10 text-purple-600" />
-                        <span className="text-xs font-bold text-purple-700 bg-purple-200 px-3 py-1 rounded-full">
-                            {stats.facturas.pendientes} pendientes
+                        <div className="p-3 bg-slate-100 rounded-xl group-hover:bg-violet-50 transition-colors">
+                            <DocumentTextIcon className="h-6 w-6 text-slate-600 group-hover:text-violet-600" />
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                            {stats.facturas.pendientes} PENDIENTES
                         </span>
                     </div>
-                    <div className="text-4xl font-bold text-purple-900 mb-2">
-                        {stats.facturas.total}
-                    </div>
-                    <div className="text-sm text-purple-700 font-medium mb-3">Facturas (DTEs)</div>
-                    <div className="text-xs text-purple-600">
-                        Por pagar: {formatCurrency(stats.facturas.montoPendiente)}
-                    </div>
+                    <div className="text-4xl font-bold text-slate-900 mb-1">{stats.facturas.total}</div>
+                    <div className="text-xs text-slate-500 font-bold uppercase tracking-widest">Facturas (DTE)</div>
+                    <div className="mt-4 text-[11px] text-slate-400 font-medium">Total: {formatCurrency(stats.facturas.montoPendiente)}</div>
                 </Link>
 
                 {/* Transacciones */}
-                <Link href="/conciliacion" className="stat-card bg-gradient-to-br from-emerald-50 to-emerald-100 border-2 border-emerald-200 hover:shadow-2xl hover:scale-105 transition-all duration-300">
+                <Link href="/conciliacion" className="card-glass p-6 hover:shadow-xl transition-all group">
                     <div className="flex items-center justify-between mb-4">
-                        <ChartBarIcon className="h-10 w-10 text-emerald-600" />
-                        <span className="text-xs font-bold text-emerald-700 bg-emerald-200 px-3 py-1 rounded-full">
-                            {stats.transacciones.tasaConciliacion.toFixed(0)}% match
+                        <div className="p-3 bg-slate-100 rounded-xl group-hover:bg-emerald-50 transition-colors">
+                            <ChartBarIcon className="h-6 w-6 text-slate-600 group-hover:text-emerald-600" />
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
+                            {stats.transacciones.tasaConciliacion.toFixed(0)}% MATCH
                         </span>
                     </div>
-                    <div className="text-4xl font-bold text-emerald-900 mb-2">
-                        {stats.transacciones.total}
-                    </div>
-                    <div className="text-sm text-emerald-700 font-medium mb-3">Transacciones</div>
-                    <div className="text-xs text-emerald-600">
-                        {stats.transacciones.conciliadas} conciliadas
-                    </div>
+                    <div className="text-4xl font-bold text-slate-900 mb-1">{stats.transacciones.total}</div>
+                    <div className="text-xs text-slate-500 font-bold uppercase tracking-widest">Transacciones</div>
+                    <div className="mt-4 text-[11px] text-slate-400 font-medium">{stats.transacciones.conciliadas} conciliadas</div>
                 </Link>
 
                 {/* Flujo Neto */}
-                <div className={`stat-card bg-gradient-to-br ${stats.flujo.neto >= 0
-                    ? 'from-green-50 to-green-100 border-2 border-green-200'
-                    : 'from-red-50 to-red-100 border-2 border-red-200'
-                    } hover:shadow-2xl hover:scale-105 transition-all duration-300`}>
+                <div className="card-glass p-6 hover:shadow-xl transition-all">
                     <div className="flex items-center justify-between mb-4">
-                        <CurrencyDollarIcon className={`h-10 w-10 ${stats.flujo.neto >= 0 ? 'text-green-600' : 'text-red-600'
-                            }`} />
+                        <div className={`p-3 rounded-xl ${stats.flujo.neto >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                            <CurrencyDollarIcon className="h-6 w-6" />
+                        </div>
                         {stats.flujo.neto >= 0 ? (
-                            <ArrowTrendingUpIcon className="h-6 w-6 text-green-600" />
+                            <ArrowTrendingUpIcon className="h-4 w-4 text-emerald-600" />
                         ) : (
-                            <ArrowTrendingDownIcon className="h-6 w-6 text-red-600" />
+                            <ArrowTrendingDownIcon className="h-4 w-4 text-red-600" />
                         )}
                     </div>
-                    <div className={`text-3xl font-bold mb-2 ${stats.flujo.neto >= 0 ? 'text-green-900' : 'text-red-900'
-                        }`}>
+                    <div className={`text-3xl font-bold mb-1 ${stats.flujo.neto >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                         {formatCurrency(Math.abs(stats.flujo.neto))}
                     </div>
-                    <div className={`text-sm font-medium mb-3 ${stats.flujo.neto >= 0 ? 'text-green-700' : 'text-red-700'
-                        }`}>
-                        Flujo Neto
-                    </div>
-                    <div className={`text-xs ${stats.flujo.neto >= 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                        {stats.flujo.neto >= 0 ? 'Superávit' : 'Déficit'}
+                    <div className="text-xs text-slate-500 font-bold uppercase tracking-widest">Flujo Neto</div>
+                    <div className={`mt-4 text-[10px] font-bold uppercase tracking-tighter ${stats.flujo.neto >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {stats.flujo.neto >= 0 ? 'Estructura Saludable' : 'Revisar Egresos'}
                     </div>
                 </div>
             </div>
 
             {/* Quick Actions */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Link
-                    href="/conciliacion"
-                    className="card p-6 hover:shadow-2xl group"
-                >
+                <Link href="/conciliacion" className="card p-6 hover:shadow-lg transition-all border border-slate-200 group">
                     <div className="flex items-center space-x-4">
-                        <div className="p-3 bg-blue-100 rounded-xl group-hover:bg-blue-200 transition-colors">
-                            <CheckCircleIcon className="h-8 w-8 text-blue-600" />
+                        <div className="p-3 bg-indigo-50 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-all text-indigo-600">
+                            <SparklesIcon className="h-6 w-6" />
                         </div>
-                        <div className="flex-1">
-                            <h3 className="font-semibold text-slate-900 mb-1">
-                                Conciliación Bancaria
-                            </h3>
-                            <p className="text-sm text-slate-600">
-                                {stats.transacciones.pendientes} transacciones pendientes
-                            </p>
+                        <div>
+                            <h3 className="font-bold text-slate-900">Auto-Match</h3>
+                            <p className="text-xs text-slate-500">Conciliación inteligente masiva</p>
                         </div>
                     </div>
                 </Link>
 
-                <Link
-                    href="/reportes"
-                    className="card p-6 hover:shadow-2xl group"
-                >
+                <Link href="/facturas" className="card p-6 hover:shadow-lg transition-all border border-slate-200 group">
                     <div className="flex items-center space-x-4">
-                        <div className="p-3 bg-purple-100 rounded-xl group-hover:bg-purple-200 transition-colors">
-                            <ChartBarIcon className="h-8 w-8 text-purple-600" />
+                        <div className="p-3 bg-violet-50 rounded-xl group-hover:bg-violet-600 group-hover:text-white transition-all text-violet-600">
+                            <DocumentTextIcon className="h-6 w-6" />
                         </div>
-                        <div className="flex-1">
-                            <h3 className="font-semibold text-slate-900 mb-1">
-                                Reportes Financieros
-                            </h3>
-                            <p className="text-sm text-slate-600">
-                                Análisis y exportación de datos
-                            </p>
+                        <div>
+                            <h3 className="font-bold text-slate-900">Facturación</h3>
+                            <p className="text-xs text-slate-500">Gestión DTE y estados de pago</p>
                         </div>
                     </div>
                 </Link>
 
-                <Link
-                    href="/proveedores"
-                    className="card p-6 hover:shadow-2xl group"
-                >
+                <Link href="/reportes" className="card p-6 hover:shadow-lg transition-all border border-slate-200 group">
                     <div className="flex items-center space-x-4">
-                        <div className="p-3 bg-amber-100 rounded-xl group-hover:bg-amber-200 transition-colors">
-                            <ExclamationTriangleIcon className="h-8 w-8 text-amber-600" />
+                        <div className="p-3 bg-slate-50 rounded-xl group-hover:bg-slate-900 group-hover:text-white transition-all text-slate-600">
+                            <ChartBarIcon className="h-6 w-6" />
                         </div>
-                        <div className="flex-1">
-                            <h3 className="font-semibold text-slate-900 mb-1">
-                                Gestión de Deuda
-                            </h3>
-                            <p className="text-sm text-slate-600">
-                                {stats.proveedores.conDeuda} proveedores con saldo pendiente
-                            </p>
+                        <div>
+                            <h3 className="font-bold text-slate-900">Inteligencia</h3>
+                            <p className="text-xs text-slate-500">Reportes y KPIs financieros</p>
                         </div>
                     </div>
                 </Link>
-            </div>
-
-            {/* Info Banner */}
-            <div className="card p-6 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200">
-                <div className="flex items-start space-x-4">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                        <DocumentTextIcon className="h-6 w-6 text-blue-600" />
-                    </div>
-                    <div className="flex-1">
-                        <h3 className="font-semibold text-slate-900 mb-2">
-                            Sistema de Conciliación Inteligente
-                        </h3>
-                        <p className="text-sm text-slate-600 mb-3">
-                            BRAVIUM integra automáticamente tus facturas desde LibreDTE con las transacciones bancarias de tus cartolas,
-                            facilitando la conciliación y el control financiero en tiempo real.
-                        </p>
-                        <div className="flex items-center space-x-4 text-xs text-slate-500">
-                            <span className="flex items-center">
-                                <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
-                                Sincronización automática con LibreDTE
-                            </span>
-                            <span className="flex items-center">
-                                <div className="w-2 h-2 rounded-full bg-blue-500 mr-2"></div>
-                                Procesamiento de cartolas bancarias
-                            </span>
-                            <span className="flex items-center">
-                                <div className="w-2 h-2 rounded-full bg-purple-500 mr-2"></div>
-                                Matching automático de pagos
-                            </span>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     );

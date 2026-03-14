@@ -6,11 +6,14 @@ import { LibreDteService } from './services/libredte.service';
 import { DriveIngestService } from './services/drive-ingest.service';
 import { PrismaModule } from '../../common/prisma/prisma.module';
 import { ContabilidadModule } from '../../modules/contabilidad/contabilidad.module';
+import { BancosModule } from '../bancos/bancos.module';
+import { OpenAiService } from './services/openai.service';
+import { GoogleDriveService } from './services/google-drive.service';
 
 @Module({
-    imports: [PrismaModule, ContabilidadModule],
+    imports: [PrismaModule, ContabilidadModule, BancosModule],
     controllers: [AutomatedIngestController, IngestionController],
-    providers: [ExcelLegacyService, LibreDteService, DriveIngestService],
-    exports: [ExcelLegacyService, LibreDteService, DriveIngestService],
+    providers: [ExcelLegacyService, LibreDteService, DriveIngestService, OpenAiService, GoogleDriveService],
+    exports: [ExcelLegacyService, LibreDteService, DriveIngestService, OpenAiService, GoogleDriveService],
 })
 export class IngestionModule { }

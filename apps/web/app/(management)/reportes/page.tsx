@@ -1,12 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import useSWR from 'swr';
+import Link from 'next/link';
 import {
     ChartBarIcon,
     ArrowDownTrayIcon,
     CurrencyDollarIcon,
     ExclamationTriangleIcon,
+    ArrowPathIcon,
+    ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
+import { getApiUrl } from '@/lib/api';
 
 interface DeudaProveedor {
     provider: {
@@ -31,38 +36,24 @@ interface FlujoCajaMonth {
     matchRate: number;
 }
 
+/** Período por defecto para reportes e informes: solo 2026. */
+const REPORT_YEAR = 2026;
+const REPORT_FROM = `${REPORT_YEAR}-01-01`;
+const REPORT_TO = `${REPORT_YEAR}-12-31`;
+
 export default function ReportesPage() {
-    const [deudaProveedores, setDeudaProveedores] = useState<DeudaProveedor[]>([]);
-    const [flujoCaja, setFlujoCaja] = useState<FlujoCajaMonth[]>([]);
-    const [loading, setLoading] = useState(true);
+    const API_URL = getApiUrl();
 
-    useEffect(() => {
-        loadReports();
-    }, []);
+    const { data: deudaData, isLoading: deudaLoading } = useSWR(
+        `${API_URL}/reportes/deuda-proveedores?fromDate=${REPORT_FROM}&toDate=${REPORT_TO}`
+    );
+    const { data: flujoData, isLoading: flujoLoading } = useSWR(
+        `${API_URL}/reportes/flujo-caja?fromDate=${REPORT_FROM}&toDate=${REPORT_TO}`
+    );
 
-    const loadReports = async () => {
-        try {
-            setLoading(true);
-            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-            const [deudaRes, flujoRes] = await Promise.all([
-                fetch(`${API_URL}/reportes/deuda-proveedores?fromDate=2026-01-01&toDate=2026-01-31`),
-                fetch(`${API_URL}/reportes/flujo-caja?fromDate=2026-01-01&toDate=2026-01-31`),
-            ]);
-
-            const [deudaData, flujoData] = await Promise.all([
-                deudaRes.json(),
-                flujoRes.json(),
-            ]);
-
-            setDeudaProveedores(deudaData.providers || []);
-            setFlujoCaja(flujoData.monthly || []);
-        } catch (error) {
-            console.error('Error loading reports:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const deudaProveedores: DeudaProveedor[] = deudaData?.providers || [];
+    const flujoCaja: FlujoCajaMonth[] = flujoData?.monthly || [];
+    const loading = deudaLoading || flujoLoading;
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('es-CL', {
@@ -74,9 +65,8 @@ export default function ReportesPage() {
 
     const exportToExcel = async () => {
         try {
-            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
             const response = await fetch(
-                `${API_URL}/conciliacion/export/excel?type=all&fromDate=2026-01-01&toDate=2026-01-31`
+                `${getApiUrl()}/conciliacion/export/excel?type=all`
             );
 
             if (!response.ok) throw new Error('Error al exportar');
@@ -100,8 +90,8 @@ export default function ReportesPage() {
         return (
             <div className="flex items-center justify-center h-96">
                 <div className="text-center">
-                    <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-slate-600 font-medium">Cargando reportes...</p>
+                    <ArrowPathIcon className="h-12 w-12 text-indigo-500 animate-spin mx-auto mb-4" />
+                    <p className="text-slate-600 font-medium tracking-tight uppercase text-xs">Generando Reportes...</p>
                 </div>
             </div>
         );
@@ -115,11 +105,11 @@ export default function ReportesPage() {
             {/* Header */}
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-bold gradient-text">
-                        Reportes Financieros
+                    <h1 className="text-3xl font-bold text-slate-900">
+                        Reportes e Inteligencia
                     </h1>
                     <p className="text-slate-600 mt-1">
-                        Análisis y exportación de datos - Enero 2026
+                        Análisis y exportación de datos — solo {REPORT_YEAR} (LibreDTE vs cartolas)
                     </p>
                 </div>
                 <button
@@ -206,62 +196,86 @@ export default function ReportesPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {deudaProveedores.slice(0, 20).map((item, idx) => (
-                                <tr
-                                    key={item.provider.id}
-                                    className="hover:bg-slate-50 transition-colors"
-                                >
-                                    <td className="px-6 py-4">
-                                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
-                                            {idx + 1}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="font-semibold text-slate-900">
-                                            {item.provider.name}
-                                        </div>
-                                        <div className="text-xs text-slate-500 font-mono">
-                                            {item.provider.rut}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-right font-medium text-slate-700">
-                                        {formatCurrency(item.totalInvoiced)}
-                                    </td>
-                                    <td className="px-6 py-4 text-right text-green-700 font-semibold">
-                                        {formatCurrency(item.paidAmount)}
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <span className="font-bold text-red-600 text-lg">
-                                            {formatCurrency(item.totalOutstanding)}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <div className="flex items-center justify-center">
-                                            <div className="w-24 bg-slate-200 rounded-full h-2 mr-2">
-                                                <div
-                                                    className="bg-gradient-to-r from-green-500 to-emerald-600 h-2 rounded-full transition-all duration-500"
-                                                    style={{
-                                                        width: `${item.paymentRate}%`,
-                                                    }}
-                                                ></div>
+                            {deudaProveedores.slice(0, 20).map((item, idx) => {
+                                const rate = item.paymentRate;
+                                const barColor =
+                                    rate < 30
+                                        ? 'from-red-500 to-red-600'
+                                        : rate < 70
+                                        ? 'from-amber-400 to-orange-500'
+                                        : 'from-green-500 to-emerald-600';
+                                const rateTextColor =
+                                    rate < 30
+                                        ? 'text-red-600'
+                                        : rate < 70
+                                        ? 'text-amber-600'
+                                        : 'text-emerald-600';
+                                const facturasUrl = `/facturas?search=${encodeURIComponent(item.provider.rut)}&status=UNPAID`;
+                                return (
+                                    <tr
+                                        key={item.provider.id}
+                                        className="hover:bg-slate-50 transition-colors"
+                                    >
+                                        <td className="px-6 py-4">
+                                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                                                {idx + 1}
                                             </div>
-                                            <span className="text-xs font-semibold text-slate-700">
-                                                {item.paymentRate.toFixed(0)}%
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <Link
+                                                href={`/proveedores/${item.provider.id}`}
+                                                className="group flex items-center gap-1"
+                                            >
+                                                <span className="font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                                                    {item.provider.name}
+                                                </span>
+                                                <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 text-slate-400 group-hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all" />
+                                            </Link>
+                                            <div className="text-xs text-slate-500 font-mono mt-0.5">
+                                                {item.provider.rut}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right font-medium text-slate-700">
+                                            {formatCurrency(item.totalInvoiced)}
+                                        </td>
+                                        <td className="px-6 py-4 text-right text-green-700 font-semibold">
+                                            {formatCurrency(item.paidAmount)}
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <span className="font-bold text-red-600 text-lg">
+                                                {formatCurrency(item.totalOutstanding)}
                                             </span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <div className="text-slate-900 font-medium">
-                                            {item.invoiceCount}
-                                        </div>
-                                        {item.unpaidCount > 0 && (
-                                            <div className="text-xs text-red-600">
-                                                {item.unpaidCount} pendientes
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <div className="flex items-center justify-center">
+                                                <div className="w-24 bg-slate-200 rounded-full h-2 mr-2">
+                                                    <div
+                                                        className={`bg-gradient-to-r ${barColor} h-2 rounded-full transition-all duration-500`}
+                                                        style={{ width: `${rate}%` }}
+                                                    />
+                                                </div>
+                                                <span className={`text-xs font-bold ${rateTextColor}`}>
+                                                    {rate.toFixed(0)}%
+                                                </span>
                                             </div>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <div className="text-slate-900 font-medium">
+                                                {item.invoiceCount}
+                                            </div>
+                                            {item.unpaidCount > 0 && (
+                                                <Link
+                                                    href={facturasUrl}
+                                                    className="inline-flex items-center gap-1 mt-0.5 px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-full text-xs font-semibold transition-colors"
+                                                >
+                                                    {item.unpaidCount} pendientes
+                                                    <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+                                                </Link>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

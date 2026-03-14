@@ -1,6 +1,6 @@
-import { Module } from '@nestjs/common';
+import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule'; // Importar Scheduling
+import { ScheduleModule } from '@nestjs/schedule';
 import { BancosModule } from './modules/bancos/bancos.module';
 import { ConciliacionModule } from './modules/conciliacion/conciliacion.module';
 import { ContabilidadModule } from './modules/contabilidad/contabilidad.module';
@@ -10,17 +10,19 @@ import { FinancialControlModule } from './modules/financial-control/financial-co
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PrismaModule } from './common/prisma/prisma.module';
-import { SchedulerService } from './common/services/scheduler.service'; // Importar Servicio de Cron
+import { SchedulerService } from './common/services/scheduler.service';
+import { CacheService } from './common/services/cache.service';
+import { DataVisibilityService } from './common/services/data-visibility.service';
 import { ReportesModule } from './modules/reportes/reportes.module';
+import { PaymentRecordsModule } from './modules/payment-records/payment-records.module';
 
+@Global()
 @Module({
   imports: [
-    // Core Infrastructure
     ConfigModule.forRoot({ isGlobal: true }),
-    ScheduleModule.forRoot(), // Iniciar el módulo de tareas programadas
+    ScheduleModule.forRoot(),
     PrismaModule,
 
-    // Domain Modules
     BancosModule,
     ConciliacionModule,
     ContabilidadModule,
@@ -30,8 +32,10 @@ import { ReportesModule } from './modules/reportes/reportes.module';
     AuditModule,
     AuthModule,
     ReportesModule,
+    PaymentRecordsModule,
   ],
   controllers: [],
-  providers: [SchedulerService], // Registrar el servicio de Cron
+  providers: [SchedulerService, CacheService, DataVisibilityService],
+  exports: [CacheService, DataVisibilityService],
 })
 export class AppModule { }

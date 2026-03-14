@@ -2,14 +2,17 @@
 
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCartolaIngestion } from '../../contexts/CartolaIngestionContext';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import { CartolaIngestionBar } from './CartolaIngestionBar';
 import { usePathname, useRouter } from 'next/navigation';
 
 export function Shell({ children }: { children: React.ReactNode }) {
     const { user, isLoading } = useAuth();
     const pathname = usePathname();
     const router = useRouter();
+    const { active: ingestionActive } = useCartolaIngestion();
 
     React.useEffect(() => {
         if (!isLoading && !user && pathname !== '/login') {
@@ -41,10 +44,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <Sidebar />
             <div className="main-content flex-grow-1 d-flex flex-column">
                 <Header />
-                <main className="flex-grow-1 p-4 p-lg-5">
+                <main className={`flex-grow-1 p-4 p-lg-5 ${ingestionActive ? 'pb-20' : ''}`}>
                     {children}
                 </main>
             </div>
+            <CartolaIngestionBar />
         </div>
     );
 }

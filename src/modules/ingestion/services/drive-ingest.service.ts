@@ -1,8 +1,8 @@
-
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { DataOrigin, TransactionType } from '@prisma/client';
-import * as XLSX from 'xlsx';
+import { OpenAiService } from './openai.service';
+import { TransactionsService } from '../../bancos/transactions.service';
 
 export interface DriveIngestDto {
     // Standard Fields (Preferred)
@@ -22,6 +22,8 @@ export interface DriveIngestDto {
         bankName?: string;
         source?: string;
         ingestedBy?: string;
+        /** Si true, invierte el signo del monto (para cartolas donde cobros vienen positivos y abonos negativos). */
+        invertAmountSign?: boolean;
         [key: string]: any;
     };
 }
@@ -30,12 +32,43 @@ export interface DriveIngestDto {
 export class DriveIngestService {
     private readonly logger = new Logger(DriveIngestService.name);
 
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private openai: OpenAiService,
+        private transactionsService: TransactionsService,
+    ) { }
+
+    async isFileAlreadyProcessed(filename: string): Promise<boolean> {
+        if (!filename) return false;
+        const existing = await this.prisma.bankTransaction.findFirst({
+            where: {
+                metadata: { path: ['sourceFile'], equals: filename }
+            },
+            select: { id: true }
+        });
+        return !!existing;
+    }
 
     async processDriveFile(dto: DriveIngestDto) {
+        const filename = dto.metadata?.filename;
+        const forceReplace = !!dto.metadata?.forceReplace;
+
+        if (filename && forceReplace) {
+            this.logger.log(`Forzar recarga: eliminando movimientos previos de "${filename}"`);
+            await this.transactionsService.deleteTransactionsBySourceFile(filename);
+        }
+
+        if (filename) {
+            const alreadyProcessed = await this.isFileAlreadyProcessed(filename);
+            if (alreadyProcessed) {
+                this.logger.log(`SKIP: "${filename}" ya fue procesado anteriormente.`);
+                return { status: 'skipped', message: `Archivo "${filename}" ya ingresado`, insertedRows: 0 };
+            }
+        }
+
         // 1. Resolve Data
         const rows = await this.resolveRows(dto);
-        const bankName = dto.bank || dto.metadata?.bankName || dto.metadata?.bank; // Priority to direct field
+        const bankName = dto.bank || dto.metadata?.bankName || dto.metadata?.bank;
         const accountNumber = dto.account || dto.metadata?.account || 'UNKNOWN';
         const currency = dto.currency || 'CLP';
 
@@ -79,17 +112,44 @@ export class DriveIngestService {
             });
         }
 
-        // 3. Process Rows
+        // 3. Smart Pre-Processing with AI (Simulation or Real if Key present)
+        // We use AI to clean and normalize the rows before persisting
+        const normalizedRows = await this.openai.normalizeBankRows(rows);
+
+        // 4. Process Rows
         let insertedCount = 0;
 
-        for (const row of rows) {
-            const date = this.parseDate(row['date'] || row['Date'] || row['fecha'] || row['Fecha']);
-            const description = row['description'] || row['Description'] || row['descripcion'] || row['Descripcion'] || row['Movimiento'] || 'Sin descripción';
+        for (const row of normalizedRows) {
+            // If AI worked, fields are already named 'date', 'amount', 'description'
+            const dateStr = row['date'] || row['Date'] || row['fecha'] || row['Fecha'];
+            const date = this.parseDate(dateStr);
+
+            let description = row['description'] || row['Description'] || row['descripcion'] || row['Movimiento'] || 'Sin descripción';
+
+            // Cuota: extraer de OpenAI (cuotaNumero, cuotaTotal, montoOrigen) o de columnas Excel (N°CUOTA, MONTO ORIGEN...)
+            let cuotaNumero: number | null = row['cuotaNumero'] != null ? Number(row['cuotaNumero']) : null;
+            let cuotaTotal: number | null = row['cuotaTotal'] != null ? Number(row['cuotaTotal']) : null;
+            if (cuotaNumero == null || cuotaTotal == null) {
+                const raw = row['N°CUOTA'] ?? row['Cuota'] ?? row['Nº CUOTA'] ?? row['cuota'];
+                const match = raw ? String(raw).trim().match(/^(\d+)\s*\/\s*(\d+)$/) : null;
+                if (match) {
+                    cuotaNumero = parseInt(match[1], 10);
+                    cuotaTotal = parseInt(match[2], 10);
+                }
+            }
+            const montoOrigen = row['montoOrigen'] ?? row['MONTO ORIGEN OPERACIÓN O COBRO'] ?? row['Monto Origen'] ?? row['MONTO ORIGEN'];
+            const montoOrigenNum = montoOrigen != null ? Number(String(montoOrigen).replace(/\./g, '')) : NaN;
+            if (cuotaNumero != null && cuotaTotal != null) {
+                const parteZ = !isNaN(montoOrigenNum) && montoOrigenNum > 0
+                    ? new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(montoOrigenNum)
+                    : '';
+                description = `Cuota ${cuotaNumero}/${cuotaTotal} de compra ${parteZ}${description ? ' - ' + description : ''}`.trim();
+            }
 
             let amount = 0;
             if (row['amount'] !== undefined) amount = Number(row['amount']);
             else if (row['monto'] !== undefined) amount = Number(row['monto']);
-            else if (row['Monto'] !== undefined) amount = Number(row['Monto']);
+            // ... the rest of the existing fallback logic below
             else {
                 // Check Credit/Debit
                 const credit = Number(row['credit'] || row['Abono'] || 0);
@@ -103,36 +163,43 @@ export class DriveIngestService {
                 continue;
             }
 
-            const type: TransactionType = amount >= 0 ? 'CREDIT' : 'DEBIT';
+            // Algunas cartolas (ej. TC) exportan cobros como positivo y abonos como negativo; invertir si aplica
+            if (dto.metadata?.invertAmountSign) {
+                amount = -amount;
+            }
 
-            // Idempotency: Avoid duplicates
-            const existing = await this.prisma.bankTransaction.findFirst({
-                where: {
+            let type: TransactionType = amount >= 0 ? 'CREDIT' : 'DEBIT';
+            let finalAmount = amount;
+            // Si en la descripción aparece " DE " (ej. "PAGO DE X", "TRANSFERENCIA DE Y"), marcar como abono (CREDIT); el movimiento queda PENDING para comentario si hace falta
+            const descNorm = (description || '').toUpperCase().trim();
+            if (descNorm.startsWith('DE ') || /\sDE\s/.test(descNorm) || descNorm.endsWith(' DE')) {
+                type = 'CREDIT';
+                if (finalAmount < 0) finalAmount = Math.abs(finalAmount);
+            }
+
+            // Detección simple de cuotas (standby: solo guardar flag en metadata para uso futuro)
+            const rawRowStr = JSON.stringify(row).toLowerCase();
+            const esCuota = /cuota|n°?\s*cuota|\d+\s*\/\s*\d+/.test(rawRowStr) || Object.keys(row).some((k) => /cuota|installment/i.test(k));
+
+            // No deduplicar por (cuenta, fecha, monto, descripción): varias compras legítimas pueden coincidir
+            // (ej. mismo monto mismo día Apple). La idempotencia a nivel archivo la hace isFileAlreadyProcessed.
+            await this.prisma.bankTransaction.create({
+                data: {
                     bankAccountId: bankAccount.id,
                     date: date,
-                    amount: amount,
-                    description: description
+                    amount: finalAmount,
+                    description: description,
+                    type: type,
+                    origin: DataOrigin.N8N_AUTOMATION,
+                    metadata: {
+                        sourceFile: dto.metadata?.filename,
+                        rawRow: row,
+                        ingestionId: Date.now(),
+                        ...(esCuota && { esCuota: true }),
+                    }
                 }
             });
-
-            if (!existing) {
-                await this.prisma.bankTransaction.create({
-                    data: {
-                        bankAccountId: bankAccount.id,
-                        date: date,
-                        amount: amount,
-                        description: description,
-                        type: type,
-                        origin: DataOrigin.N8N_AUTOMATION,
-                        metadata: {
-                            sourceFile: dto.metadata?.filename,
-                            rawRow: row,
-                            ingestionId: Date.now()
-                        }
-                    }
-                });
-                insertedCount++;
-            }
+            insertedCount++;
         }
 
         this.logger.log(`Ingestion Complete. Inserted: ${insertedCount}`);
@@ -149,18 +216,35 @@ export class DriveIngestService {
         if (dto.rows && Array.isArray(dto.rows)) return dto.rows;
         if (dto.jsonRows && Array.isArray(dto.jsonRows)) return dto.jsonRows;
 
-        // Fallback: Excel Parsing
+        // Fallback: File Parsing
         if (dto.fileContentBase64 || dto.fileUrl) {
-            let workbook: XLSX.WorkBook;
+            let buffer: Buffer;
+
             if (dto.fileContentBase64) {
-                workbook = XLSX.read(dto.fileContentBase64, { type: 'base64' });
+                buffer = Buffer.from(dto.fileContentBase64, 'base64');
             } else {
                 const response = await fetch(dto.fileUrl!);
-                const buffer = await response.arrayBuffer();
-                workbook = XLSX.read(buffer, { type: 'array' });
+                const arrayBuf = await response.arrayBuffer();
+                buffer = Buffer.from(arrayBuf);
             }
+
+            // Check if PDF
+            const isPdf = dto.metadata?.filename?.toLowerCase().endsWith('.pdf') || dto.metadata?.mimeType === 'application/pdf';
+
+            if (isPdf) {
+                this.logger.log(`Parsing PDF file: ${dto.metadata?.filename}`);
+                const pdfModule = await import('pdf-parse');
+                const pdfParse = pdfModule.default || pdfModule;
+                const pdfData = await pdfParse(buffer);
+                return [{ rawTextContent: pdfData.text }];
+            }
+
+            this.logger.log(`Parsing Excel/CSV file: ${dto.metadata?.filename}`);
+            const XLSX = await import('xlsx');
+            const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
             const sheetName = workbook.SheetNames[0];
-            return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+            const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { raw: false, dateNF: 'yyyy-mm-dd' });
+            return rows;
         }
 
         return [];
@@ -269,20 +353,57 @@ export class DriveIngestService {
 
     private parseDate(val: any): Date | null {
         if (!val) return null;
-        if (val instanceof Date) return val;
 
-        // Try standard Date parsing
-        const d = new Date(val);
-        if (!isNaN(d.getTime())) return d;
+        // All dates stored at noon UTC to avoid timezone boundary shifts
+        const noonUTC = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d, 12, 0, 0));
 
-        // Try DD/MM/YYYY for strict Excel/Chilean formats
-        if (typeof val === 'string' && val.includes('/')) {
-            const parts = val.split('/');
-            if (parts.length === 3) {
-                // Assume DD/MM/YYYY
-                return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-            }
+        // Excel serial number fallback (e.g. 46054 → 2026-02-02)
+        if (typeof val === 'number' && val > 25000 && val < 100000) {
+            const EXCEL_EPOCH = new Date(Date.UTC(1899, 11, 30));
+            const ms = EXCEL_EPOCH.getTime() + val * 86400000;
+            const d = new Date(ms);
+            return noonUTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
         }
-        return null;
+
+        if (val instanceof Date) {
+            return noonUTC(val.getFullYear(), val.getMonth(), val.getDate());
+        }
+
+        const str = String(val).trim();
+
+        // DD/MM/YYYY or DD/MM/YY (Chilean format)
+        const slashMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+        if (slashMatch) {
+            const day = parseInt(slashMatch[1], 10);
+            const month = parseInt(slashMatch[2], 10);
+            let year = parseInt(slashMatch[3], 10);
+            if (year < 100) year += 2000;
+            return noonUTC(year, month - 1, day);
+        }
+
+        // DD-MM-YYYY or DD-MM-YY
+        const dashDMY = str.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+        if (dashDMY) {
+            const day = parseInt(dashDMY[1], 10);
+            const month = parseInt(dashDMY[2], 10);
+            let year = parseInt(dashDMY[3], 10);
+            if (year < 100) year += 2000;
+            return noonUTC(year, month - 1, day);
+        }
+
+        // YYYY-MM-DD (ISO)
+        const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (isoMatch) {
+            return noonUTC(
+                parseInt(isoMatch[1], 10),
+                parseInt(isoMatch[2], 10) - 1,
+                parseInt(isoMatch[3], 10)
+            );
+        }
+
+        // Last resort
+        const d = new Date(str);
+        if (isNaN(d.getTime())) return null;
+        return noonUTC(d.getFullYear(), d.getMonth(), d.getDate());
     }
 }

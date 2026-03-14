@@ -1,72 +1,105 @@
 import { Injectable } from '@nestjs/common';
-import { BankTransaction, Payment, DTE, TransactionType } from '@prisma/client';
+import { BankTransaction, Payment, DTE } from '@prisma/client';
 import { MatchingStrategy, MatchCandidate } from '../domain/matching.interfaces';
+import {
+    normalizeProviderName,
+    providerMatchesDescription,
+    isWithinDateWindow,
+} from '../utils/provider-matcher';
 
+type DteWithProvider = DTE & { provider?: { name: string } | null };
+
+/**
+ * ExactMatch: High-confidence 1:1 matching.
+ *
+ * Requires amount match + provider match + date window.
+ * When multiple DTEs qualify, ranks by date proximity to pick the best.
+ */
 @Injectable()
 export class ExactMatchStrategy implements MatchingStrategy {
     public name = 'ExactMatch';
+    private readonly amountToleranceClp: number;
+    private readonly dateWindowDays: number;
+
+    constructor() {
+        const raw = process.env.MATCH_AMOUNT_TOLERANCE_CLP;
+        const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+        this.amountToleranceClp = Number.isFinite(parsed) && parsed >= 0 ? parsed : 1000;
+
+        const windowRaw = process.env.MATCH_DATE_WINDOW_DAYS;
+        const windowParsed = windowRaw ? Number.parseInt(windowRaw, 10) : NaN;
+        this.dateWindowDays = Number.isFinite(windowParsed) && windowParsed >= 0 ? windowParsed : 60;
+    }
+
+    /** @deprecated Use the standalone function from utils/provider-matcher instead */
+    static normalizeProviderName(name: string): string {
+        return normalizeProviderName(name);
+    }
 
     async findMatches(
         transaction: BankTransaction,
         payments: Payment[],
-        dtes: DTE[],
+        dtes: DteWithProvider[],
     ): Promise<MatchCandidate | null> {
         const candidates: MatchCandidate['candidates'] = [];
+        const txDate = new Date(transaction.date).getTime();
 
-        // 1. Try to match with Payments (usually for DEBITs - Money Out)
-        // But we check all passed candidates assuming the caller filtered them relevantly.
         for (const payment of payments) {
+            const diff = this.amountDiff(transaction.amount, payment.amount);
             if (
                 this.isSameAmount(transaction.amount, payment.amount) &&
-                this.isSameDay(transaction.date, payment.paymentDate)
+                isWithinDateWindow(transaction.date, payment.paymentDate, this.dateWindowDays)
             ) {
+                const daysDiff = Math.abs(txDate - new Date(payment.paymentDate).getTime()) / 86400000;
                 candidates.push({
                     payment,
-                    score: 1.0,
-                    reason: 'Exact Amount and Date Match',
+                    score: this.computeScore(diff, daysDiff, true),
+                    reason: diff === 0
+                        ? `Monto exacto + Pago a ${Math.round(daysDiff)}d`
+                        : `Monto ±$${diff} + Pago a ${Math.round(daysDiff)}d`,
                 });
             }
         }
 
-        // 2. Try to match with DTEs (Direct matches without payment record)
         for (const dte of dtes) {
-            // Validation: Logic depends on CREDIT vs DEBIT.
-            // For now, simpler exact match on amount/date.
-            if (
-                this.isSameAmount(transaction.amount, dte.totalAmount) &&
-                this.isSameDay(transaction.date, dte.issuedDate)
-            ) {
-                candidates.push({
-                    dte,
-                    score: 1.0,
-                    reason: 'Exact Amount and Date Match with DTE',
-                });
-            }
+            const diff = this.amountDiff(transaction.amount, dte.totalAmount);
+            if (!this.isSameAmount(transaction.amount, dte.totalAmount)) continue;
+            if (!isWithinDateWindow(transaction.date, dte.issuedDate, this.dateWindowDays)) continue;
+            if (!providerMatchesDescription(transaction.description || '', dte.provider?.name, dte)) continue;
+
+            const daysDiff = Math.abs(txDate - new Date(dte.issuedDate).getTime()) / 86400000;
+            candidates.push({
+                dte,
+                score: this.computeScore(diff, daysDiff, true),
+                reason: diff === 0
+                    ? `Monto exacto + Empresa ${dte.provider?.name || dte.rutIssuer} a ${Math.round(daysDiff)}d`
+                    : `Monto ±$${diff} + Empresa ${dte.provider?.name || dte.rutIssuer} a ${Math.round(daysDiff)}d`,
+            });
         }
 
-        if (candidates.length > 0) {
-            return {
-                transaction,
-                candidates,
-            };
-        }
+        if (candidates.length === 0) return null;
 
-        return null;
+        candidates.sort((a, b) => b.score - a.score);
+        return { transaction, candidates };
+    }
+
+    private computeScore(amountDiff: number, daysDiff: number, providerMatch: boolean): number {
+        let amountScore = amountDiff === 0 ? 1.0 : Math.max(0, 1.0 - amountDiff / this.amountToleranceClp);
+        let dateScore = daysDiff <= 1 ? 1.0
+            : daysDiff <= 3 ? 0.95
+            : daysDiff <= 7 ? 0.90
+            : daysDiff <= 15 ? 0.80
+            : Math.max(0.5, 1.0 - daysDiff / this.dateWindowDays);
+        let provScore = providerMatch ? 1.0 : 0.0;
+
+        return Math.round((amountScore * 0.35 + dateScore * 0.35 + provScore * 0.30) * 100) / 100;
     }
 
     private isSameAmount(a: number, b: number): boolean {
-        // Tolerancia de +/- 1000 CLP según regla de negocio
-        const diff = Math.abs(Math.abs(a) - Math.abs(b));
-        return diff <= 1000;
+        return this.amountDiff(a, b) <= this.amountToleranceClp;
     }
 
-    private isSameDay(d1: Date, d2: Date): boolean {
-        const cleanD1 = new Date(d1);
-        const cleanD2 = new Date(d2);
-        return (
-            cleanD1.getUTCFullYear() === cleanD2.getUTCFullYear() &&
-            cleanD1.getUTCMonth() === cleanD2.getUTCMonth() &&
-            cleanD1.getUTCDate() === cleanD2.getUTCDate()
-        );
+    private amountDiff(a: number, b: number): number {
+        return Math.abs(Math.abs(a) - Math.abs(b));
     }
 }

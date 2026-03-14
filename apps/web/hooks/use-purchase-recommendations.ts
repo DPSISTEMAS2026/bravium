@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { getApiUrl } from '../lib/api';
 
 // Define the Interface based on the Controller's return signature
 export interface Recommendation {
@@ -19,7 +20,7 @@ export function usePurchaseRecommendations() {
     const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const API_URL = getApiUrl();
 
     // Function to load data
     const fetchRecommendations = async () => {

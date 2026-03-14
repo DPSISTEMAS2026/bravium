@@ -1,8 +1,10 @@
 
-import { Controller, Post, Get, Body, Logger, Query, Res, HttpStatus } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Post, Get, Patch, Delete, Body, Param, Logger, Query, Res, Req, HttpStatus, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Response, Request } from 'express';
 import { ConciliacionService } from './conciliacion.service';
 import { ConciliacionDashboardService } from './conciliacion-dashboard.service';
+import { MatchManagementService } from './services/match-management.service';
+import { MatchSuggestionsService } from './services/match-suggestions.service';
 import { ExportService } from './services/export.service';
 import { DashboardFiltersDto } from './dto/dashboard-filters.dto';
 import { ExportType } from './dto/export-filters.dto';
@@ -10,7 +12,10 @@ import { ExportType } from './dto/export-filters.dto';
 interface AutoMatchDto {
     fromDate?: string;
     toDate?: string;
+    syncFromSources?: boolean;
 }
+
+import { LibreDteService } from '../ingestion/services/libredte.service';
 
 @Controller('conciliacion')
 export class ConciliacionController {
@@ -19,7 +24,10 @@ export class ConciliacionController {
     constructor(
         private readonly conciliacionService: ConciliacionService,
         private readonly dashboardService: ConciliacionDashboardService,
-        private readonly exportService: ExportService
+        private readonly matchManagement: MatchManagementService,
+        private readonly matchSuggestions: MatchSuggestionsService,
+        private readonly exportService: ExportService,
+        private readonly libreDteService: LibreDteService,
     ) { }
 
     /**
@@ -90,12 +98,110 @@ export class ConciliacionController {
 
     @Post('run-auto-match')
     async runAutoMatch(@Body() body: AutoMatchDto) {
-        this.logger.log(`Manual trigger: Run Auto Match`);
-        const result = await this.conciliacionService.runReconciliationCycle(body.fromDate, body.toDate);
+        this.logger.log(`Trigger: Run Auto Match (Sync=${body.syncFromSources})`);
+
+        if (body.syncFromSources) {
+            try {
+                await this.libreDteService.syncRecentlyReceivedDTEs();
+            } catch (err) {
+                this.logger.warn(`Background sync failed: ${err.message}`);
+            }
+        }
+
+        this.conciliacionService.runReconciliationCycle(body.fromDate, body.toDate)
+            .then(result => this.logger.log(`Async match finished: ${JSON.stringify(result)}`))
+            .catch(err => this.logger.error(`Async match failed: ${err.message}`));
 
         return {
-            status: 'success',
-            data: result
+            status: 'accepted',
+            message: 'Proceso de conciliación iniciado en segundo plano. Los resultados aparecerán progresivamente.',
+            filters: { fromDate: body.fromDate, toDate: body.toDate }
         };
+    }
+
+    // ── Manual Match Management ──
+
+    @Patch('matches/:id/status')
+    async updateMatchStatus(
+        @Param('id') id: string,
+        @Body() body: { status: 'CONFIRMED' | 'REJECTED'; reason?: string },
+        @Req() req: Request
+    ) {
+        const userId = (req as any).user?.id || (req as any).user?.sub || 'unknown';
+        this.logger.log(`User ${userId} updating match ${id} status to ${body.status}`);
+        return this.matchManagement.updateMatchStatus(id, body.status, userId, body.reason);
+    }
+
+    @Patch('matches/:id/notes')
+    async updateMatchNotes(
+        @Param('id') id: string,
+        @Body() body: { notes: string },
+        @Req() req: Request
+    ) {
+        const userId = (req as any).user?.id || (req as any).user?.sub || 'unknown';
+        this.logger.log(`User ${userId} updating notes on match ${id}`);
+        return this.matchManagement.updateMatchNotes(id, body.notes, userId);
+    }
+
+    @Post('matches/manual')
+    async createManualMatch(
+        @Body() body: { transactionId: string; dteId?: string; paymentId?: string; notes?: string },
+        @Req() req: Request
+    ) {
+        const userId = (req as any).user?.id || (req as any).user?.sub || 'unknown';
+        if (!body.transactionId || (!body.dteId && !body.paymentId)) {
+            throw new BadRequestException('Se requiere transactionId y al menos dteId o paymentId');
+        }
+        this.logger.log(`User ${userId} creating manual match: tx=${body.transactionId}, dte=${body.dteId}`);
+        return this.matchManagement.createManualMatch(body, userId);
+    }
+
+    @Delete('matches/:id')
+    async deleteMatch(
+        @Param('id') id: string,
+        @Req() req: Request
+    ) {
+        const userId = (req as any).user?.id || (req as any).user?.sub || 'unknown';
+        this.logger.log(`User ${userId} deleting match ${id}`);
+        return this.matchManagement.deleteMatch(id, userId);
+    }
+
+    @Get('matches/:id/history')
+    async getMatchHistory(@Param('id') id: string) {
+        return this.matchManagement.getMatchHistory(id);
+    }
+
+    // ── Suggestions (N:1 Sum Match) ──
+
+    @Get('suggestions')
+    async listSuggestions(@Query('status') status?: string) {
+        return this.matchSuggestions.listSuggestions(status);
+    }
+
+    @Get('suggestions/:id')
+    async getSuggestion(@Param('id') id: string) {
+        const suggestion = await this.matchSuggestions.getSuggestionById(id);
+        if (!suggestion) throw new NotFoundException('Sugerencia no encontrada');
+        return suggestion;
+    }
+
+    @Post('suggestions/:id/accept')
+    async acceptSuggestion(
+        @Param('id') id: string,
+        @Body() body: { transactionIds?: string[]; dteId?: string },
+        @Req() req: Request,
+    ) {
+        const userId = (req as any).user?.id || (req as any).user?.sub || 'unknown';
+        return this.matchSuggestions.acceptSuggestion(id, userId, body);
+    }
+
+    @Post('suggestions/:id/reject')
+    async rejectSuggestion(
+        @Param('id') id: string,
+        @Body() body: { reason?: string },
+        @Req() req: Request,
+    ) {
+        const userId = (req as any).user?.id || (req as any).user?.sub || 'unknown';
+        return this.matchSuggestions.rejectSuggestion(id, body.reason, userId);
     }
 }

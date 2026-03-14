@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ==============================
@@ -44,6 +45,7 @@ model BankTransaction {
   type          TransactionType // CREDIT (Abono), DEBIT (Cargo)
   status        TransactionStatus     @default(PENDING)
   matches       ReconciliationMatch[]
+  paymentRecords PaymentRecord[]
 
   // Ingestion Metadata
   origin        DataOrigin            @default(API_INTEGRATION)
@@ -52,6 +54,11 @@ model BankTransaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([date])
+  @@index([status])
+  @@index([bankAccountId])
+  @@index([date, status])
+  @@index([bankAccountId, date])
   @@map("bank_transactions")
 }
 
@@ -75,9 +82,16 @@ model Provider {
   id        String    @id @default(uuid())
   rut       String    @unique
   name      String
-  category  String? // Rubro o categoría interna
-  currentBalance Int @default(0) // Saldo global con el proveedor (CACHE, recalculado desde Ledger)
+  category  String?
+  currentBalance Int @default(0)
   
+  // Datos bancarios para transferencias
+  transferBankName      String?
+  transferAccountNumber String?
+  transferAccountType   String?   // "Corriente", "Vista", "Ahorro"
+  transferRut           String?   // RUT titular (puede diferir del proveedor)
+  transferEmail         String?   // Email para notificación
+
   // Multi-tenancy
   organizationId String?
   organization   Organization?    @relation(fields: [organizationId], references: [id])
@@ -85,8 +99,8 @@ model Provider {
   payments  Payment[]
   dtes      DTE[]
   ledgerEntries FinancialLedgerEntry[]
-  supplierProducts SupplierProduct[] // Added for Purchase Intelligence
-  priceHistory     ProductPriceHistory[] // Added for Purchase Intelligence
+  supplierProducts SupplierProduct[]
+  priceHistory     ProductPriceHistory[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -354,15 +368,18 @@ model DTE {
   rutReceiver     String
   totalAmount     Int
   issuedDate      DateTime
+  dueDate         DateTime? // Fecha de vencimiento
   siiStatus       String // RECHAZADO, ACEPTADO, ETC.
   providerId      String?
   provider        Provider?             @relation(fields: [providerId], references: [id])
   matches         ReconciliationMatch[]
-  
+  suggestions     MatchSuggestion[]
+  paymentRecords  PaymentRecord[]
+
   // Financial Status
   paymentStatus   DtePaymentStatus         @default(UNPAID)
   outstandingAmount Int                 // Monto pendiente de pago (Inicialmente = totalAmount)
-  
+
   // Ingestion Metadata
   origin          DataOrigin            @default(API_INTEGRATION)
   metadata        Json?
@@ -370,7 +387,12 @@ model DTE {
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
-  @@unique([rutIssuer, type, folio]) // Unicidad del DTE
+  @@unique([rutIssuer, type, folio])
+  @@index([issuedDate])
+  @@index([paymentStatus])
+  @@index([providerId])
+  @@index([issuedDate, paymentStatus])
+  @@index([totalAmount])
   @@map("dtes")
 }
 
@@ -416,6 +438,9 @@ model ReconciliationMatch {
   createdAt     DateTime        @default(now())
   createdBy     String?         // User ID (if manual)
 
+  @@index([transactionId])
+  @@index([dteId])
+  @@index([status])
   @@map("reconciliation_matches")
 }
 
@@ -730,4 +755,62 @@ model AuditLog {
   @@index([organizationId, action])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// ==============================
+// 12. REGISTRO DE PAGOS (reemplazo del Excel "Pagos 2026")
+// ==============================
+
+model PaymentRecord {
+  id              String   @id @default(uuid())
+  empresa         String
+  detalle         String?
+  tipoDocumento   String?  // "Factura", "Boleta", "Contrato", "Recibo"
+  folioFactura    String?
+  folioBoleta     String?
+  monto           Float
+  fechaPago       DateTime
+  medioPago       String?  // "TRANSFERENCIA", "TARJETA DE CREDITO", "BOTON DE PAGO"
+  comentario      String?
+  autorizacion    String?
+  mesOrigen       String?  // "2026-01", "2026-02", etc.
+
+  transactionId   String?
+  transaction     BankTransaction? @relation(fields: [transactionId], references: [id])
+  dteId           String?
+  dte             DTE?     @relation(fields: [dteId], references: [id])
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String?
+
+  @@index([transactionId])
+  @@index([dteId])
+  @@index([fechaPago])
+  @@index([empresa])
+  @@map("payment_records")
+}
+
+// ==============================
+// 13. MATCH SUGGESTIONS (N:1)
+// ==============================
+
+model MatchSuggestion {
+  id              String   @id @default(uuid())
+  type            String   @default("SUM") // SUM (N tx -> 1 DTE), SPLIT (1 tx -> N DTEs)
+  dteId           String
+  dte             DTE      @relation(fields: [dteId], references: [id])
+  transactionIds  Json     // String[] de IDs de BankTransaction
+  relatedDteIds   Json?    // String[] de IDs de DTE adicionales (para SPLIT)
+  totalAmount     Float
+  confidence      Float
+  status          String   @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  reason          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([dteId])
+  @@index([status])
+  @@index([type])
+  @@map("match_suggestions")
 }

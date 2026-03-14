@@ -48,3 +48,11 @@ build/
 /data/*.csv
 /data/*.xlsx
 /data/*.json
+/*.xlsx
+
+# Google / credentials (no subir a repo)
+bravium-*-*.json
+*-credentials*.json
+
+# Scripts temporales / debug
+/tmp/

@@ -1,40 +1,44 @@
 'use client';
 
-import {
-    BellIcon,
-    ArrowLeftOnRectangleIcon,
-    UserCircleIcon
-} from '@heroicons/react/24/outline';
+import { BellIcon, ArrowLeftOnRectangleIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function Header() {
     const { user, logout } = useAuth();
 
     return (
-        <header className="header shadow-sm">
-            <div className="container-fluid d-flex justify-content-end align-items-center gap-4">
-                {/* Status Indicator */}
-                <div className="d-flex align-items-center gap-2 px-3 py-1 bg-light rounded-pill border">
-                    <div className="bg-success rounded-circle" style={{ width: '8px', height: '8px' }}></div>
-                    <span className="text-success fw-bold" style={{ fontSize: '11px' }}>SINCRO</span>
+        <header className="header shadow-sm flex items-center justify-end w-full overflow-hidden">
+            <div className="flex items-center gap-3 sm:gap-4 px-4 sm:px-6 min-w-0 flex-1 justify-end flex-nowrap">
+                {/* Status */}
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full border border-slate-200 shrink-0">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="text-emerald-700 font-semibold text-xs">EN L\u00cdNEA</span>
                 </div>
 
                 {/* Notifications */}
-                <button className="bg-transparent border-0 text-muted p-1 hover-primary transition-all position-relative">
-                    <BellIcon style={{ width: '20px', height: '20px' }} />
-                    <span className="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle" style={{ width: '6px', height: '6px' }}></span>
+                <button
+                    type="button"
+                    disabled
+                    title="Notificaciones (pronto)"
+                    className="p-2 text-slate-400 rounded-lg hover:bg-slate-100 disabled:opacity-70 transition-colors shrink-0"
+                >
+                    <BellIcon className="w-5 h-5" />
                 </button>
 
-                {/* User Info & Quick Logout */}
-                <div className="user-info">
-                    <span className="d-none d-md-inline fw-medium text-slate-600">{user?.email}</span>
-                    <div className="vr h-100 mx-1"></div>
+                {/* User + Logout: email trunca, boton siempre visible */}
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+                    <span className="hidden sm:inline-block text-slate-600 text-sm font-medium truncate max-w-[180px] lg:max-w-[220px]" title={user?.email ?? ''}>
+                        {user?.email}
+                    </span>
+                    <div className="hidden sm:block w-px h-5 bg-slate-200 shrink-0" />
                     <button
+                        type="button"
                         onClick={logout}
-                        className="bg-transparent border-0 text-muted p-1 hover-danger transition-all"
-                        title="Cerrar Sesión"
+                        title="Cerrar sesi\u00f3n"
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-700 transition-colors shrink-0 border border-transparent hover:border-red-100"
                     >
-                        <ArrowLeftOnRectangleIcon style={{ width: '20px', height: '20px' }} />
+                        <ArrowLeftOnRectangleIcon className="w-5 h-5 shrink-0" />
+                        <span className="text-sm font-medium whitespace-nowrap">Cerrar sesi\u00f3n</span>
                     </button>
                 </div>
             </div>

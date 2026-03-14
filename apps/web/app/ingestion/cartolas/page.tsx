@@ -2,6 +2,7 @@
 "use client";
 
 import { useState } from 'react';
+import { getApiUrl } from '@/lib/api';
 
 export default function CartolasIngestionPage() {
     const [file, setFile] = useState<File | null>(null);
@@ -47,7 +48,7 @@ export default function CartolasIngestionPage() {
                 }
             };
 
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/ingestion/cartolas/drive`, {
+            const res = await fetch(`${getApiUrl()}/ingestion/cartolas/drive`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)

@@ -18,7 +18,10 @@ export class DtesController {
         @Query('providerId') providerId?: string,
         @Query('paymentStatus') paymentStatus?: string,
         @Query('minAmount') minAmount?: string,
-        @Query('maxAmount') maxAmount?: string
+        @Query('maxAmount') maxAmount?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('search') search?: string
     ) {
         const filters: DteFilters = {
             fromDate,
@@ -27,10 +30,34 @@ export class DtesController {
             paymentStatus,
             minAmount: minAmount ? parseInt(minAmount, 10) : undefined,
             maxAmount: maxAmount ? parseInt(maxAmount, 10) : undefined,
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+            search,
         };
 
         this.logger.log(`Fetching DTEs with filters: ${JSON.stringify(filters)}`);
         return this.dtesService.getAllDtes(filters);
+    }
+
+    /**
+     * GET /dtes/conciliated-matches
+     * Lista de movimientos conciliados en el período (una fila por match, mismo número que Cartolas).
+     */
+    @Get('conciliated-matches')
+    async getConciliatedMatches(
+        @Query('fromDate') fromDate?: string,
+        @Query('toDate') toDate?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string
+    ) {
+        const filters: DteFilters = {
+            fromDate,
+            toDate,
+            page: page ? parseInt(page, 10) : undefined,
+            limit: limit ? parseInt(limit, 10) : undefined,
+        };
+        this.logger.log(`Fetching conciliated matches: ${JSON.stringify(filters)}`);
+        return this.dtesService.getConciliatedMatchesInPeriod(filters);
     }
 
     /**

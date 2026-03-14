@@ -1,8 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConciliacionService } from './conciliacion.service';
 import { ConciliacionDashboardService } from './conciliacion-dashboard.service';
+import { MatchManagementService } from './services/match-management.service';
+import { MatchSuggestionsService } from './services/match-suggestions.service';
 import { ExportService } from './services/export.service';
 import { ExactMatchStrategy } from './strategies/exact-match.strategy';
+import { AmountMatchStrategy } from './strategies/amount-match.strategy';
+import { SumMatchStrategy } from './strategies/sum-match.strategy';
+import { SplitPaymentMatchStrategy } from './strategies/split-payment-match.strategy';
 import { ConciliacionController } from './conciliacion.controller';
 import { AutoRecoveryService } from './services/auto-recovery.service';
 import { IngestionModule } from '../ingestion/ingestion.module';
@@ -13,10 +18,15 @@ import { IngestionModule } from '../ingestion/ingestion.module';
     providers: [
         ConciliacionService,
         ConciliacionDashboardService,
+        MatchManagementService,
+        MatchSuggestionsService,
         ExportService,
         ExactMatchStrategy,
-        AutoRecoveryService
+        AmountMatchStrategy,
+        SumMatchStrategy,
+        SplitPaymentMatchStrategy,
+        AutoRecoveryService,
     ],
-    exports: [ConciliacionService, ConciliacionDashboardService, ExportService],
+    exports: [ConciliacionService, ConciliacionDashboardService, MatchManagementService, MatchSuggestionsService, ExportService],
 })
 export class ConciliacionModule { }

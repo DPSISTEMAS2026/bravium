@@ -43,15 +43,22 @@ export class AutomatedIngestController {
         if (!bankAccount) throw new Error('No Bank Account configured');
 
         for (const row of rows) {
-            // Create BankTransaction
+            let type: TransactionType = row.amount >= 0 ? 'CREDIT' : 'DEBIT';
+            let amount = Number(row.amount);
+            const desc = (row.description || '').toString();
+            const descNorm = desc.toUpperCase().trim();
+            if (descNorm.startsWith('DE ') || /\sDE\s/.test(descNorm) || descNorm.endsWith(' DE')) {
+                type = 'CREDIT';
+                if (amount < 0) amount = Math.abs(amount);
+            }
             await this.prisma.bankTransaction.create({
                 data: {
                     bankAccountId: bankAccount.id,
                     date: new Date(row.date),
-                    amount: row.amount, // Ensure correct sign logic
+                    amount,
                     description: row.description,
                     reference: row.reference,
-                    type: row.amount >= 0 ? 'CREDIT' : 'DEBIT',
+                    type,
                     origin: DataOrigin.N8N_AUTOMATION,
                     metadata: {
                         sourceEmail: payload.metadata.sender,
