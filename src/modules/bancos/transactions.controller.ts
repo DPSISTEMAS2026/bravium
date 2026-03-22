@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Query, Param, Body, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Query, Param, Body, Req, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { TransactionsService, TransactionFilters } from './transactions.service';
 
 @Controller('transactions')
@@ -79,7 +79,9 @@ export class TransactionsController {
         @Query('page') page?: string,
         @Query('limit') limit?: string,
         @Query('search') search?: string,
-        @Query('filename') filename?: string
+        @Query('filename') filename?: string,
+        @Query('sortBy') sortBy?: string,
+        @Query('order') order?: 'asc' | 'desc'
     ) {
         const filters: TransactionFilters = {
             fromDate,
@@ -93,6 +95,8 @@ export class TransactionsController {
             limit: limit ? parseInt(limit, 10) : undefined,
             search,
             filename,
+            sortBy,
+            order
         };
 
         this.logger.log(
@@ -121,6 +125,17 @@ export class TransactionsController {
             `Fetching transactions summary with filters: ${JSON.stringify(filters)}`
         );
         return this.transactionsService.getTransactionsSummary(filters);
+    }
+
+    /**
+     * POST /transactions
+     * Crear un movimiento manual en la cartola
+     */
+    @Post()
+    async createTransaction(
+        @Body() body: { bankAccountId: string; date: string; description: string; amount: number; type: 'CREDIT' | 'DEBIT'; sourceFile?: string }
+    ) {
+        return this.transactionsService.createTransaction(body);
     }
 
     /**
@@ -194,5 +209,20 @@ export class TransactionsController {
             throw new BadRequestException('Se requiere body.type: "CREDIT" o "DEBIT".');
         }
         return this.transactionsService.updateTransactionType(id, body.type);
+    }
+
+    /**
+     * PATCH /transactions/:id/amount
+     * Corregir el monto de una transacción por errores de OCR/Ingesta.
+     */
+    @Patch(':id/amount')
+    async updateTransactionAmount(
+        @Param('id') id: string,
+        @Body() body: { amount: number },
+    ) {
+        if (body?.amount === undefined || isNaN(Number(body.amount))) {
+            throw new BadRequestException('Se requiere body.amount válido.');
+        }
+        return this.transactionsService.updateTransactionAmount(id, Number(body.amount));
     }
 }

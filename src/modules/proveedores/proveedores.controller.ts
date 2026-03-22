@@ -1,5 +1,5 @@
-import { Controller, Get, Patch, Param, Query, Body, Logger, Res, HttpStatus, NotFoundException } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Get, Patch, Param, Query, Body, Logger, Res, Req, HttpStatus, NotFoundException } from '@nestjs/common';
+import { Response, Request } from 'express';
 import { ProveedoresService } from './proveedores.service';
 import { PagoMasivoExportService } from './services/pago-masivo-export.service';
 
@@ -21,11 +21,15 @@ export class ProveedoresController {
         @Query('search') search?: string,
         @Query('page') page?: string,
         @Query('limit') limit?: string,
+        @Query('year') year?: string,
+        @Query('status') status?: string,
+        @Req() req?: Request,
     ) {
         const pageNum = page ? Math.max(1, parseInt(page, 10)) : 1;
         const limitNum = limit ? Math.min(100, Math.max(1, parseInt(limit, 10))) : 20;
-        this.logger.log(`Fetching providers page ${pageNum}${search ? ` search: ${search}` : ''}`);
-        return this.proveedoresService.getAllProviders(search, pageNum, limitNum);
+        const organizationId = (req as any).user?.organizationId;
+        this.logger.log(`Fetching providers page ${pageNum}${search ? ` search: ${search}` : ''} year: ${year} status: ${status}`);
+        return this.proveedoresService.getAllProviders(search, pageNum, limitNum, organizationId, year, status);
     }
 
     /**
@@ -33,10 +37,11 @@ export class ProveedoresController {
      * Top proveedores por deuda
      */
     @Get('top')
-    async getTopProviders(@Query('limit') limit?: string) {
+    async getTopProviders(@Query('limit') limit?: string, @Req() req?: Request) {
         const limitNum = limit ? parseInt(limit, 10) : 10;
+        const organizationId = (req as any).user?.organizationId;
         this.logger.log(`Fetching top ${limitNum} providers by debt`);
-        return this.proveedoresService.getTopProvidersByDebt(limitNum);
+        return this.proveedoresService.getTopProvidersByDebt(limitNum, organizationId);
     }
 
     /**
@@ -44,10 +49,11 @@ export class ProveedoresController {
      * Exportar Excel con datos para pago masivo Santander
      */
     @Get('export/pago-masivo')
-    async exportPagoMasivo(@Res() res: Response) {
+    async exportPagoMasivo(@Res() res: Response, @Req() req: Request) {
         this.logger.log('Exporting pago masivo');
         try {
-            const buffer = await this.pagoMasivoService.exportPagoMasivo();
+            const organizationId = (req as any).user?.organizationId;
+            const buffer = await this.pagoMasivoService.exportPagoMasivo(organizationId);
             const timestamp = new Date().toISOString().split('T')[0];
             const filename = `pago_masivo_${timestamp}.xlsx`;
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -65,8 +71,9 @@ export class ProveedoresController {
      * Resumen de pago masivo
      */
     @Get('export/pago-masivo/summary')
-    async getPagoMasivoSummary() {
-        return this.pagoMasivoService.getSummary();
+    async getPagoMasivoSummary(@Req() req: Request) {
+        const organizationId = (req as any).user?.organizationId;
+        return this.pagoMasivoService.getSummary(organizationId);
     }
 
     /**
@@ -74,9 +81,10 @@ export class ProveedoresController {
      * Detalle de un proveedor específico
      */
     @Get(':id')
-    async getProviderDetail(@Param('id') id: string) {
+    async getProviderDetail(@Param('id') id: string, @Req() req?: Request) {
         this.logger.log(`Fetching provider detail for ID: ${id}`);
-        return this.proveedoresService.getProviderDetail(id);
+        // Consider passing organizationId if detailed scoping is needed, though id is usually specific.
+        return this.proveedoresService.getProviderDetail(id, (req as any).user?.organizationId);
     }
 
     /**

@@ -13,6 +13,9 @@ export interface DteFilters {
     page?: number;
     limit?: number;
     search?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    hasPdf?: string; // 'ALL' | 'YES' | 'NO'
 }
 
 const CACHE_TTL = 30_000;
@@ -62,6 +65,17 @@ export class DtesService {
             }
         }
 
+        if (filters.hasPdf && filters.hasPdf !== 'ALL') {
+            if (filters.hasPdf === 'YES') {
+                where.metadata = { path: ['intercambio'], not: null };
+            } else if (filters.hasPdf === 'NO') {
+                where.OR = [
+                    { metadata: { equals: null } },
+                    { metadata: { path: ['intercambio'], equals: null } },
+                ];
+            }
+        }
+
         if (filters.search && filters.search.trim()) {
             const raw = filters.search.trim();
             const digitsOnly = raw.replace(/\D/g, '');
@@ -82,7 +96,13 @@ export class DtesService {
             ];
             if (!isNaN(folioNum)) orConditions.push({ folio: folioNum });
             if (!isNaN(amountNum) && amountNum > 0) orConditions.push({ totalAmount: amountNum });
-            where.OR = orConditions;
+            
+            if (where.OR) {
+                where.AND = [{ OR: where.OR }, { OR: orConditions }];
+                delete where.OR;
+            } else {
+                where.OR = orConditions;
+            }
         }
 
         return where;
@@ -111,6 +131,14 @@ export class DtesService {
         const page = filters.page ? parseInt(filters.page.toString(), 10) : undefined;
         const limit = filters.limit ? parseInt(filters.limit.toString(), 10) : undefined;
 
+        let orderBy: any = { issuedDate: 'asc' };
+        if (filters.sortBy) {
+            const order = filters.sortOrder || 'asc';
+            if (filters.sortBy === 'folio') orderBy = { folio: order };
+            else if (filters.sortBy === 'totalAmount') orderBy = { totalAmount: order };
+            else if (filters.sortBy === 'issuedDate') orderBy = { issuedDate: order };
+        }
+
         const [total, dtes] = await Promise.all([
             this.prisma.dTE.count({ where }),
             this.prisma.dTE.findMany({
@@ -128,7 +156,7 @@ export class DtesService {
                         },
                     },
                 },
-                orderBy: { issuedDate: 'asc' },
+                orderBy,
                 skip: page && limit ? (page - 1) * limit : undefined,
                 take: limit,
             }),
@@ -276,6 +304,13 @@ export class DtesService {
                             bankAccount: { select: { bankName: true, accountNumber: true } },
                         },
                     },
+                    payment: {
+                        select: {
+                            id: true,
+                            amount: true,
+                            paymentDate: true,
+                        }
+                    },
                     dte: {
                         include: {
                             provider: { select: { id: true, rut: true, name: true } },
@@ -291,6 +326,7 @@ export class DtesService {
                 id: m.id,
                 matchId: m.id,
                 transaction: m.transaction,
+                payment: m.payment,
                 dte: m.dte!,
                 hasMatch: true,
                 matchCount: 1,

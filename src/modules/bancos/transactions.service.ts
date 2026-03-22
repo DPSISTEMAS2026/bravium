@@ -15,6 +15,8 @@ export interface TransactionFilters {
     limit?: number;
     search?: string;
     filename?: string;
+    sortBy?: string;
+    order?: 'asc' | 'desc';
 }
 
 const CACHE_TTL = 30_000; // 30 seconds
@@ -153,7 +155,9 @@ export class TransactionsService {
                         },
                     },
                 },
-                orderBy: { date: 'asc' },
+                orderBy: filters.sortBy && ['amount', 'date', 'description'].includes(filters.sortBy)
+                    ? { [filters.sortBy]: filters.order || 'asc' }
+                    : { date: 'asc' },
                 skip: page && limit ? (page - 1) * limit : undefined,
                 take: limit,
             }),
@@ -217,6 +221,20 @@ export class TransactionsService {
             };
         }
         return data;
+    }
+
+    async createTransaction(data: { bankAccountId: string; date: string; description: string; amount: number; type: 'CREDIT' | 'DEBIT', sourceFile?: string }) {
+        return this.prisma.bankTransaction.create({
+            data: {
+                bankAccountId: data.bankAccountId,
+                date: new Date(data.date),
+                description: data.description,
+                amount: data.amount,
+                type: data.type,
+                status: 'PENDING',
+                metadata: { manual: true, createdAt: new Date(), ...(data.sourceFile ? { sourceFile: data.sourceFile } : {}) },
+            }
+        });
     }
 
     /**
@@ -691,6 +709,18 @@ export class TransactionsService {
         const result = await this.prisma.bankTransaction.update({
             where: { id },
             data: { type, amount: newAmount },
+        });
+        this.cache.invalidate('tx-summary');
+        return result;
+    }
+
+    /**
+     * Corregir el monto de una transacción (debido a errores de OCR).
+     */
+    async updateTransactionAmount(id: string, amount: number) {
+        const result = await this.prisma.bankTransaction.update({
+             where: { id },
+             data: { amount }
         });
         this.cache.invalidate('tx-summary');
         return result;

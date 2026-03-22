@@ -10,6 +10,10 @@ export enum FilterStatus {
 
 export class DashboardFiltersDto {
     @IsOptional()
+    @IsString()
+    organizationId?: string;
+
+    @IsOptional()
     @IsInt()
     @Min(2020)
     @Max(2030)

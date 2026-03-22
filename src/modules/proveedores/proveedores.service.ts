@@ -24,8 +24,8 @@ export class ProveedoresService {
     /**
      * Obtener proveedores con información de deuda (paginado)
      */
-    async getAllProviders(search?: string, page: number = 1, limit: number = ProveedoresService.DEFAULT_PAGE_SIZE) {
-        const where = search
+    async getAllProviders(search?: string, page: number = 1, limit: number = ProveedoresService.DEFAULT_PAGE_SIZE, organizationId?: string, year?: string, statusFilter?: string) {
+        const where: any = search
             ? {
                 OR: [
                     { name: { contains: search, mode: 'insensitive' as const } },
@@ -33,19 +33,36 @@ export class ProveedoresService {
                 ],
             }
             : {};
+        if (organizationId) {
+            where.organizationId = organizationId;
+        }
 
-        const minDate = this.getMinDate();
+        let minDate = this.getMinDate();
+        let maxDate: Date | undefined = undefined;
+
+        if (year) {
+            minDate = new Date(`${year}-01-01`);
+            maxDate = new Date(`${year}-12-31T23:59:59.999Z`);
+        }
+
         const skip = Math.max(0, (page - 1) * limit);
         const take = Math.min(100, Math.max(1, limit));
 
-        const [providers, total] = await Promise.all([
+        const dteFilter: any = {};
+        if (minDate) dteFilter.gte = minDate;
+        if (maxDate) dteFilter.lte = maxDate;
+
+        // Si hay un filtro de estado, debemos traer todos para calcular las métricas antes de paginar en memoria
+        const applyTakeSkip = !statusFilter || statusFilter === 'ALL';
+
+        const [providers, dbTotal] = await Promise.all([
             this.prisma.provider.findMany({
                 where,
-                skip,
-                take,
+                skip: applyTakeSkip ? skip : undefined,
+                take: applyTakeSkip ? take : undefined,
                 include: {
                     dtes: {
-                        where: minDate ? { issuedDate: { gte: minDate } } : undefined,
+                        where: Object.keys(dteFilter).length > 0 ? { issuedDate: dteFilter } : undefined,
                         select: {
                             id: true,
                             folio: true,
@@ -58,7 +75,7 @@ export class ProveedoresService {
                     },
                     _count: {
                         select: {
-                            dtes: minDate ? { where: { issuedDate: { gte: minDate } } } : true,
+                            dtes: Object.keys(dteFilter).length > 0 ? { where: { issuedDate: dteFilter } } : true,
                             payments: true,
                         },
                     },
@@ -71,7 +88,7 @@ export class ProveedoresService {
         ]);
 
         // Calcular métricas por proveedor
-        const data = providers.map((provider) => {
+        let data = providers.map((provider) => {
             const totalDebt = provider.dtes.reduce(
                 (sum, dte) => sum + dte.outstandingAmount,
                 0
@@ -83,15 +100,26 @@ export class ProveedoresService {
             const paidAmount = totalInvoiced - totalDebt;
 
             const unpaidDtes = provider.dtes.filter(
-                (dte) => dte.paymentStatus === 'UNPAID'
+                (dte) => dte.outstandingAmount > 0
             ).length;
 
-            const overdueInvoices = provider.dtes.filter((dte) => {
-                const daysSinceIssue =
-                    (Date.now() - new Date(dte.issuedDate).getTime()) /
-                    (1000 * 60 * 60 * 24);
-                return dte.paymentStatus === 'UNPAID' && daysSinceIssue > 30;
+            const overdueInvoices10 = provider.dtes.filter((dte) => {
+                const days = (Date.now() - new Date(dte.issuedDate).getTime()) / 86400000;
+                return dte.outstandingAmount > 0 && days > 10;
             }).length;
+
+            const overdueInvoices30 = provider.dtes.filter((dte) => {
+                const days = (Date.now() - new Date(dte.issuedDate).getTime()) / 86400000;
+                return dte.outstandingAmount > 0 && days > 30;
+            }).length;
+
+            const overdueInvoices = overdueInvoices30; // Para mantener compatibilidad si se usa en otro lado
+
+            // Categoría/Estado para el filtro
+            let status = 'OK';
+            if (overdueInvoices30 > 0) status = 'CRITICAL_30';
+            else if (overdueInvoices10 > 0) status = 'CRITICAL_10';
+            else if (totalDebt > 0) status = 'WITH_DEBT';
 
             return {
                 id: provider.id,
@@ -108,17 +136,27 @@ export class ProveedoresService {
                 invoiceCount: provider._count.dtes,
                 paymentCount: provider._count.payments,
                 unpaidInvoices: unpaidDtes,
-                overdueInvoices,
-                status:
-                    overdueInvoices > 0
-                        ? 'CRITICAL'
-                        : totalDebt > 0
-                            ? 'WARNING'
-                            : 'OK',
+                overdueInvoices: overdueInvoices10 > 0 ? overdueInvoices10 : overdueInvoices30,
+                status,
                 createdAt: provider.createdAt,
                 updatedAt: provider.updatedAt,
             };
         });
+
+        // Aplicar filtro de estado en memoria si se requiere
+        if (statusFilter && statusFilter !== 'ALL') {
+            if (statusFilter === 'PENDING') {
+                data = data.filter((p) => p.totalDebt > 0);
+            } else {
+                data = data.filter((p) => p.status === statusFilter);
+            }
+        }
+
+        // Paginación en memoria si no se usó skip/take de Prisma
+        const total = applyTakeSkip ? dbTotal : data.length;
+        if (!applyTakeSkip) {
+            data = data.slice(skip, skip + take);
+        }
 
         const totalPages = Math.ceil(total / take);
         return {
@@ -133,10 +171,10 @@ export class ProveedoresService {
     /**
      * Obtener detalle de un proveedor específico
      */
-    async getProviderDetail(providerId: string) {
+    async getProviderDetail(providerId: string, organizationId?: string) {
         const minDate = this.getMinDate();
-        const provider = await this.prisma.provider.findUnique({
-            where: { id: providerId },
+        const provider = await this.prisma.provider.findFirst({
+            where: { id: providerId, ...(organizationId ? { organizationId } : {}) },
             include: {
                 dtes: {
                     where: minDate ? { issuedDate: { gte: minDate } } : undefined,
@@ -204,8 +242,8 @@ export class ProveedoresService {
     /**
      * Obtener top proveedores por deuda (usa una página amplia para ordenar por deuda)
      */
-    async getTopProvidersByDebt(limit: number = 10) {
-        const { data } = await this.getAllProviders(undefined, 1, Math.max(500, limit));
+    async getTopProvidersByDebt(limit: number = 10, organizationId?: string) {
+        const { data } = await this.getAllProviders(undefined, 1, Math.max(500, limit), organizationId);
 
         return data
             .sort((a, b) => b.totalDebt - a.totalDebt)

@@ -677,7 +677,23 @@ model Organization {
   id            String    @id @default(uuid())
   rut           String    @unique
   name          String
+  slug          String?   @unique   // Subdomain: "bravium" → bravium.dpsistemas.cl
   plan          String    @default("PRO") // SaaS Plan
+  isActive      Boolean   @default(true)  // Enable/disable tenant access
+
+  // Branding
+  logoUrl       String?   // URL or path to org logo
+  primaryColor  String?   // Hex color for UI theming (e.g. "#1a56db")
+
+  // Per-org Credentials (encrypted in production)
+  libreDteApiKey    String?   // LibreDTE API key for this org
+  libreDteRut       String?   // RUT configured in LibreDTE
+  googleDriveFolderId   String?   // Google Drive folder to watch
+  googleDriveCredentials String?  // Service account JSON (stored encrypted)
+
+  // Data visibility
+  dataVisibleFrom   DateTime? // Minimum date for data queries
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -813,4 +829,36 @@ model MatchSuggestion {
   @@index([status])
   @@index([type])
   @@map("match_suggestions")
+}
+
+// ==============================
+// 14. SYNC LOG (Auditoría de sincronizaciones)
+// ==============================
+
+model SyncLog {
+  id              String    @id @default(uuid())
+  
+  organizationId  String
+  
+  type            String    // DTE_SYNC, DRIVE_SYNC, AUTO_MATCH, STARTUP_SYNC
+  status          String    @default("RUNNING") // RUNNING, SUCCESS, FAILED
+  
+  // Counters
+  totalFound      Int       @default(0)
+  created         Int       @default(0)
+  skipped         Int       @default(0)
+  errors          Int       @default(0)
+  
+  // Metadata
+  message         String?
+  durationMs      Int?      // How long it took
+  dateRangeFrom   String?   // e.g. "2026-03-01"
+  dateRangeTo     String?   // e.g. "2026-03-22"
+  
+  startedAt       DateTime  @default(now())
+  finishedAt      DateTime?
+  
+  @@index([organizationId, type])
+  @@index([startedAt])
+  @@map("sync_logs")
 }

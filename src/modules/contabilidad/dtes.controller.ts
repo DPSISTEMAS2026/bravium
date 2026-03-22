@@ -21,7 +21,10 @@ export class DtesController {
         @Query('maxAmount') maxAmount?: string,
         @Query('page') page?: string,
         @Query('limit') limit?: string,
-        @Query('search') search?: string
+        @Query('search') search?: string,
+        @Query('sortBy') sortBy?: string,
+        @Query('sortOrder') sortOrder?: 'asc' | 'desc',
+        @Query('hasPdf') hasPdf?: string
     ) {
         const filters: DteFilters = {
             fromDate,
@@ -33,6 +36,9 @@ export class DtesController {
             page: page ? parseInt(page, 10) : undefined,
             limit: limit ? parseInt(limit, 10) : undefined,
             search,
+            sortBy,
+            sortOrder,
+            hasPdf,
         };
 
         this.logger.log(`Fetching DTEs with filters: ${JSON.stringify(filters)}`);

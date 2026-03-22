@@ -13,8 +13,11 @@ export class LibreDteService {
     /**
      * Incremental sync: find latest DTE and pull from there to today.
      */
-    async syncRecentlyReceivedDTEs() {
+    async syncRecentlyReceivedDTEs(organizationId: string) {
         const lastDte = await this.prisma.dTE.findFirst({
+            where: {
+                provider: { organizationId }
+            },
             orderBy: { issuedDate: 'desc' },
             select: { issuedDate: true }
         });
@@ -29,29 +32,29 @@ export class LibreDteService {
             fromDate = lastDate.toISOString().split('T')[0];
         }
 
-        this.logger.log(`Running INCREMENTAL sync from ${fromDate} to ${today}`);
-        return this.fetchReceivedDTEs(fromDate, today);
+        this.logger.log(`Running INCREMENTAL sync from ${fromDate} to ${today} for Org: ${organizationId}`);
+        return this.fetchReceivedDTEs(fromDate, today, organizationId);
     }
 
     /**
      * Fetches received DTEs from LibreDTE API and persists them.
      */
-    async fetchReceivedDTEs(fromDate?: string, toDate?: string) {
+    async fetchReceivedDTEs(fromDate?: string, toDate?: string, organizationId?: string) {
+        if (!organizationId) throw new Error('organizationId is required');
+
+        const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+        if (!org || !org.libreDteApiKey || !org.libreDteRut) {
+            throw new Error(`Organization missing LibreDTE credentials (orgId: ${organizationId})`);
+        }
+
         // Fallback dates: Last 7 days if not provided
         const start = fromDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         const end = toDate || new Date().toISOString().split('T')[0];
 
-        // HARDCODED CREDENTIALS AS FALLBACK (Requested by User for Production Fix)
-        const apiKey = process.env.LIBREDTE_API_KEY || 'WDpyVTFteDRiZDFTUnRVT3BLNE9oWnZSeU5BT1V3WkM4MA==';
-        const companyRut = process.env.COMPANY_RUT || '77154188';
+        const apiKey = org.libreDteApiKey;
+        const companyRut = org.libreDteRut;
 
-        this.logger.log(`Fetching DTEs from ${fromDate} to ${toDate} for RUT ${companyRut}`);
-
-        if (!apiKey) {
-            // Should not happen with fallback
-            this.logger.error('LIBREDTE_API_KEY not found in environment variables');
-            throw new Error('Configuration error: Missing LibreDTE API Key');
-        }
+        this.logger.log(`Fetching DTEs from ${start} to ${end} for RUT ${companyRut}`);
 
         try {
             // CORRECTED: Use the proper endpoint format with _contribuyente_rut parameter
@@ -122,7 +125,7 @@ export class LibreDteService {
 
             for (const item of dtes) {
                 try {
-                    const result = await this.processDteItem(item);
+                    const result = await this.processDteItem(item, organizationId, companyRut);
                     if (result === 'created') {
                         processedCount++;
                     } else if (result === 'skipped') {
@@ -154,15 +157,19 @@ export class LibreDteService {
     /**
      * Manually ingest a list of DTEs (e.g. from local JSON or N8N webhook)
      */
-    async ingestDtes(dtes: any[]) {
-        this.logger.log(`Manual ingestion of ${dtes.length} DTEs`);
+    async ingestDtes(dtes: any[], organizationId: string) {
+        this.logger.log(`Manual ingestion of ${dtes.length} DTEs for org ${organizationId}`);
+
+        const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+        if (!org || !org.libreDteRut) throw new Error('Organization not found or missing RUT');
+        
         let created = 0;
         let skipped = 0;
         let errors = 0;
 
         for (const item of dtes) {
             try {
-                const res = await this.processDteItem(item);
+                const res = await this.processDteItem(item, organizationId, org.libreDteRut);
                 if (res === 'created') created++;
                 else if (res === 'skipped') skipped++;
             } catch (e) {
@@ -180,19 +187,8 @@ export class LibreDteService {
         };
     }
 
-    private async processDteItem(item: any): Promise<'created' | 'skipped'> {
-        // LibreDTE dte_recibidos/buscar response structure:
-        // {
-        //   "emisor": 76594462,  // RUT as number
-        //   "razon_social": "SOCIEDAD TURISTICA...",
-        //   "dte": 33,  // Document type
-        //   "folio": 12345,
-        //   "fecha": "2026-02-11",
-        //   "total": 55979,
-        //   ... other fields
-        // }
-
-        const rutIssuer = String(item.emisor); // Convert to string
+    private async processDteItem(item: any, organizationId: string, companyRut: string): Promise<'created' | 'skipped'> {
+        const rutIssuer = String(item.emisor);
         const nameIssuer = item.razon_social;
         const dteType = Number(item.dte);
         const folio = Number(item.folio);
@@ -204,9 +200,9 @@ export class LibreDteService {
             return 'skipped';
         }
 
-        // 1. Upsert Provider
-        let provider = await this.prisma.provider.findUnique({
-            where: { rut: rutIssuer }
+        // 1. Upsert Provider (Scoped by Org)
+        let provider = await this.prisma.provider.findFirst({
+            where: { rut: rutIssuer, organizationId }
         });
 
         if (!provider) {
@@ -214,9 +210,10 @@ export class LibreDteService {
                 data: {
                     rut: rutIssuer,
                     name: nameIssuer || `Provider ${rutIssuer}`,
+                    organizationId
                 }
             });
-            this.logger.debug(`Created new provider: ${rutIssuer} - ${nameIssuer}`);
+            this.logger.debug(`Created new provider: ${rutIssuer}`);
         }
 
         // 2. Check if DTE already exists
@@ -230,28 +227,28 @@ export class LibreDteService {
             }
         });
 
+        // 2.a Check if exists AND belongs to THIS org
         if (existingDTE) {
-            this.logger.debug(`DTE already exists: ${rutIssuer}-${dteType}-${folio}`);
-            return 'skipped';
+            if (existingDTE.providerId === provider.id) {
+                this.logger.debug(`DTE already exists: ${rutIssuer}-${dteType}-${folio}`);
+                return 'skipped';
+            }
         }
 
         // 3. Create new DTE
-        // Hardcode company RUT if missing in env
-        const companyRut = process.env.COMPANY_RUT || '77154188';
-
         await this.prisma.dTE.create({
             data: {
                 folio: folio,
                 type: dteType,
                 rutIssuer: rutIssuer,
-                rutReceiver: companyRut, // Our company RUT
+                rutReceiver: companyRut, // Org RUT
                 totalAmount: totalAmount,
                 outstandingAmount: totalAmount,
                 issuedDate: new Date(issuedDateStr),
                 dueDate: item.vencimiento ? new Date(item.vencimiento) : null,
                 siiStatus: 'RECIBIDO',
                 paymentStatus: DtePaymentStatus.UNPAID,
-                provider: { connect: { id: provider.id } },
+                providerId: provider.id,
                 origin: DataOrigin.API_INTEGRATION,
                 metadata: item // Store raw data for audit
             }
@@ -263,9 +260,14 @@ export class LibreDteService {
     /**
      * Generates or fetches the PDF for a received DTE.
      */
-    async getDtePdf(rutIssuer: string, type: number, folio: number): Promise<Buffer> {
-        const apiKey = process.env.LIBREDTE_API_KEY || 'WDpyVTFteDRiZDFTUnRVT3BLNE9oWnZSeU5BT1V3WkM4MA==';
-        const companyRut = process.env.COMPANY_RUT || '77154188';
+    async getDtePdf(rutIssuer: string, type: number, folio: number, organizationId: string): Promise<Buffer> {
+        const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+        if (!org || !org.libreDteApiKey || !org.libreDteRut) {
+            throw new Error('Organization missing LibreDTE credentials for PDF download');
+        }
+
+        const apiKey = org.libreDteApiKey;
+        const companyRut = org.libreDteRut;
 
         this.logger.log(`Requesting PDF for DTE: ${rutIssuer}-${type}-${folio}`);
 

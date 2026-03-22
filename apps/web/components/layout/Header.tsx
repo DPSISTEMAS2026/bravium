@@ -12,7 +12,7 @@ export default function Header() {
                 {/* Status */}
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full border border-slate-200 shrink-0">
                     <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="text-emerald-700 font-semibold text-xs">EN L\u00cdNEA</span>
+                    <span className="text-emerald-700 font-semibold text-xs">EN LÍNEA</span>
                 </div>
 
                 {/* Notifications */}
@@ -34,11 +34,11 @@ export default function Header() {
                     <button
                         type="button"
                         onClick={logout}
-                        title="Cerrar sesi\u00f3n"
+                        title="Cerrar sesión"
                         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-700 transition-colors shrink-0 border border-transparent hover:border-red-100"
                     >
                         <ArrowLeftOnRectangleIcon className="w-5 h-5 shrink-0" />
-                        <span className="text-sm font-medium whitespace-nowrap">Cerrar sesi\u00f3n</span>
+                        <span className="text-sm font-medium whitespace-nowrap">Cerrar sesión</span>
                     </button>
                 </div>
             </div>

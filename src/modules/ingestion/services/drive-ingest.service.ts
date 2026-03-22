@@ -11,6 +11,7 @@ export interface DriveIngestDto {
     currency?: string;
     period?: string;
     rows?: any[];
+    organizationId?: string;
 
     // Legacy / Alternative Fields
     jsonRows?: any[];
@@ -93,11 +94,14 @@ export class DriveIngestService {
             accountWhereInput.accountNumber = accountNumber;
         }
 
+        if (dto.organizationId) {
+            accountWhereInput.organizationId = dto.organizationId;
+        }
+
         let bankAccount = await this.prisma.bankAccount.findFirst({
             where: accountWhereInput
         });
 
-        // Auto-Create if not exists
         if (!bankAccount) {
             this.logger.log(`Bank Account not found. Creating new one for ${bankName}`);
             bankAccount = await this.prisma.bankAccount.create({
@@ -107,7 +111,7 @@ export class DriveIngestService {
                     currency: currency,
                     rutHolder: 'AUTO-GEN-N8N', // Required field placeholder
                     isActive: true,
-                    // 'origin' or 'autoCreated' logic handled by created record existence
+                    organizationId: dto.organizationId || null,
                 }
             });
         }

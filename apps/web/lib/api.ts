@@ -19,6 +19,21 @@ export const apiFetcher = async (url: string) => {
   return res.json();
 };
 
+/**
+ * Fetch con autenticación JWT.
+ * Lee el token de localStorage y lo envía como Bearer token.
+ */
+export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('bravium_token') : null;
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> || {}),
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return fetch(url, { ...options, headers });
+}
+
 export type ConciliacionDashboard = {
   period: { from: string; to: string };
   summary: {

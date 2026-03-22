@@ -1,14 +1,16 @@
-import { Controller, Post, Body, Logger, Get, Param, Query, Res, NotFoundException, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, Logger, Get, Param, Query, Res, Req, NotFoundException, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { LibreDteService } from '../services/libredte.service';
 import { DriveIngestService, DriveIngestDto } from '../services/drive-ingest.service';
 import { DtesService } from '../../contabilidad/dtes.service';
-import { Response } from 'express';
+import { PrismaService } from '../../../common/prisma/prisma.service';
+import { Response, Request } from 'express';
 
 interface SyncDteDto {
     fromDate: string;
     toDate: string;
     dtes?: any[];
+    organizationId: string;
 }
 
 import { GoogleDriveService } from '../services/google-drive.service';
@@ -21,17 +23,78 @@ export class IngestionController {
         private readonly libreDteService: LibreDteService,
         private readonly driveIngestService: DriveIngestService,
         private readonly dtesService: DtesService,
-        private readonly googleDriveService: GoogleDriveService
+        private readonly googleDriveService: GoogleDriveService,
+        private readonly prisma: PrismaService,
     ) { }
 
+    /**
+     * GET /ingestion/sync/status
+     * Returns latest sync logs for the requesting organization (or all if no auth).
+     */
+    @Get('sync/status')
+    async getSyncStatus(@Req() req: Request, @Query('limit') limit?: string) {
+        const organizationId = (req as any).user?.organizationId;
+        const take = Math.min(parseInt(limit || '10', 10), 50);
+
+        const where: any = {};
+        if (organizationId) where.organizationId = organizationId;
+
+        const logs = await this.prisma.syncLog.findMany({
+            where,
+            orderBy: { startedAt: 'desc' },
+            take,
+        });
+
+        // Also find the latest successful DTE sync
+        const lastSuccess = await this.prisma.syncLog.findFirst({
+            where: {
+                ...where,
+                type: { in: ['DTE_SYNC', 'STARTUP_SYNC'] },
+                status: 'SUCCESS',
+            },
+            orderBy: { finishedAt: 'desc' },
+        });
+
+        return {
+            lastSuccessfulSync: lastSuccess ? {
+                type: lastSuccess.type,
+                finishedAt: lastSuccess.finishedAt,
+                created: lastSuccess.created,
+                skipped: lastSuccess.skipped,
+                totalFound: lastSuccess.totalFound,
+                durationMs: lastSuccess.durationMs,
+                message: lastSuccess.message,
+            } : null,
+            recentLogs: logs.map(l => ({
+                id: l.id,
+                type: l.type,
+                status: l.status,
+                totalFound: l.totalFound,
+                created: l.created,
+                skipped: l.skipped,
+                errors: l.errors,
+                message: l.message,
+                durationMs: l.durationMs,
+                startedAt: l.startedAt,
+                finishedAt: l.finishedAt,
+            })),
+        };
+    }
+
+
     @Post('libredte/sync')
-    async syncDtes(@Body() body: SyncDteDto) {
+    async syncDtes(@Body() body: SyncDteDto, @Req() req: Request) {
+        const organizationId = body.organizationId || (req as any).user?.organizationId;
+        if (!organizationId) {
+            throw new BadRequestException('organizationId is required for syncing DTEs');
+        }
+
         const { fromDate, toDate, dtes } = body;
 
         // Prioridad: Inyección manual
         if (dtes && Array.isArray(dtes) && dtes.length > 0) {
             this.logger.log(`Manual injection trigger: ${dtes.length} DTEs provided`);
-            return this.libreDteService.ingestDtes(dtes);
+            return this.libreDteService.ingestDtes(dtes, organizationId);
         }
 
         if (!fromDate || !toDate) {
@@ -41,10 +104,10 @@ export class IngestionController {
             };
         }
 
-        this.logger.log(`Manual trigger: Syncing DTEs from ${fromDate} to ${toDate}`);
+        this.logger.log(`Manual trigger: Syncing DTEs from ${fromDate} to ${toDate} for org: ${organizationId}`);
 
         try {
-            const result = await this.libreDteService.fetchReceivedDTEs(fromDate, toDate);
+            const result = await this.libreDteService.fetchReceivedDTEs(fromDate, toDate, organizationId);
             return {
                 status: 'success',
                 data: result
@@ -135,6 +198,7 @@ export class IngestionController {
         @Body('bank') bank?: string,
         @Body('account') account?: string,
         @Body('replace') replace?: string,
+        @Req() req?: Request,
     ) {
         if (!file) throw new BadRequestException('Se requiere un archivo (PDF, Excel o CSV)');
 
@@ -150,6 +214,7 @@ export class IngestionController {
         this.logger.log(`Upload manual: ${file.originalname} (${(file.size / 1024).toFixed(1)} KB)`);
 
         const dto: DriveIngestDto = {
+            organizationId: (req as any).user?.organizationId,
             bank: bank || 'Carga Manual',
             account: account || 'MANUAL',
             fileContentBase64: file.buffer.toString('base64'),
@@ -177,7 +242,7 @@ export class IngestionController {
     }
 
     @Get('libredte/pdf/:id')
-    async getDtePdf(@Param('id') id: string, @Res() res: Response) {
+    async getDtePdf(@Param('id') id: string, @Res() res: Response, @Req() req: Request) {
         this.logger.log(`Requesting PDF for DTE ID: ${id}`);
 
         const dte = await this.dtesService.getDteById(id);
@@ -186,10 +251,16 @@ export class IngestionController {
         }
 
         try {
+            const organizationId = dte.provider?.organizationId || (req as any).user?.organizationId;
+            if (!organizationId) {
+                throw new BadRequestException('Organization could not be determined for PDF request.');
+            }
+
             const pdfBuffer = await this.libreDteService.getDtePdf(
                 dte.rutIssuer,
                 dte.type,
-                dte.folio
+                dte.folio,
+                organizationId
             );
 
             res.set({

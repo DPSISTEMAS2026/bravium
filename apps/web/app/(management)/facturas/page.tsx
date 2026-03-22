@@ -91,13 +91,25 @@ export default function FacturasPage() {
 
     const [search, setSearch] = useState(() => searchParams.get('search') || '');
     const [appliedSearch, setAppliedSearch] = useState(() => searchParams.get('search') || '');
-    const [statusFilter, setStatusFilter] = useState<string>(() => searchParams.get('status') || 'ALL');
+    const [statusFilter, setStatusFilter] = useState<string>(() => searchParams.get('paymentStatus') || searchParams.get('status') || 'ALL');
     const [syncing, setSyncing] = useState(false);
     const [page, setPage] = useState(1);
     const limit = 15;
     const [selectedMonth, setSelectedMonth] = useState('ALL');
-    const [selectedYear, setSelectedYear] = useState('2025');
+    const [selectedYear, setSelectedYear] = useState('2026');
     const [reviewModal, setReviewModal] = useState<{ dte: DTE; match: DTEMatch } | null>(null);
+    const [sortBy, setSortBy] = useState<string>('issuedDate');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+    const [hasPdfFilter, setHasPdfFilter] = useState<string>('ALL');
+    
+    // Modal Match Manual desde Facturas
+    const [manualMatchDte, setManualMatchDte] = useState<DTE | null>(null);
+    const [manualMatchSearch, setManualMatchSearch] = useState('');
+    const [manualMatchTxResults, setManualMatchTxResults] = useState<any[]>([]);
+    const [manualMatchSelectedTxId, setManualMatchSelectedTxId] = useState<string | null>(null);
+    const [manualMatchLoading, setManualMatchLoading] = useState(false);
+    const [manualMatchSaving, setManualMatchSaving] = useState(false);
+    const [manualMatchError, setManualMatchError] = useState<string | null>(null);
     const [reviewComment, setReviewComment] = useState('');
     const [reviewLoading, setReviewLoading] = useState(false);
 
@@ -114,9 +126,12 @@ export default function FacturasPage() {
             page: page.toString(), limit: limit.toString(),
             paymentStatus: statusFilter,
             search: appliedSearch || '',
+            sortBy,
+            sortOrder,
+            hasPdf: hasPdfFilter,
         });
         return { fromDate: from, toDate: to, queryStr: params.toString() };
-    }, [page, statusFilter, selectedMonth, selectedYear, appliedSearch]);
+    }, [page, statusFilter, selectedMonth, selectedYear, appliedSearch, sortBy, sortOrder, hasPdfFilter]);
 
     const { data: dtesData, error: dtesError, isLoading: dtesLoading, isValidating: dtesValidating, mutate: mutateDtes } = useSWR(
         statusFilter !== 'PAID' ? `${API_URL}/dtes?${queryStr}` : null,
@@ -134,7 +149,7 @@ export default function FacturasPage() {
     const dtes: DTE[] = dtesData?.data || dtesData || [];
     const meta = dtesData?.meta || null;
 
-    const matchesResponse = matchesData as { data?: Array<{ matchId: string; transaction: any; dte: any }>; meta?: { total: number; page: number; limit: number; lastPage: number } } | undefined;
+    const matchesResponse = matchesData as { data?: Array<{ matchId: string; transaction: any; dte: any; payment?: any }>; meta?: { total: number; page: number; limit: number; lastPage: number } } | undefined;
     const conciliatedRows: (DTE & { _rowKey?: string })[] = (matchesResponse?.data ?? [])
         .filter((row) => row.dte)
         .map((row) => ({
@@ -146,7 +161,7 @@ export default function FacturasPage() {
         hasMatch: true,
         matchCount: 1,
         isPdfAvailable: !!(row.dte.metadata && (row.dte.metadata as any)?.intercambio != null),
-        matches: [{ id: row.matchId, status: 'CONFIRMED', origin: 'MANUAL', confidence: 1, transaction: row.transaction } as DTEMatch],
+        matches: [{ id: row.matchId, status: 'CONFIRMED', origin: 'MANUAL', confidence: 1, transaction: row.transaction, payment: row.payment } as DTEMatch],
     }));
     const matchesMeta = matchesResponse?.meta || null;
 
@@ -245,6 +260,25 @@ export default function FacturasPage() {
         } finally {
             setSyncing(false);
         }
+    };
+
+    const toggleSort = (field: string) => {
+        if (sortBy === field) {
+            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortBy(field);
+            setSortOrder('asc');
+        }
+        setPage(1);
+    };
+
+    const renderSortArrow = (field: string) => {
+        if (sortBy !== field) return null;
+        return (
+            <span className="ml-1 inline-block">
+                {sortOrder === 'asc' ? '↑' : '↓'}
+            </span>
+        );
     };
 
     const formatCurrency = (amount: number) => {
@@ -391,7 +425,7 @@ export default function FacturasPage() {
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:w-auto">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 lg:w-auto">
                         <div className="flex items-center space-x-2">
                             <select
                                 value={selectedYear}
@@ -425,6 +459,18 @@ export default function FacturasPage() {
                             </select>
                         </div>
 
+                        <div className="flex items-center space-x-2">
+                            <select
+                                value={hasPdfFilter}
+                                onChange={(e) => { setHasPdfFilter(e.target.value); setPage(1); }}
+                                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium bg-white"
+                            >
+                                <option value="ALL">PDF: Todos</option>
+                                <option value="YES">Con PDF</option>
+                                <option value="NO">Sin PDF</option>
+                            </select>
+                        </div>
+
                         <button
                             onClick={() => { setPage(1); setAppliedSearch(search); }}
                             className="btn-primary py-2 text-xs"
@@ -441,11 +487,11 @@ export default function FacturasPage() {
                     <table className="w-full text-sm text-left">
                         <thead className="bg-gradient-to-r from-purple-50 to-purple-100 text-purple-900 font-semibold border-b-2 border-purple-200">
                             <tr>
-                                <th className="px-6 py-4">Folio</th>
+                                <th className="px-6 py-4 cursor-pointer hover:text-purple-600 transition-colors" onClick={() => toggleSort('folio')}>Folio {renderSortArrow('folio')}</th>
                                 <th className="px-6 py-4">Tipo</th>
                                 <th className="px-6 py-4">Proveedor</th>
-                                <th className="px-6 py-4">Fecha Emisión</th>
-                                <th className="px-6 py-4 text-right">Monto Total</th>
+                                <th className="px-6 py-4 cursor-pointer hover:text-purple-600 transition-colors" onClick={() => toggleSort('issuedDate')}>Fecha Emisión {renderSortArrow('issuedDate')}</th>
+                                <th className="px-6 py-4 text-right cursor-pointer hover:text-purple-600 transition-colors" onClick={() => toggleSort('totalAmount')}>Monto Total {renderSortArrow('totalAmount')}</th>
                                 <th className="px-6 py-4 text-right">Pendiente</th>
                                 <th className="px-6 py-4 text-center">Estado Pago</th>
                                 <th className="px-6 py-4 text-center">Conciliación</th>
@@ -515,11 +561,16 @@ export default function FacturasPage() {
                                     <td className="px-6 py-4 text-center align-middle">
                                         {(() => {
                                             const match = dte.matches?.[0];
+                                            const payment = (match as any)?.payment;
                                             const txDesc = match?.transaction?.description;
                                             const txAmount = match?.transaction?.amount;
                                             const txDate = match?.transaction?.date;
                                             const txBank = match?.transaction?.bankAccount?.bankName;
-                                            const canOpen = match && match.transaction;
+                                            const canOpen = match && (match.transaction || payment);
+
+                                            const displayDesc = txDesc || (payment ? 'Carga Manual / Registro' : 'Transacción');
+                                            const displayDate = txDate || payment?.date;
+                                            const displayAmount = txAmount != null ? Math.abs(txAmount) : payment?.amount;
 
                                             if (match && match.status === 'CONFIRMED') {
                                                 return (
@@ -533,17 +584,17 @@ export default function FacturasPage() {
                                                             <CheckCircleIcon className="h-4 w-4 mr-1" />
                                                             OK
                                                         </span>
-                                                        <div className="text-[11px] text-slate-700 font-semibold leading-tight max-w-[180px] truncate" title={txDesc}>
-                                                            {txDesc || 'Transacción'}
+                                                        <div className="text-[11px] text-slate-700 font-semibold leading-tight max-w-[180px] truncate" title={displayDesc}>
+                                                            {displayDesc}
                                                         </div>
-                                                        {txDate && (
+                                                        {displayDate && (
                                                             <div className="text-[10px] text-indigo-500 font-medium">
-                                                                {formatDate(txDate)} {txBank && `· ${txBank}`}
+                                                                {formatDate(displayDate)} {txBank && `· ${txBank}`}
                                                             </div>
                                                         )}
-                                                        {txAmount != null && (
+                                                        {displayAmount != null && (
                                                             <div className="text-[10px] text-slate-400">
-                                                                {formatCurrency(Math.abs(txAmount))}
+                                                                {formatCurrency(displayAmount)}
                                                             </div>
                                                         )}
                                                     </button>
@@ -571,9 +622,15 @@ export default function FacturasPage() {
                                                 );
                                             }
                                             return (
-                                                <span className="text-slate-400 text-xs">
-                                                    Sin match
-                                                </span>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => { setManualMatchDte(dte); setManualMatchSearch(dte.provider?.name || ''); }} 
+                                                    className="inline-flex items-center gap-1 text-slate-400 hover:text-indigo-600 font-medium px-2 py-1 rounded hover:bg-slate-100/60 transition-colors group cursor-pointer"
+                                                    title="Match manual"
+                                                >
+                                                    <span className="text-xs">Sin match</span>
+                                                    <MagnifyingGlassIcon className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                </button>
                                             );
                                         })()}
                                     </td>
@@ -639,7 +696,7 @@ export default function FacturasPage() {
             </div>
 
             {/* Modal Revisar / Confirmar Match (mismo flujo que Cartolas) */}
-            {reviewModal && reviewModal.match.transaction && (
+            {reviewModal && (reviewModal.match.transaction || (reviewModal.match as any).payment) && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center overflow-hidden p-3" onClick={() => setReviewModal(null)} style={{ touchAction: 'none' }}>
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden relative" onClick={e => e.stopPropagation()}>
                         <div className={`shrink-0 px-5 py-3 border-b border-slate-100 flex justify-between items-center ${reviewModal.match.status === 'CONFIRMED' ? 'bg-gradient-to-r from-emerald-50 to-green-50' : 'bg-gradient-to-r from-blue-50 to-indigo-50'}`}>
@@ -658,49 +715,63 @@ export default function FacturasPage() {
                             </button>
                         </div>
                         <div className="flex-1 min-h-0 overflow-auto p-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="rounded-lg border border-slate-200 p-4 bg-slate-50/50">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center shrink-0"><BanknotesIcon className="h-3.5 w-3.5 text-red-600" /></div>
-                                        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Movimiento Bancario</h3>
+                            {(() => {
+                                const tx = reviewModal.match.transaction;
+                                const pm = (reviewModal.match as any).payment;
+                                const isTx = !!tx;
+                                const mDate = tx ? tx.date : pm?.date;
+                                const mAmount = tx ? Math.abs(tx.amount) : pm?.amount;
+                                const mDesc = tx ? tx.description : (pm?.notes || 'Carga Manual / Registro de Pago');
+                                const mBank = tx?.bankAccount?.bankName;
+
+                                return (
+                                    <>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="rounded-lg border border-slate-200 p-4 bg-slate-50/50">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center shrink-0"><BanknotesIcon className="h-3.5 w-3.5 text-red-600" /></div>
+                                                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">{isTx ? 'Movimiento Bancario' : 'Carga Manual'}</h3>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                                <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{mDate ? formatDate(mDate) : '—'}</p></div>
+                                                <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-red-700">{formatCurrency(mAmount || 0)}</p></div>
+                                                <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Descripción</span><p className="text-slate-800 truncate" title={mDesc}>{mDesc}</p></div>
+                                                {mBank && (
+                                                    <div className="col-span-2 text-xs text-slate-500">{mBank} — {tx?.bankAccount?.accountNumber}</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-lg border border-indigo-200 p-4 bg-indigo-50/30">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center shrink-0"><DocumentTextIcon className="h-3.5 w-3.5 text-indigo-600" /></div>
+                                                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Factura (DTE)</h3>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                                <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{formatDate(reviewModal.dte.issuedDate)}</p></div>
+                                                <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-indigo-700">{formatCurrency(reviewModal.dte.totalAmount)}</p></div>
+                                                <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Proveedor</span><p className="text-slate-800 truncate" title={reviewModal.dte.provider?.name}>{reviewModal.dte.provider?.name || '—'}</p></div>
+                                                <div>Folio <span className="font-bold text-indigo-600">{reviewModal.dte.folio}</span></div>
+                                                <div>T{reviewModal.dte.type}</div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                                        <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{formatDate(reviewModal.match.transaction.date)}</p></div>
-                                        <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-red-700">{formatCurrency(reviewModal.match.transaction.amount)}</p></div>
-                                        <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Descripción</span><p className="text-slate-800 truncate" title={reviewModal.match.transaction.description}>{reviewModal.match.transaction.description}</p></div>
-                                        {reviewModal.match.transaction.bankAccount && (
-                                            <div className="col-span-2 text-xs text-slate-500">{reviewModal.match.transaction.bankAccount.bankName} — {reviewModal.match.transaction.bankAccount.accountNumber}</div>
-                                        )}
+                                    <div className="flex flex-wrap items-center gap-4 mt-3">
+                                        <div className="flex items-center gap-4 text-xs text-slate-500 bg-slate-50 rounded-lg py-1.5 px-3">
+                                            <span>Monto: <strong className={Math.abs(reviewModal.dte.totalAmount - (mAmount || 0)) === 0 ? 'text-emerald-600' : 'text-amber-600'}>{formatCurrency(Math.abs(reviewModal.dte.totalAmount - (mAmount || 0)))}</strong></span>
+                                            {mDate && <span>Fecha: <strong className="text-slate-700">{Math.abs(Math.round((new Date(mDate).getTime() - new Date(reviewModal.dte.issuedDate).getTime()) / 86400000))} días</strong></span>}
+                                        </div>
+                                        <div className="flex-1 min-w-[200px]">
+                                            <input
+                                                value={reviewComment}
+                                                onChange={e => setReviewComment(e.target.value)}
+                                                placeholder="Comentario (opcional)"
+                                                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-purple-500"
+                                            />
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="rounded-lg border border-indigo-200 p-4 bg-indigo-50/30">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center shrink-0"><DocumentTextIcon className="h-3.5 w-3.5 text-indigo-600" /></div>
-                                        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Factura (DTE)</h3>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                                        <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{formatDate(reviewModal.dte.issuedDate)}</p></div>
-                                        <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-indigo-700">{formatCurrency(reviewModal.dte.totalAmount)}</p></div>
-                                        <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Proveedor</span><p className="text-slate-800 truncate" title={reviewModal.dte.provider?.name}>{reviewModal.dte.provider?.name || '—'}</p></div>
-                                        <div>Folio <span className="font-bold text-indigo-600">{reviewModal.dte.folio}</span></div>
-                                        <div>T{reviewModal.dte.type}</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-4 mt-3">
-                                <div className="flex items-center gap-4 text-xs text-slate-500 bg-slate-50 rounded-lg py-1.5 px-3">
-                                    <span>Monto: <strong className={Math.abs(reviewModal.dte.totalAmount - Math.abs(reviewModal.match.transaction.amount)) === 0 ? 'text-emerald-600' : 'text-amber-600'}>{formatCurrency(Math.abs(reviewModal.dte.totalAmount - Math.abs(reviewModal.match.transaction.amount)))}</strong></span>
-                                    <span>Fecha: <strong className="text-slate-700">{Math.abs(Math.round((new Date(reviewModal.match.transaction.date).getTime() - new Date(reviewModal.dte.issuedDate).getTime()) / 86400000))} días</strong></span>
-                                </div>
-                                <div className="flex-1 min-w-[200px]">
-                                    <input
-                                        value={reviewComment}
-                                        onChange={e => setReviewComment(e.target.value)}
-                                        placeholder="Comentario (opcional)"
-                                        className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-purple-500"
-                                    />
-                                </div>
-                            </div>
+                                    </>
+                                );
+                            })()}
                         </div>
                         <div className="shrink-0 p-4 border-t border-slate-100 bg-slate-50/50 flex flex-wrap gap-3">
                             {reviewModal.match.status !== 'CONFIRMED' ? (
@@ -713,6 +784,19 @@ export default function FacturasPage() {
                                         className="flex-1 min-w-[120px] bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50">
                                         <XCircleIcon className="h-5 w-5" /> Rechazar
                                     </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => {
+                                            if (!reviewModal) return;
+                                            setManualMatchDte(reviewModal.dte);
+                                            // Pre-llenar con el nombre del proveedor para facilitar la búsqueda
+                                            setManualMatchSearch(reviewModal.dte.provider?.name || '');
+                                            setReviewModal(null); // Cerrar sugerencia
+                                        }} 
+                                        className="flex-1 min-w-[120px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-2 border-indigo-200 px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-1 disabled:opacity-50"
+                                    >
+                                        <MagnifyingGlassIcon className="h-4 w-4" /> Buscar en Cartola
+                                    </button>
                                 </>
                             ) : (
                                 <button onClick={handleDiscardMatch} disabled={reviewLoading}
@@ -723,6 +807,208 @@ export default function FacturasPage() {
                             <button onClick={() => setReviewModal(null)} disabled={reviewLoading}
                                 className="px-4 py-2.5 border border-slate-200 rounded-xl text-slate-600 font-medium text-sm hover:bg-slate-100 disabled:opacity-50">
                                 Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {manualMatchDte && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center overflow-hidden p-3">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden relative">
+                        {/* Header */}
+                        <div className="shrink-0 px-5 py-3 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-blue-50 to-indigo-50">
+                            <div>
+                                <h2 className="text-base font-bold text-slate-800">Anotar Movimiento de Factura</h2>
+                                <p className="text-xs text-slate-500">Vincula esta factura a un movimiento bancario existente o crea uno nuevo.</p>
+                            </div>
+                            <button onClick={() => { setManualMatchDte(null); setManualMatchTxResults([]); setManualMatchSelectedTxId(null); setManualMatchError(null); }} className="text-slate-400 hover:text-slate-600 transition-colors">
+                                <XCircleIcon className="h-6 w-6" />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="flex-1 min-h-0 overflow-auto flex flex-col p-4">
+                            {manualMatchError && (
+                                <div className="shrink-0 mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                                    {manualMatchError}
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
+                                {/* Panel Izquierdo: Datos de la Factura (DTE) */}
+                                <div className="rounded-xl border border-indigo-200 p-4 bg-indigo-50/30 flex flex-col">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+                                            <DocumentTextIcon className="h-3.5 w-3.5 text-indigo-600" />
+                                        </div>
+                                        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Factura (DTE)</h3>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                        <div>
+                                            <span className="text-[10px] text-slate-400 uppercase">Fecha Emisión</span>
+                                            <p className="font-semibold text-slate-800">{new Date(manualMatchDte.issuedDate).toLocaleDateString('es-CL')}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] text-slate-400 uppercase">Monto Total</span>
+                                            <p className="font-bold text-indigo-700">{formatCurrency(manualMatchDte.totalAmount)}</p>
+                                        </div>
+                                        <div className="col-span-2">
+                                            <span className="text-[10px] text-slate-400 uppercase">Proveedor</span>
+                                            <p className="text-slate-800 font-medium truncate" title={manualMatchDte.provider?.name}>{manualMatchDte.provider?.name || '—'}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] text-slate-400 uppercase">Folio</span>
+                                            <p className="font-bold text-indigo-600">{manualMatchDte.folio}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] text-slate-400 uppercase">Tipo</span>
+                                            <p className="text-slate-800">T{manualMatchDte.type}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Comentario / Notas de Conciliación */}
+                                    <div className="mt-auto pt-4 border-t border-indigo-100/50">
+                                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Comentario / Motivo del gasto (opcional)</label>
+                                        <textarea 
+                                            value={reviewComment}
+                                            onChange={e => setReviewComment(e.target.value)}
+                                            placeholder="Ej: Pago de factura para dar por pagada..."
+                                            rows={2}
+                                            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Panel Derecho: Búsqueda de Movimientos / Creación Manual */}
+                                <div className="flex flex-col min-h-0">
+                                    <p className="text-xs font-semibold text-slate-600 mb-2">Vincular con Movimiento Bancario</p>
+                                    <div className="flex gap-2 mb-3">
+                                        <input 
+                                            type="text" 
+                                            value={manualMatchSearch} 
+                                            onChange={e => setManualMatchSearch(e.target.value)} 
+                                            onKeyDown={e => e.key === 'Enter' && (document.getElementById('btn-manual-search-tx') as any)?.click()}
+                                            placeholder="Buscar por descripción o monto..." 
+                                            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        />
+                                        <button 
+                                            id="btn-manual-search-tx"
+                                            type="button" 
+                                            onClick={async () => {
+                                                setManualMatchLoading(true);
+                                                setManualMatchError(null);
+                                                try {
+                                                    const res = await fetch(`${API_URL}/transactions?search=${encodeURIComponent(manualMatchSearch)}&status=PENDING,UNMATCHED&limit=30&sortBy=date&order=desc`);
+                                                    const data = await res.json().catch(() => ({}));
+                                                    setManualMatchTxResults(Array.isArray(data) ? data : data.data || []);
+                                                } catch { setManualMatchError('Error al buscar movimientos'); } finally { setManualMatchLoading(false); }
+                                            }} 
+                                            disabled={manualMatchLoading}
+                                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm disabled:opacity-50 flex items-center justify-center"
+                                        >
+                                            <MagnifyingGlassIcon className="h-4 w-4" />
+                                        </button>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[150px]">
+                                        {manualMatchLoading && (
+                                            <div className="flex justify-center py-6"><ArrowPathIcon className="h-5 w-5 animate-spin text-slate-400" /></div>
+                                        )}
+                                        {manualMatchTxResults.map(tx => (
+                                            <div 
+                                                key={tx.id} 
+                                                onClick={() => setManualMatchSelectedTxId(manualMatchSelectedTxId === tx.id ? null : tx.id)}
+                                                className={`p-3 border rounded-xl cursor-pointer transition-all flex justify-between items-center ${manualMatchSelectedTxId === tx.id ? 'border-indigo-600 bg-indigo-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'}`}
+                                            >
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs font-bold text-slate-800 truncate" title={tx.description}>{tx.description}</p>
+                                                    <p className="text-[10px] text-slate-500">{new Date(tx.date).toLocaleDateString('es-CL')}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-sm font-bold text-red-700">{formatCurrency(tx.amount)}</p>
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[9px] font-semibold text-slate-500 bg-slate-100 rounded px-1 mt-0.5">
+                                                            {tx.bankAccount?.bankName || 'Sin Banco'}
+                                                        </span>
+                                                        {tx.bankAccount?.accountNumber && (
+                                                            <span className="text-[8px] text-slate-400">
+                                                                N° ...{tx.bankAccount.accountNumber.slice(-4)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {!manualMatchLoading && manualMatchTxResults.length === 0 && (
+                                            <div className="text-center py-6">
+                                                <p className="text-xs text-slate-400">No se encontraron movimientos pendientes.</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Creación Manual de Transacción (Anotar directo) */}
+                                    <div className="mt-3 pt-3 border-t border-slate-100">
+                                        <button 
+                                            type="button"
+                                            onClick={() => {
+                                                // Expande formulario para ingresar row manualmente si no existe!
+                                                alert("Si el movimiento no está, puedes ingresarlo como un Registro de Pago Manual en el módulo correspondiente. Muy pronto estará integrado aquí directamente.");
+                                            }}
+                                            className="w-full text-center text-xs font-semibold text-slate-500 hover:text-indigo-600 py-1"
+                                        >
+                                            ¿El movimiento no está aquí? Configura un pago directo
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="shrink-0 p-4 border-t border-slate-100 bg-slate-50 flex gap-3 justify-end">
+                            <button 
+                                type="button" 
+                                onClick={() => { setManualMatchDte(null); setManualMatchTxResults([]); setManualMatchSelectedTxId(null); setManualMatchError(null); }} 
+                                disabled={manualMatchSaving}
+                                className="px-5 py-2.5 border border-slate-200 rounded-xl text-slate-600 font-medium text-sm hover:bg-slate-100 transition-colors disabled:opacity-50"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                type="button" 
+                                onClick={async () => {
+                                    if (!manualMatchSelectedTxId) return;
+                                    setManualMatchSaving(true);
+                                    setManualMatchError(null);
+                                    try {
+                                        const res = await fetch(`${API_URL}/conciliacion/matches/manual`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ 
+                                                transactionId: manualMatchSelectedTxId, 
+                                                dteId: manualMatchDte.id,
+                                                notes: reviewComment.trim() || undefined
+                                            }),
+                                        });
+                                        const data = await res.json().catch(() => ({}));
+                                        if (!res.ok) throw new Error(data?.message || 'Error al conectar');
+                                        setManualMatchDte(null);
+                                        setManualMatchTxResults([]);
+                                        setManualMatchSelectedTxId(null);
+                                        setReviewComment('');
+                                        // Refrescar SWR Cache
+                                        if (typeof mutateDtes === 'function') mutateDtes();
+                                        if (typeof mutateSummary === 'function') mutateSummary();
+                                        globalMutate((k: string) => typeof k === 'string' && k.includes('/transactions'));
+                                    } catch (e: any) {
+                                        setManualMatchError(e?.message || 'Ocurrió un error');
+                                    } finally { setManualMatchSaving(false); }
+                                }} 
+                                disabled={manualMatchSaving || !manualMatchSelectedTxId}
+                                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-lg shadow-indigo-600/20"
+                            >
+                                {manualMatchSaving ? <ArrowPathIcon className="h-5 w-5 animate-spin"/> : <CheckCircleIcon className="h-5 w-5"/>}
+                                Matchear con Factura
                             </button>
                         </div>
                     </div>

@@ -34,32 +34,19 @@ interface NavSection {
 
 const sections: NavSection[] = [
     {
-        title: 'Reportes e Inteligencia',
+        title: 'Módulos Principales',
         items: [
             { name: 'Dashboard', href: '/', icon: HomeIcon },
-            { name: 'Análisis de Reportes', href: '/reportes', icon: DocumentChartBarIcon },
-        ]
-    },
-    {
-        title: 'Operaciones DTE',
-        items: [
             { name: 'Facturas (DTE)', href: '/facturas', icon: DocumentTextIcon },
-            { name: 'Monitor de Compras', href: '/monitor-compras', icon: ShoppingBagIcon },
-        ]
-    },
-    {
-        title: 'Bancos y Conciliación',
-        items: [
             { name: 'Cartolas Bancarias', href: '/cartolas', icon: CreditCardIcon },
-            { name: 'Conciliación (KPIs)', href: '/conciliacion', icon: SparklesIcon },
-            { name: 'Libro de Pagos', href: '/registro-pagos', icon: BanknotesIcon },
+            { name: 'Proveedores', href: '/proveedores', icon: UsersIcon },
         ]
     },
     {
         title: 'Gestión y Sistema',
         items: [
-            { name: 'Proveedores', href: '/proveedores', icon: UsersIcon },
-            { name: 'Exportar Información', href: '/exportar', icon: ArrowDownTrayIcon },
+            { name: 'Exportación', href: '/exportar', icon: ArrowDownTrayIcon },
+            { name: 'Contacto', href: '/contacto', icon: DocumentChartBarIcon },
         ]
     }
 ];
@@ -134,21 +121,15 @@ export default function Sidebar() {
                 ))}
             </div>
 
-            {/* Logout Footer Layer */}
-            <div className="mt-auto pt-3 border-top border-white opacity-10 px-3 pb-3">
-                <div className="d-flex align-items-center justify-content-between">
-                    <div className="d-flex align-items-center gap-2">
-                        <div className="rounded-circle d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px', background: 'linear-gradient(135deg, var(--bravium-active-indigo), var(--bravium-active-violet))' }}>
-                            <span className="small fw-bold text-white">{initials}</span>
-                        </div>
-                        <div className="overflow-hidden">
-                            <div className="text-white fw-medium text-truncate" style={{ fontSize: '0.8rem', maxWidth: '120px' }}>{user?.fullName}</div>
-                        </div>
-                    </div>
-                    <button onClick={logout} className="p-1 text-white opacity-50 hover-opacity-100 transition-all bg-transparent border-0">
-                        <ArrowLeftOnRectangleIcon style={{ width: '18px', height: '18px' }} />
-                    </button>
-                </div>
+            {/* Logout Footer */}
+            <div className="mt-auto px-3 pb-4 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <button
+                    onClick={logout}
+                    className="flex items-center gap-2.5 w-full px-4 py-2.5 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-all duration-200"
+                >
+                    <ArrowLeftOnRectangleIcon className="w-5 h-5 shrink-0" />
+                    <span className="text-sm font-medium">Cerrar sesión</span>
+                </button>
             </div>
         </div>
     );

@@ -12,9 +12,12 @@ export class MatchSuggestionsService {
         private auditService: AuditService,
     ) {}
 
-    async listSuggestions(status?: string) {
+    async listSuggestions(status?: string, organizationId?: string) {
         const where: any = {};
         if (status) where.status = status;
+        if (organizationId) {
+            where.dte = { provider: { organizationId } };
+        }
 
         const suggestions = await this.prisma.matchSuggestion.findMany({
             where,

@@ -1,22 +1,29 @@
 
-import { Controller, Post, Get, Patch, Delete, Body, Param, Logger, Query, Res, Req, HttpStatus, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Body, Param, Logger, Query, Res, Req, HttpStatus, BadRequestException, NotFoundException, UseGuards } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { ConciliacionService } from './conciliacion.service';
 import { ConciliacionDashboardService } from './conciliacion-dashboard.service';
 import { MatchManagementService } from './services/match-management.service';
 import { MatchSuggestionsService } from './services/match-suggestions.service';
 import { ExportService } from './services/export.service';
+import { MorningBriefingService } from './services/morning-briefing.service';
 import { DashboardFiltersDto } from './dto/dashboard-filters.dto';
 import { ExportType } from './dto/export-filters.dto';
+
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { OrganizationGuard } from '../../common/guards/organization.guard';
 
 interface AutoMatchDto {
     fromDate?: string;
     toDate?: string;
     syncFromSources?: boolean;
+    organizationId?: string;
 }
 
 import { LibreDteService } from '../ingestion/services/libredte.service';
 
+@UseGuards(JwtAuthGuard, RolesGuard, OrganizationGuard)
 @Controller('conciliacion')
 export class ConciliacionController {
     private readonly logger = new Logger(ConciliacionController.name);
@@ -28,14 +35,31 @@ export class ConciliacionController {
         private readonly matchSuggestions: MatchSuggestionsService,
         private readonly exportService: ExportService,
         private readonly libreDteService: LibreDteService,
+        private readonly morningBriefing: MorningBriefingService,
     ) { }
+
+    /**
+     * GET /conciliacion/briefing
+     * Resumen ejecutivo matutino: matches por revisar, pagos pendientes,
+     * documentos sin factura, estado de sync.
+     * Diseñado para que el frontend lo consuma al cargar el dashboard.
+     */
+    @Get('briefing')
+    async getMorningBriefing(@Req() req: Request) {
+        const organizationId = (req as any).user?.organizationId || (req as any).organizationId;
+        if (!organizationId) {
+            return { error: 'Organization context required' };
+        }
+        return this.morningBriefing.getBriefing(organizationId);
+    }
 
     /**
      * Dashboard con filtros avanzados
      * Soporta filtros por año, mes, proveedor, estado, monto, etc.
      */
     @Get('dashboard')
-    async getDashboard(@Query() filters: DashboardFiltersDto) {
+    async getDashboard(@Query() filters: DashboardFiltersDto, @Req() req: Request) {
+        filters.organizationId = filters.organizationId || (req as any).user?.organizationId;
         this.logger.log(`Dashboard requested with filters: ${JSON.stringify(filters)}`);
         return this.dashboardService.getDashboard(filters);
     }
@@ -48,8 +72,10 @@ export class ConciliacionController {
     async exportToExcel(
         @Query() filters: DashboardFiltersDto,
         @Query('type') type: ExportType = ExportType.ALL,
-        @Res() res: Response
+        @Res() res: Response,
+        @Req() req: Request
     ) {
+        filters.organizationId = filters.organizationId || (req as any).user?.organizationId;
         try {
             this.logger.log(`Export to Excel requested: type=${type}, filters=${JSON.stringify(filters)}`);
 
@@ -97,18 +123,24 @@ export class ConciliacionController {
     }
 
     @Post('run-auto-match')
-    async runAutoMatch(@Body() body: AutoMatchDto) {
-        this.logger.log(`Trigger: Run Auto Match (Sync=${body.syncFromSources})`);
+    async runAutoMatch(@Body() body: AutoMatchDto, @Req() req: Request) {
+        const organizationId = body.organizationId || (req as any).user?.organizationId;
+        
+        if (!organizationId) {
+            throw new BadRequestException('organizationId is required to run auto-match');
+        }
+
+        this.logger.log(`Trigger: Run Auto Match (Sync=${body.syncFromSources}, Org=${organizationId})`);
 
         if (body.syncFromSources) {
             try {
-                await this.libreDteService.syncRecentlyReceivedDTEs();
+                await this.libreDteService.syncRecentlyReceivedDTEs(organizationId);
             } catch (err) {
                 this.logger.warn(`Background sync failed: ${err.message}`);
             }
         }
 
-        this.conciliacionService.runReconciliationCycle(body.fromDate, body.toDate)
+        this.conciliacionService.runReconciliationCycle(body.fromDate, body.toDate, organizationId)
             .then(result => this.logger.log(`Async match finished: ${JSON.stringify(result)}`))
             .catch(err => this.logger.error(`Async match failed: ${err.message}`));
 
@@ -117,6 +149,12 @@ export class ConciliacionController {
             message: 'Proceso de conciliación iniciado en segundo plano. Los resultados aparecerán progresivamente.',
             filters: { fromDate: body.fromDate, toDate: body.toDate }
         };
+    }
+
+    @Get('matches/historical-notes')
+    async getHistoricalNotes(@Req() req: Request) {
+        const organizationId = (req as any).user?.organizationId;
+        return this.matchManagement.getHistoricalNotes(organizationId);
     }
 
     // ── Manual Match Management ──
@@ -145,14 +183,14 @@ export class ConciliacionController {
 
     @Post('matches/manual')
     async createManualMatch(
-        @Body() body: { transactionId: string; dteId?: string; paymentId?: string; notes?: string },
+        @Body() body: { transactionId: string; dteId?: string; dteIds?: string[]; paymentId?: string; notes?: string },
         @Req() req: Request
     ) {
         const userId = (req as any).user?.id || (req as any).user?.sub || 'unknown';
-        if (!body.transactionId || (!body.dteId && !body.paymentId)) {
-            throw new BadRequestException('Se requiere transactionId y al menos dteId o paymentId');
+        if (!body.transactionId || (!body.dteId && (!body.dteIds || body.dteIds.length === 0) && !body.paymentId)) {
+            throw new BadRequestException('Se requiere transactionId y al menos dteId/dteIds o paymentId');
         }
-        this.logger.log(`User ${userId} creating manual match: tx=${body.transactionId}, dte=${body.dteId}`);
+        this.logger.log(`User ${userId} creating manual match: tx=${body.transactionId}, dteIds=${body.dteIds?.join(',') || body.dteId}`);
         return this.matchManagement.createManualMatch(body, userId);
     }
 
@@ -174,8 +212,9 @@ export class ConciliacionController {
     // ── Suggestions (N:1 Sum Match) ──
 
     @Get('suggestions')
-    async listSuggestions(@Query('status') status?: string) {
-        return this.matchSuggestions.listSuggestions(status);
+    async listSuggestions(@Req() req: Request, @Query('status') status?: string) {
+        const organizationId = (req as any).user?.organizationId;
+        return this.matchSuggestions.listSuggestions(status, organizationId);
     }
 
     @Get('suggestions/:id')

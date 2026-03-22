@@ -102,48 +102,72 @@ export class MatchManagementService {
     }
 
     async createManualMatch(
-        body: { transactionId: string; dteId?: string; paymentId?: string; notes?: string },
+        body: { transactionId: string; dteId?: string; dteIds?: string[]; paymentId?: string; notes?: string },
         userId: string,
     ) {
         const tx = await this.prisma.bankTransaction.findUnique({ where: { id: body.transactionId } });
         if (!tx) throw new NotFoundException('Transacción no encontrada');
         if (tx.status === 'MATCHED') throw new BadRequestException('Esta transacción ya tiene un match activo');
 
-        if (body.dteId) {
-            const dte = await this.prisma.dTE.findUnique({ where: { id: body.dteId } });
-            if (!dte) throw new NotFoundException('DTE no encontrado');
+        const ids = body.dteIds && body.dteIds.length > 0 ? body.dteIds : body.dteId ? [body.dteId] : [];
+
+        if (ids.length > 0) {
+            const dtes = await this.prisma.dTE.findMany({ where: { id: { in: ids } } });
+            if (dtes.length !== ids.length) throw new NotFoundException('Uno o más DTEs no encontrados');
         }
 
-        const match = await this.prisma.$transaction(async (prisma) => {
-            const created = await prisma.reconciliationMatch.create({
-                data: {
-                    transactionId: body.transactionId,
-                    dteId: body.dteId || null,
-                    paymentId: body.paymentId || null,
-                    origin: 'MANUAL',
-                    status: 'CONFIRMED',
-                    confidence: 1.0,
-                    ruleApplied: 'MANUAL_USER',
-                    notes: body.notes || null,
-                    createdBy: userId,
-                    confirmedAt: new Date(),
-                    confirmedBy: userId,
-                },
-            });
+        const matchResult = await this.prisma.$transaction(async (prisma) => {
+            const createdMatches = [];
+            
+            if (ids.length > 0) {
+                for (const dId of ids) {
+                    const created = await prisma.reconciliationMatch.create({
+                        data: {
+                            transactionId: body.transactionId,
+                            dteId: dId,
+                            paymentId: body.paymentId || null,
+                            origin: 'MANUAL',
+                            status: 'CONFIRMED',
+                            confidence: 1.0,
+                            ruleApplied: 'MANUAL_USER',
+                            notes: body.notes || null,
+                            createdBy: userId,
+                            confirmedAt: new Date(),
+                            confirmedBy: userId,
+                        },
+                    });
+                    createdMatches.push(created);
+
+                    await prisma.dTE.update({
+                        where: { id: dId },
+                        data: { paymentStatus: 'PAID', outstandingAmount: 0 },
+                    });
+                }
+            } else if (body.paymentId) {
+                const created = await prisma.reconciliationMatch.create({
+                    data: {
+                        transactionId: body.transactionId,
+                        dteId: null,
+                        paymentId: body.paymentId,
+                        origin: 'MANUAL',
+                        status: 'CONFIRMED',
+                        confidence: 1.0,
+                        ruleApplied: 'MANUAL_USER',
+                        notes: body.notes || null,
+                        createdBy: userId,
+                        confirmedAt: new Date(),
+                        confirmedBy: userId,
+                    },
+                });
+                createdMatches.push(created);
+            }
 
             await prisma.bankTransaction.update({
                 where: { id: body.transactionId },
                 data: { status: TransactionStatus.MATCHED },
             });
 
-            if (body.dteId) {
-                await prisma.dTE.update({
-                    where: { id: body.dteId },
-                    data: { paymentStatus: 'PAID', outstandingAmount: 0 },
-                });
-            }
-
-            return created;
+            return createdMatches[0];
         });
 
         await this.audit.logAction(
@@ -151,13 +175,13 @@ export class MatchManagementService {
             {
                 action: 'MANUAL_MATCH_CREATED',
                 entityType: 'ReconciliationMatch',
-                entityId: match.id,
-                newValue: { transactionId: body.transactionId, dteId: body.dteId, paymentId: body.paymentId },
+                entityId: matchResult.id,
+                newValue: { transactionId: body.transactionId, dteId: body.dteId, dteIds: body.dteIds, paymentId: body.paymentId },
                 metadata: { notes: body.notes },
             },
         );
 
-        return match;
+        return matchResult;
     }
 
     async deleteMatch(matchId: string, userId: string) {
@@ -207,5 +231,31 @@ export class MatchManagementService {
             orderBy: { createdAt: 'desc' },
         });
         return logs;
+    }
+
+    async getHistoricalNotes(organizationId?: string) {
+        const matches = await this.prisma.reconciliationMatch.findMany({
+            where: {
+                notes: { not: null },
+                NOT: { notes: '' },
+                transaction: {
+                    bankAccount: organizationId ? { organizationId } : undefined,
+                },
+            },
+            include: {
+                transaction: { select: { description: true } }
+            },
+            orderBy: { confirmedAt: 'desc' },
+            take: 1000,
+        });
+
+        const notesMap: Record<string, string> = {};
+        for (const m of matches as any[]) {
+            const desc = m.transaction?.description;
+            if (desc && !notesMap[desc] && m.notes) {
+                notesMap[desc] = m.notes;
+            }
+        }
+        return notesMap;
     }
 }

@@ -29,7 +29,7 @@ interface Provider {
     invoiceCount: number;
     unpaidInvoices: number;
     overdueInvoices: number;
-    status: 'CRITICAL' | 'WARNING' | 'OK';
+    status: 'CRITICAL_10' | 'CRITICAL_30' | 'WITH_DEBT' | 'OK';
 }
 
 interface PaginatedResponse {
@@ -46,15 +46,16 @@ export default function ProveedoresPage() {
     const API_URL = getApiUrl();
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('ALL');
+    const [selectedYear, setSelectedYear] = useState('2026');
     const [page, setPage] = useState(1);
 
     const { data: response, isLoading: loading } = useSWR<PaginatedResponse>(
-        `${API_URL}/proveedores?page=${page}&limit=${PAGE_SIZE}${search ? `&search=${encodeURIComponent(search)}` : ''}`
+        `${API_URL}/proveedores?page=${page}&limit=${PAGE_SIZE}&year=${selectedYear}${search ? `&search=${encodeURIComponent(search)}` : ''}${statusFilter !== 'ALL' ? `&status=${statusFilter}` : ''}`
     );
 
     useEffect(() => {
         setPage(1);
-    }, [search]);
+    }, [search, selectedYear, statusFilter]);
 
     const providers = response?.data ?? [];
     const total = response?.total ?? 0;
@@ -69,22 +70,14 @@ export default function ProveedoresPage() {
         }).format(amount);
     };
 
-    const filteredProviders = useMemo(() => {
-        return providers.filter((p) => {
-            const matchesStatus =
-                statusFilter === 'ALL' ||
-                (statusFilter === 'CRITICAL' && p.status === 'CRITICAL') ||
-                (statusFilter === 'WARNING' && p.status === 'WARNING') ||
-                (statusFilter === 'OK' && p.status === 'OK');
-            return matchesStatus;
-        });
-    }, [providers, statusFilter]);
+    // El backend ya filtra por estado si se lo pasamos, por lo que filteredProviders es simplemente providers
+    const filteredProviders = providers;
 
     const stats = useMemo(() => ({
         total,
         conDeuda: providers.filter((p) => p.totalDebt > 0).length,
         deudaTotal: providers.reduce((sum, p) => sum + p.totalDebt, 0),
-        critical: providers.filter((p) => p.status === 'CRITICAL').length,
+        critical: providers.filter((p) => p.status === 'CRITICAL_30' || p.status === 'CRITICAL_10').length,
     }), [total, providers]);
 
     if (loading) {
@@ -194,13 +187,24 @@ export default function ProveedoresPage() {
                     <div className="flex items-center space-x-2">
                         <FunnelIcon className="h-5 w-5 text-slate-400" />
                         <select
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(e.target.value)}
+                            className="px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-medium"
+                        >
+                            <option value="2026">2026</option>
+                            <option value="2025">2025</option>
+                            <option value="2024">2024</option>
+                        </select>
+                        <select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
                             className="px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-medium"
                         >
-                            <option value="ALL">Todos los estados</option>
-                            <option value="CRITICAL">Crítico</option>
-                            <option value="WARNING">Advertencia</option>
+                            <option value="ALL">Cualquier Estado ({total})</option>
+                            <option value="PENDING">Pendientes (Con Deuda)</option>
+                            <option value="WITH_DEBT">Con Deuda Corriente</option>
+                            <option value="CRITICAL_10">Vencido +10 días</option>
+                            <option value="CRITICAL_30">Vencido +30 días (Crítico)</option>
                             <option value="OK">Al día</option>
                         </select>
                     </div>
@@ -280,22 +284,28 @@ export default function ProveedoresPage() {
                                         )}
                                     </td>
                                     <td className="px-6 py-4 text-center">
-                                        {provider.status === 'CRITICAL' && (
-                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 border border-red-200">
+                                        {provider.status === 'CRITICAL_30' && (
+                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-semibold bg-red-100 text-red-800 border border-red-200">
                                                 <ExclamationTriangleIcon className="h-4 w-4 mr-1" />
-                                                Crítico
+                                                Crítico +30d
                                             </span>
                                         )}
-                                        {provider.status === 'WARNING' && (
-                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                        {provider.status === 'CRITICAL_10' && (
+                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
                                                 <ClockIcon className="h-4 w-4 mr-1" />
-                                                Pendiente
+                                                Vencido +10d
+                                            </span>
+                                        )}
+                                        {provider.status === 'WITH_DEBT' && (
+                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                                                <BanknotesIcon className="h-4 w-4 mr-1" />
+                                                Deuda corriente
                                             </span>
                                         )}
                                         {provider.status === 'OK' && (
-                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-200">
+                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
                                                 <CheckCircleIcon className="h-4 w-4 mr-1" />
-                                                Al Día
+                                                Al día
                                             </span>
                                         )}
                                     </td>

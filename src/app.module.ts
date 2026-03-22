@@ -15,6 +15,7 @@ import { CacheService } from './common/services/cache.service';
 import { DataVisibilityService } from './common/services/data-visibility.service';
 import { ReportesModule } from './modules/reportes/reportes.module';
 import { PaymentRecordsModule } from './modules/payment-records/payment-records.module';
+import { OrganizationsModule } from './modules/organizations/organizations.module';
 
 @Global()
 @Module({
@@ -33,6 +34,7 @@ import { PaymentRecordsModule } from './modules/payment-records/payment-records.
     AuthModule,
     ReportesModule,
     PaymentRecordsModule,
+    OrganizationsModule,
   ],
   controllers: [],
   providers: [SchedulerService, CacheService, DataVisibilityService],

@@ -276,6 +276,10 @@ export class ExportService {
     private buildTransactionWhere(filters: DashboardFiltersDto): any {
         const where: any = {};
 
+        if (filters.organizationId) {
+            where.bankAccount = { organizationId: filters.organizationId };
+        }
+
         // Filtro por fecha
         if (filters.fromDate || filters.toDate || filters.year || filters.months) {
             where.date = {};
@@ -317,6 +321,10 @@ export class ExportService {
 
     private buildDteWhere(filters: DashboardFiltersDto): any {
         const where: any = {};
+
+        if (filters.organizationId) {
+            where.provider = { organizationId: filters.organizationId };
+        }
 
         // Filtro por fecha
         if (filters.fromDate || filters.toDate || filters.year || filters.months) {
@@ -367,6 +375,10 @@ export class ExportService {
 
     private buildMatchWhere(filters: DashboardFiltersDto): any {
         const where: any = {};
+
+        if (filters.organizationId) {
+            where.transaction = { bankAccount: { organizationId: filters.organizationId } };
+        }
 
         // Filtro por fecha de creación del match
         if (filters.fromDate || filters.toDate || filters.year) {

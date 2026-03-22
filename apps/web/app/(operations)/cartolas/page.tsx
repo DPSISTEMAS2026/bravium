@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import useSWR, { mutate as globalMutate } from 'swr';
 import {
     MagnifyingGlassIcon,
@@ -30,6 +31,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { getApiUrl } from '../../../lib/api';
 import { useCartolaIngestion } from '../../../contexts/CartolaIngestionContext';
+import { useAuth } from '../../../contexts/AuthContext';
 import { CartolasManualMatchSection } from './CartolasConciliacionSections';
 import { ManualMatchForm } from './ManualMatchForm';
 
@@ -160,17 +162,19 @@ interface BankAccount {
 
 export default function CartolasPage() {
     const API_URL = getApiUrl();
+    const searchParams = useSearchParams();
+    const { user } = useAuth();
     const [page, setPage] = useState(1);
     const limit = 15;
 
     // Filters
-    const [search, setSearch] = useState('');
-    const [appliedSearch, setAppliedSearch] = useState('');
-    const [selectedMonth, setSelectedMonth] = useState('ALL');
-    const [selectedYear, setSelectedYear] = useState('2026');
-    const [selectedAccount, setSelectedAccount] = useState('ALL');
-    const [typeFilter, setTypeFilter] = useState('ALL');
-    const [statusFilter, setStatusFilter] = useState('ALL');
+    const [search, setSearch] = useState(() => searchParams.get('search') || '');
+    const [appliedSearch, setAppliedSearch] = useState(() => searchParams.get('search') || '');
+    const [selectedMonth, setSelectedMonth] = useState(() => searchParams.get('month') || 'ALL');
+    const [selectedYear, setSelectedYear] = useState(() => searchParams.get('year') || '2026');
+    const [selectedAccount, setSelectedAccount] = useState(() => searchParams.get('bankAccountId') || 'ALL');
+    const [typeFilter, setTypeFilter] = useState(() => searchParams.get('type') || 'ALL');
+    const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || 'ALL');
     const [selectedFilename, setSelectedFilename] = useState('ALL');
 
     // UI States
@@ -233,9 +237,24 @@ export default function CartolasPage() {
     const [annotateDteSearch, setAnnotateDteSearch] = useState('');
     const [annotateDteResults, setAnnotateDteResults] = useState<any[]>([]);
     const [annotateDteSelected, setAnnotateDteSelected] = useState<any>(null);
+    const [annotateDteSelectedIds, setAnnotateDteSelectedIds] = useState<string[]>([]);
     const [annotateDteLoading, setAnnotateDteLoading] = useState(false);
     const [annotateMatchLoading, setAnnotateMatchLoading] = useState(false);
     const [annotateMatchError, setAnnotateMatchError] = useState<string | null>(null);
+
+    // Sorting state
+    const [sortBy, setSortBy] = useState<'date' | 'amount' | 'description' | 'type'>('date');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+    const handleSort = (field: 'date' | 'amount' | 'description' | 'type') => {
+        if (sortBy === field) {
+            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortBy(field);
+            setSortOrder('asc');
+        }
+        setPage(1);
+    };
 
     // Eliminar cartola: confirmación y loading
     const [deleteCartolaFilename, setDeleteCartolaFilename] = useState<string | null>(null);
@@ -243,6 +262,10 @@ export default function CartolasPage() {
 
     // Modal corregir tipo de movimiento (Cargo ↔ Abono)
     const [correctTypeTx, setCorrectTypeTx] = useState<Transaction | null>(null);
+    const [correctAmountTx, setCorrectAmountTx] = useState<Transaction | null>(null);
+    const [correctAmountValue, setCorrectAmountValue] = useState<string>('');
+    const [correctAmountSaving, setCorrectAmountSaving] = useState(false);
+    const [correctAmountError, setCorrectAmountError] = useState<string | null>(null);
     const [correctTypeSaving, setCorrectTypeSaving] = useState(false);
     const [correctTypeError, setCorrectTypeError] = useState<string | null>(null);
 
@@ -303,8 +326,10 @@ export default function CartolasPage() {
         if (typeFilter !== 'ALL') params.append('type', typeFilter);
         if (statusFilter !== 'ALL') params.append('status', statusFilter);
         if (selectedFilename !== 'ALL') params.append('filename', selectedFilename);
+        if (sortBy) params.append('sortBy', sortBy);
+        if (sortOrder) params.append('order', sortOrder);
         return params.toString();
-    }, [page, periodDates, selectedAccount, typeFilter, statusFilter, selectedFilename, appliedSearch]);
+    }, [page, periodDates, selectedAccount, typeFilter, statusFilter, selectedFilename, appliedSearch, sortBy, sortOrder]);
 
     // SWR: Static data (cached globally, rarely changes)
     const { data: bankAccounts = [] } = useSWR<BankAccount[]>(`${API_URL}/transactions/bank-accounts`);
@@ -327,6 +352,10 @@ export default function CartolasPage() {
     const { data: summary, mutate: mutateSummary } = useSWR<Summary>(
         `${API_URL}/transactions/summary?${queryParams}`,
         { keepPreviousData: true }
+    );
+
+    const { data: historicalNotes = {} } = useSWR<Record<string, string>>(
+        `${API_URL}/conciliacion/matches/historical-notes`
     );
 
     const transactions: Transaction[] = txData?.data || txData || [];
@@ -365,18 +394,57 @@ export default function CartolasPage() {
         setPendingReplaceDte(null);
     };
 
+    /** Helper: aplica una actualización optimista a la lista de transacciones sin quitar ninguna fila */
+    const optimisticUpdate = useCallback(
+        (updater: (txList: Transaction[]) => Transaction[]) => {
+            mutateTx((current: any) => {
+                if (!current) return current;
+                const list: Transaction[] = current?.data ?? current ?? [];
+                const updated = updater(list);
+                return current?.data ? { ...current, data: updated } : updated;
+            }, { revalidate: false });
+            // Revalidar en background después de un breve delay para traer datos frescos sin flash
+            setTimeout(() => { mutateTx(); mutateSummary(); }, 600);
+        },
+        [mutateTx, mutateSummary],
+    );
+
     const handleMatchAction = async (action: 'CONFIRMED' | 'REJECTED') => {
-        if (!reviewMatch) return;
+        if (!reviewMatch || !reviewTx) return;
         setReviewLoading(true);
+        const matchId = reviewMatch.id;
+        const txId = reviewTx.id;
         try {
-            const res = await fetch(`${API_URL}/conciliacion/matches/${reviewMatch.id}/status`, {
+            const res = await fetch(`${API_URL}/conciliacion/matches/${matchId}/status`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: action, reason: reviewComment || undefined }),
             });
             if (!res.ok) throw new Error('Error al actualizar');
+            
+            // Si rechaza y dejó un comentario, guardar la nota en la transacción para que persista como Anotación
+            if (action === 'REJECTED' && reviewComment.trim()) {
+                await quickAnnotateNote(txId, reviewComment.trim());
+            }
+
             closeReviewModal();
-            refreshData();
+            // Optimistic: actualizar el status del match y de la transacción en la lista actual
+            optimisticUpdate((list) =>
+                list.map((tx) => {
+                    if (tx.id !== txId) return tx;
+                    // Si se rechaza, la transacción pasará a UNMATCHED si fue anotada, o PENDING si no.
+                    const isAnnotated = action === 'REJECTED' && reviewComment.trim();
+                    const updatedMatches = tx.matches.map((m) =>
+                        m.id === matchId ? { ...m, status: action } : m,
+                    );
+                    return {
+                        ...tx,
+                        status: action === 'CONFIRMED' ? 'MATCHED' : (isAnnotated ? 'UNMATCHED' : tx.status),
+                        matches: updatedMatches,
+                        metadata: isAnnotated ? { ...tx.metadata, reviewNote: reviewComment.trim(), reviewedAt: new Date().toISOString() } : tx.metadata
+                    };
+                }),
+            );
             invalidateDtesAndProveedores();
         } catch (err) {
             console.error('Error updating match:', err);
@@ -395,7 +463,20 @@ export default function CartolasPage() {
                 body: JSON.stringify({ status: 'CONFIRMED' }),
             });
             if (!res.ok) throw new Error('Error al confirmar');
-            refreshData();
+            // Optimistic: actualizar in-place
+            optimisticUpdate((list) =>
+                list.map((tx) => {
+                    const hasMatch = tx.matches.some((m) => m.id === matchId);
+                    if (!hasMatch) return tx;
+                    return {
+                        ...tx,
+                        status: 'MATCHED',
+                        matches: tx.matches.map((m) =>
+                            m.id === matchId ? { ...m, status: 'CONFIRMED' } : m,
+                        ),
+                    };
+                }),
+            );
             invalidateDtesAndProveedores();
         } catch (err) {
             console.error('Quick accept match:', err);
@@ -410,7 +491,13 @@ export default function CartolasPage() {
         try {
             const res = await fetch(`${API_URL}/conciliacion/suggestions/${suggestionId}/accept`, { method: 'POST' });
             if (!res.ok) throw new Error('Error al aceptar sugerencia');
-            refreshData();
+            // Optimistic: marcar como MATCHED las tx de esta sugerencia
+            optimisticUpdate((list) =>
+                list.map((tx) => {
+                    if (tx.pendingSuggestion?.id !== suggestionId) return tx;
+                    return { ...tx, status: 'MATCHED', pendingSuggestion: undefined };
+                }),
+            );
             invalidateDtesAndProveedores();
         } catch (err) {
             console.error('Quick accept suggestion:', err);
@@ -420,13 +507,28 @@ export default function CartolasPage() {
     };
 
     const handleDiscardMatch = async () => {
-        if (!reviewMatch) return;
+        if (!reviewMatch || !reviewTx) return;
+        const matchId = reviewMatch.id;
+        const txId = reviewTx.id;
         setReviewLoading(true);
         try {
-            const res = await fetch(`${API_URL}/conciliacion/matches/${reviewMatch.id}`, { method: 'DELETE' });
+            const res = await fetch(`${API_URL}/conciliacion/matches/${matchId}`, { method: 'DELETE' });
             if (!res.ok) throw new Error('Error al descartar');
             closeReviewModal();
-            refreshData();
+            // Optimistic: quitar el match de la tx y volver a PENDING
+            optimisticUpdate((list) =>
+                list.map((tx) => {
+                    if (tx.id !== txId) return tx;
+                    const remaining = tx.matches.filter((m) => m.id !== matchId);
+                    return {
+                        ...tx,
+                        status: remaining.length > 0 ? tx.status : 'PENDING',
+                        matches: remaining,
+                        hasMatch: remaining.length > 0,
+                        matchCount: remaining.length,
+                    };
+                }),
+            );
             invalidateDtesAndProveedores();
         } catch (err) {
             console.error('Error discarding match:', err);
@@ -449,10 +551,14 @@ export default function CartolasPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ transactionId: reviewTx.id, dteId: dte.id }),
             });
-            const data = await res.json().catch(() => ({}));
+            const data = await res.json().catch(() => ({}) as any);
             if (!res.ok) throw new Error(data?.message || 'Error al asignar');
+            const txId = reviewTx.id;
             closeReviewModal();
-            refreshData();
+            // Optimistic: marcar como MATCHED
+            optimisticUpdate((list) =>
+                list.map((tx) => (tx.id !== txId ? tx : { ...tx, status: 'MATCHED' })),
+            );
             invalidateDtesAndProveedores();
         } catch (err: any) {
             setReviewReplaceError(err?.message || 'No se pudo asignar el DTE');
@@ -610,6 +716,7 @@ export default function CartolasPage() {
 
     const handleAcceptSuggestion = async () => {
         if (!suggestionModalId || !suggestionDetail) return;
+        const curSuggestionId = suggestionModalId;
         const transactions = (suggestionDetail.transactions || []) as any[];
         const baseTxIds = transactions
             .filter((tx: any) => !suggestionRemovedTxIds.includes(tx.id))
@@ -625,10 +732,19 @@ export default function CartolasPage() {
                 opts.headers = { 'Content-Type': 'application/json' };
                 opts.body = JSON.stringify({ transactionIds: effectiveTxIds, dteId: effectiveDteId });
             }
-            const res = await fetch(`${API_URL}/conciliacion/suggestions/${suggestionModalId}/accept`, opts);
+            const res = await fetch(`${API_URL}/conciliacion/suggestions/${curSuggestionId}/accept`, opts);
             if (res.ok) {
                 setSuggestionModalId(null);
-                refreshData();
+                // Optimistic: marcar tx afectadas como MATCHED
+                const txIdSet = new Set(effectiveTxIds);
+                optimisticUpdate((list) =>
+                    list.map((tx) => {
+                        if (txIdSet.has(tx.id) || tx.pendingSuggestion?.id === curSuggestionId) {
+                            return { ...tx, status: 'MATCHED', pendingSuggestion: undefined };
+                        }
+                        return tx;
+                    }),
+                );
                 invalidateDtesAndProveedores();
             } else {
                 const err = await res.json().catch(() => ({}));
@@ -641,16 +757,23 @@ export default function CartolasPage() {
 
     const handleRejectSuggestion = async () => {
         if (!suggestionModalId) return;
+        const curSuggestionId = suggestionModalId;
         setSuggestionActionLoading(true);
         try {
-            const res = await fetch(`${API_URL}/conciliacion/suggestions/${suggestionModalId}/reject`, {
+            const res = await fetch(`${API_URL}/conciliacion/suggestions/${curSuggestionId}/reject`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ reason: 'Rechazada por usuario' }),
             });
             if (res.ok) {
                 setSuggestionModalId(null);
-                refreshData();
+                // Optimistic: quitar la sugerencia de las tx afectadas, dejar status sin cambiar
+                optimisticUpdate((list) =>
+                    list.map((tx) => {
+                        if (tx.pendingSuggestion?.id !== curSuggestionId) return tx;
+                        return { ...tx, pendingSuggestion: undefined };
+                    }),
+                );
             }
         } finally {
             setSuggestionActionLoading(false);
@@ -668,6 +791,7 @@ export default function CartolasPage() {
         setAnnotateDteSearch('');
         setAnnotateDteResults([]);
         setAnnotateDteSelected(null);
+        setAnnotateDteSelectedIds([]);
         setAnnotateMatchError(null);
     };
 
@@ -696,7 +820,8 @@ export default function CartolasPage() {
     };
 
     const handleAnnotateMatch = async () => {
-        if (!annotateTx || !annotateDteSelected) return;
+        if (!annotateTx || annotateDteSelectedIds.length === 0) return;
+        const txId = annotateTx.id;
         setAnnotateMatchLoading(true);
         setAnnotateMatchError(null);
         try {
@@ -704,15 +829,18 @@ export default function CartolasPage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    transactionId: annotateTx.id,
-                    dteId: annotateDteSelected.id,
+                    transactionId: txId,
+                    dteIds: annotateDteSelectedIds,
                     notes: annotateNote.trim() || undefined,
                 }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.message || 'Error al crear match');
             closeAnnotateModal();
-            refreshData();
+            // Optimistic: marcar como MATCHED
+            optimisticUpdate((list) =>
+                list.map((tx) => (tx.id !== txId ? tx : { ...tx, status: 'MATCHED' })),
+            );
             invalidateDtesAndProveedores();
         } catch (err: any) {
             setAnnotateMatchError(err?.message || 'No se pudo crear el match');
@@ -723,20 +851,50 @@ export default function CartolasPage() {
 
     const handleAnnotateSave = async () => {
         if (!annotateTx || !annotateNote.trim()) return;
+        const txId = annotateTx.id;
+        const note = annotateNote.trim();
         setAnnotateLoading(true);
         try {
-            const res = await fetch(`${API_URL}/transactions/${annotateTx.id}/review`, {
+            const res = await fetch(`${API_URL}/transactions/${txId}/review`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ note: annotateNote.trim() }),
+                body: JSON.stringify({ note }),
             });
             if (!res.ok) throw new Error('Error al guardar');
             closeAnnotateModal();
-            refreshData();
+            // Optimistic: marcar como UNMATCHED (revisado)
+            optimisticUpdate((list) =>
+                list.map((tx) => (tx.id !== txId ? tx : {
+                    ...tx,
+                    status: 'UNMATCHED',
+                    metadata: { ...tx.metadata, reviewNote: note, reviewedAt: new Date().toISOString() },
+                })),
+            );
         } catch (err) {
             console.error('Error saving annotation:', err);
         } finally {
             setAnnotateLoading(false);
+        }
+    };
+
+    const quickAnnotateNote = async (txId: string, note: string) => {
+        try {
+            const res = await fetch(`${API_URL}/transactions/${txId}/review`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note })
+            });
+            if (!res.ok) throw new Error('Error al guardar');
+            // Optimistic: marcar como UNMATCHED (revisado)
+            optimisticUpdate((list) =>
+                list.map((tx) => (tx.id !== txId ? tx : {
+                    ...tx,
+                    status: 'UNMATCHED',
+                    metadata: { ...tx.metadata, reviewNote: note, reviewedAt: new Date().toISOString() },
+                })),
+            );
+        } catch (err) {
+            console.error('Error quick annotating:', err);
         }
     };
 
@@ -757,6 +915,7 @@ export default function CartolasPage() {
                     fromDate: periodDates.fromDate,
                     toDate: periodDates.toDate,
                     syncFromSources: false,
+                    organizationId: user?.organizationId,
                 }),
             });
             refreshData();
@@ -1095,9 +1254,21 @@ export default function CartolasPage() {
                     <table className="w-full text-sm text-left">
                         <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100 uppercase tracking-tight text-[11px]">
                             <tr>
-                                <th className="px-6 py-4">Fecha</th>
-                                <th className="px-6 py-4">Descripción</th>
-                                <th className="px-6 py-4 text-right">Monto</th>
+                                <th className="px-6 py-4 cursor-pointer select-none group" onClick={() => handleSort('date')}>
+                                    <div className="flex items-center gap-1">
+                                        Fecha {sortBy === 'date' ? (sortOrder === 'asc' ? '↑' : '↓') : <span className="opacity-0 group-hover:opacity-50">↕</span>}
+                                    </div>
+                                </th>
+                                <th className="px-6 py-4 cursor-pointer select-none group" onClick={() => handleSort('description')}>
+                                    <div className="flex items-center gap-1">
+                                        Descripción {sortBy === 'description' ? (sortOrder === 'asc' ? '↑' : '↓') : <span className="opacity-0 group-hover:opacity-50">↕</span>}
+                                    </div>
+                                </th>
+                                <th className="px-6 py-4 cursor-pointer select-none text-right group" onClick={() => handleSort('amount')}>
+                                    <div className="flex items-center justify-end gap-1">
+                                        Monto {sortBy === 'amount' ? (sortOrder === 'asc' ? '↑' : '↓') : <span className="opacity-0 group-hover:opacity-50">↕</span>}
+                                    </div>
+                                </th>
                                 <th className="px-6 py-4 text-center">Tipo</th>
                                 <th className="px-6 py-4 text-center">Cartola</th>
                                 <th className="px-6 py-4 text-center">Conciliación</th>
@@ -1143,7 +1314,17 @@ export default function CartolasPage() {
                                                 )}
                                             </td>
                                             <td className={`px-6 py-4 text-right font-bold text-base whitespace-nowrap ${tx.type === 'CREDIT' ? 'text-green-600' : 'text-slate-900 underline decoration-red-200 decoration-2 underline-offset-4'}`}>
-                                                {formatCurrency(tx.amount)}
+                                                <div className="flex items-center justify-end gap-1 group">
+                                                    <span>{formatCurrency(tx.amount)}</span>
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => { setCorrectAmountTx(tx); setCorrectAmountValue(String(Math.abs(tx.amount))); }} 
+                                                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-indigo-600 p-0.5 transition-opacity"
+                                                        title="Corregir monto"
+                                                    >
+                                                        <PencilSquareIcon className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 text-center">
                                                 <div className="flex items-center justify-center gap-1.5">
@@ -1289,15 +1470,26 @@ export default function CartolasPage() {
                                                         </button>
                                                     </div>
                                                 ) : tx.status === 'PENDING' ? (
-                                                    <button
-                                                        onClick={() => openAnnotateModal(tx)}
-                                                        className="mx-auto flex flex-col items-center text-center cursor-pointer group hover:scale-105 transition-transform"
-                                                    >
-                                                        <span className="inline-flex items-center text-amber-500 font-bold text-xs ring-1 ring-amber-200 ring-offset-2 rounded px-2 py-0.5 group-hover:bg-amber-50 group-hover:ring-amber-400 transition-colors">
-                                                            <ClockIcon className="h-3 w-3 mr-1" />
-                                                            PENDIENTE
-                                                        </span>
-                                                    </button>
+                                                    <div className="flex flex-col items-center gap-1 mx-auto text-center">
+                                                        <button
+                                                            onClick={() => openAnnotateModal(tx)}
+                                                            className="flex flex-col items-center cursor-pointer group hover:scale-105 transition-transform"
+                                                        >
+                                                            <span className="inline-flex items-center text-amber-500 font-bold text-xs ring-1 ring-amber-200 ring-offset-2 rounded px-2 py-0.5 group-hover:bg-amber-50 group-hover:ring-amber-400 transition-colors">
+                                                                <ClockIcon className="h-3 w-3 mr-1" />
+                                                                PENDIENTE
+                                                            </span>
+                                                        </button>
+                                                        {historicalNotes[tx.description] && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); quickAnnotateNote(tx.id, historicalNotes[tx.description]); }}
+                                                                className="px-2 py-0.5 mt-1 bg-amber-50 border border-amber-200 text-amber-600 rounded-lg text-[9px] font-semibold hover:bg-amber-100/80 transition-all flex items-center shadow-sm max-w-[140px] truncate"
+                                                                title={`Sugerencia: ${historicalNotes[tx.description]}`}
+                                                            >
+                                                                💡 {historicalNotes[tx.description]}
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 ) : (
                                                     <button
                                                         onClick={() => openAnnotateModal(tx)}
@@ -1651,6 +1843,21 @@ export default function CartolasPage() {
                                         <XCircleIcon className="h-5 w-5" />
                                         Rechazar
                                     </button>
+                                    {suggestionDetail && suggestionDetail.type === 'SPLIT' && (
+                                        <button
+                                            onClick={() => {
+                                                setAnnotateTx(suggestionDetail.transaction);
+                                                setAnnotateDteSelectedIds(suggestionDetail.dtes?.map((d: any) => d.id) || []);
+                                                setSuggestionModalId(null);
+                                                setSuggestionDetail(null);
+                                            }}
+                                            disabled={suggestionActionLoading}
+                                            className="flex-1 min-w-[140px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-2 border-indigo-200 hover:border-indigo-400 px-5 py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                                        >
+                                            <PencilSquareIcon className="h-5 w-5" />
+                                            Editar Manual
+                                        </button>
+                                    )}
                                     <button
                                         onClick={closeCartolaModal}
                                         disabled={suggestionActionLoading}
@@ -1780,18 +1987,24 @@ export default function CartolasPage() {
                                                 <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Factura(s) (DTE)</h3>
                                             </div>
                                             {suggestionDetail.type === 'SPLIT' && (suggestionDetail.relatedDtes || []).length > 0 ? (
-                                                <ul className="space-y-2">
-                                                    {(suggestionDetail.relatedDtes || []).map((dte: any) => (
-                                                        <li key={dte.id} className="text-sm border-b border-indigo-100 pb-2 last:border-0 last:pb-0">
-                                                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                                                                <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{formatDate(dte.issuedDate)}</p></div>
-                                                                <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-indigo-700">{formatCurrency(dte.totalAmount)}</p></div>
-                                                                <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Proveedor</span><p className="text-slate-800 truncate" title={dte.provider?.name}>{dte.provider?.name || '—'}</p></div>
-                                                                <div>Folio <span className="font-bold text-indigo-600">{dte.folio}</span> T{dte.type}</div>
-                                                            </div>
-                                                        </li>
-                                                    ))}
-                                                </ul>
+                                                <>
+                                                    <ul className="space-y-2">
+                                                        {(suggestionDetail.relatedDtes || []).map((dte: any) => (
+                                                            <li key={dte.id} className="text-sm border-b border-indigo-100 pb-2 last:border-0 last:pb-0">
+                                                                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                                                    <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{formatDate(dte.issuedDate)}</p></div>
+                                                                    <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-indigo-700">{formatCurrency(dte.totalAmount)}</p></div>
+                                                                    <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Proveedor</span><p className="text-slate-800 truncate" title={dte.provider?.name}>{dte.provider?.name || '—'}</p></div>
+                                                                    <div>Folio <span className="font-bold text-indigo-600">{dte.folio}</span> T{dte.type}</div>
+                                                                </div>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                    <div className="mt-3 pt-3 border-t border-indigo-200">
+                                                        <p className="text-xs text-slate-500 uppercase tracking-wide">Total Facturas ({(suggestionDetail.relatedDtes || []).length})</p>
+                                                        <p className="text-lg font-bold text-indigo-700">{formatCurrency((suggestionDetail.relatedDtes || []).reduce((s: number, dte: any) => s + Number(dte.totalAmount || 0), 0))}</p>
+                                                    </div>
+                                                </>
                                             ) : (() => {
                                                 const displayDte = suggestionDetail.type === 'SUM' && suggestionOverrideDteId
                                                     ? (suggestionProviderUnpaidDtes.find((d: any) => d.id === suggestionOverrideDteId) || suggestionDetail.dte)
@@ -1889,6 +2102,17 @@ export default function CartolasPage() {
                                     className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
                                     autoFocus
                                 />
+                                {historicalNotes[annotateTx.description] && (
+                                    <div className="flex flex-wrap gap-1 mt-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => setAnnotateNote(historicalNotes[annotateTx.description])}
+                                            className="px-2 py-0.5 bg-amber-50 border border-amber-200 hover:border-amber-400 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-medium flex items-center shadow-sm transition-all"
+                                        >
+                                            💡 Sugerencia: {historicalNotes[annotateTx.description]}
+                                        </button>
+                                    </div>
+                                )}
                                 <p className="text-[10px] text-slate-400 mt-1.5">
                                     Al guardar, este movimiento se marcará como revisado.
                                 </p>
@@ -1916,24 +2140,36 @@ export default function CartolasPage() {
                                             <button
                                                 key={dte.id}
                                                 type="button"
-                                                onClick={() => setAnnotateDteSelected(dte)}
-                                                className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 ${annotateDteSelected?.id === dte.id ? 'bg-indigo-100' : ''}`}
+                                                onClick={() => {
+                                                    setAnnotateDteSelectedIds((prev) => 
+                                                        prev.includes(dte.id) ? prev.filter(id => id !== dte.id) : [...prev, dte.id]
+                                                    );
+                                                }}
+                                                className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 border-b border-slate-100 last:border-0 ${annotateDteSelectedIds.includes(dte.id) ? 'bg-indigo-50 font-semibold' : ''}`}
                                             >
-                                                Folio {dte.folio} · {dte.provider?.name ?? dte.rutIssuer} · {formatCurrency(dte.totalAmount)}
+                                                <div className="flex items-center justify-between">
+                                                    <div className="truncate">
+                                                        <span className={`${annotateDteSelectedIds.includes(dte.id) ? 'text-indigo-600' : 'text-slate-800'}`}>Folio {dte.folio}</span>
+                                                        <span className="text-slate-400 text-xs ml-1">· {dte.provider?.name ?? dte.rutIssuer}</span>
+                                                    </div>
+                                                    <span className={`font-bold ml-2 ${annotateDteSelectedIds.includes(dte.id) ? 'text-indigo-700' : 'text-slate-700'}`}>
+                                                        {formatCurrency(dte.totalAmount)}
+                                                    </span>
+                                                </div>
                                             </button>
                                         ))}
                                     </div>
                                 )}
                                 {annotateMatchError && <p className="text-xs text-red-600 mb-2">{annotateMatchError}</p>}
-                                {annotateDteSelected && (
+                                {annotateDteSelectedIds.length > 0 && (
                                     <button
                                         type="button"
                                         onClick={handleAnnotateMatch}
                                         disabled={annotateMatchLoading}
-                                        className="w-full px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-1"
+                                        className="w-full px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-1 shadow-md shadow-indigo-600/10"
                                     >
                                         {annotateMatchLoading ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <LinkIcon className="h-4 w-4" />}
-                                        Matchear con Folio {annotateDteSelected.folio}
+                                        Matchear con {annotateDteSelectedIds.length} Factura(s)
                                     </button>
                                 )}
                             </div>
@@ -1969,20 +2205,29 @@ export default function CartolasPage() {
                                 type="button"
                                 onClick={async () => {
                                     if (!correctTypeTx) return;
+                                    const txId = correctTypeTx.id;
+                                    const oldAmount = correctTypeTx.amount;
                                     setCorrectTypeError(null);
                                     setCorrectTypeSaving(true);
                                     try {
-                                        const url = `${API_URL}/transactions/${correctTypeTx.id}/type`;
+                                        const url = `${API_URL}/transactions/${txId}/type`;
                                         const res = await fetch(url, {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ type: 'CREDIT' }),
                                         });
-                                        const data = await res.json().catch(() => ({}));
+                                        const data = await res.json().catch(() => ({}) as any);
                                         if (!res.ok) throw new Error(data?.message || `Error ${res.status}`);
                                         setCorrectTypeTx(null);
                                         setCorrectTypeError(null);
-                                        refreshData();
+                                        // Optimistic: actualizar tipo y monto en la lista
+                                        optimisticUpdate((list) =>
+                                            list.map((tx) => {
+                                                if (tx.id !== txId) return tx;
+                                                const newAmount = tx.type === 'CREDIT' ? tx.amount : -tx.amount;
+                                                return { ...tx, type: 'CREDIT' as const, amount: Math.abs(newAmount) };
+                                            }),
+                                        );
                                     } catch (e: any) {
                                         setCorrectTypeError(e?.message || 'No se pudo corregir. Comprueba que el backend esté en marcha (puerto correcto).');
                                     } finally {
@@ -1998,20 +2243,28 @@ export default function CartolasPage() {
                                 type="button"
                                 onClick={async () => {
                                     if (!correctTypeTx) return;
+                                    const txId = correctTypeTx.id;
                                     setCorrectTypeError(null);
                                     setCorrectTypeSaving(true);
                                     try {
-                                        const url = `${API_URL}/transactions/${correctTypeTx.id}/type`;
+                                        const url = `${API_URL}/transactions/${txId}/type`;
                                         const res = await fetch(url, {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ type: 'DEBIT' }),
                                         });
-                                        const data = await res.json().catch(() => ({}));
+                                        const data = await res.json().catch(() => ({}) as any);
                                         if (!res.ok) throw new Error(data?.message || `Error ${res.status}`);
                                         setCorrectTypeTx(null);
                                         setCorrectTypeError(null);
-                                        refreshData();
+                                        // Optimistic: actualizar tipo y monto en la lista
+                                        optimisticUpdate((list) =>
+                                            list.map((tx) => {
+                                                if (tx.id !== txId) return tx;
+                                                const newAmount = tx.type === 'DEBIT' ? tx.amount : -tx.amount;
+                                                return { ...tx, type: 'DEBIT' as const, amount: -Math.abs(newAmount) };
+                                            }),
+                                        );
                                     } catch (e: any) {
                                         setCorrectTypeError(e?.message || 'No se pudo corregir. Comprueba que el backend esté en marcha (puerto correcto).');
                                     } finally {
@@ -2032,6 +2285,87 @@ export default function CartolasPage() {
                                 className="px-4 py-2 border border-slate-200 rounded-lg text-slate-600 font-medium text-sm hover:bg-slate-50 disabled:opacity-50"
                             >
                                 Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Corregir Monto de Transacción */}
+            {correctAmountTx && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => { if (!correctAmountSaving) { setCorrectAmountTx(null); setCorrectAmountError(null); } }}>
+                    <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-lg font-semibold text-slate-900 mb-2">Corregir monto de movimiento</h3>
+                        <p className="text-sm text-slate-600 mb-1">{correctAmountTx.description}</p>
+                        <p className="text-xs text-slate-500 mb-4">
+                            {formatDate(correctAmountTx.date)} · {formatCurrency(correctAmountTx.amount)}
+                        </p>
+                        
+                        {correctAmountError && (
+                            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                                {correctAmountError}
+                            </div>
+                        )}
+
+                        <div className="mb-4">
+                            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Nuevo Monto Absoluto (sin signo)</label>
+                            <input 
+                                type="number" 
+                                value={correctAmountValue} 
+                                onChange={e => setCorrectAmountValue(e.target.value)} 
+                                placeholder="Ej: 3995570" 
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                autoFocus
+                            />
+                        </div>
+
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                type="button"
+                                onClick={() => { setCorrectAmountTx(null); setCorrectAmountError(null); }}
+                                disabled={correctAmountSaving}
+                                className="px-4 py-2 border border-slate-200 rounded-lg text-slate-600 font-medium text-sm hover:bg-slate-50 disabled:opacity-50"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (!correctAmountTx || !correctAmountValue.trim()) return;
+                                    const txId = correctAmountTx.id;
+                                    const parsed = Number(correctAmountValue);
+                                    if (isNaN(parsed) || parsed < 0) {
+                                        setCorrectAmountError('Monto no válido. Introduce un número positivo.');
+                                        return;
+                                    }
+                                    setCorrectAmountError(null);
+                                    setCorrectAmountSaving(true);
+                                    try {
+                                        const finalAmount = correctAmountTx.type === 'DEBIT' ? -parsed : parsed;
+                                        const url = `${API_URL}/transactions/${txId}/amount`;
+                                        const res = await fetch(url, {
+                                            method: 'PATCH',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ amount: finalAmount }),
+                                        });
+                                        const data = await res.json().catch(() => ({}));
+                                        if (!res.ok) throw new Error(data?.message || `Error ${res.status}`);
+                                        setCorrectAmountTx(null);
+                                        // Optimistic update
+                                        optimisticUpdate((list) =>
+                                            list.map((tx) => tx.id === txId ? { ...tx, amount: finalAmount } : tx)
+                                        );
+                                    } catch (e: any) {
+                                        setCorrectAmountError(e?.message || 'No se pudo guardar.');
+                                    } finally {
+                                        setCorrectAmountSaving(false);
+                                    }
+                                }}
+                                disabled={correctAmountSaving}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1"
+                            >
+                                {correctAmountSaving && <ArrowPathIcon className="h-4 w-4 animate-spin" />}
+                                Guardar
                             </button>
                         </div>
                     </div>
@@ -2146,6 +2480,7 @@ export default function CartolasPage() {
                                                                     fromDate: periodDates.fromDate,
                                                                     toDate: periodDates.toDate,
                                                                     syncFromSources: false,
+                                                                    organizationId: user?.organizationId,
                                                                 }),
                                                             });
                                                         } catch (_) { /* match en segundo plano */ }

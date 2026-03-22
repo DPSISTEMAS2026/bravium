@@ -101,7 +101,7 @@ body {
   justify-content: flex-end;
   position: sticky;
   top: 0;
-  z-index: 900;
+  z-index: 30; /* Below modals (z-50) but above page content */
 }
 
 /* Card & Component Styling */

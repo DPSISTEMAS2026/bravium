@@ -43,7 +43,7 @@ export class ConciliacionService {
      * Main entry point to run the reconciliation engine.
      * Processes all PENDING bank transactions.
      */
-    async runReconciliationCycle(fromDate?: string, toDate?: string) {
+    async runReconciliationCycle(fromDate?: string, toDate?: string, organizationId?: string) {
         if (this.isRunning) {
             this.fileLog('SKIPPING: Already running');
             this.logger.warn('Reconciliation cycle is already running. Skipping.');
@@ -58,6 +58,10 @@ export class ConciliacionService {
         const whereClause: any = {
             status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
         };
+        
+        if (organizationId) {
+            whereClause.bankAccount = { organizationId };
+        }
         const minDate = this.visibility.applyMinDate(
             fromDate ? new Date(fromDate) : undefined,
         );
@@ -86,12 +90,14 @@ export class ConciliacionService {
                 this.prisma.dTE.findMany({
                     where: {
                         paymentStatus: 'UNPAID',
+                        ...(organizationId && { provider: { organizationId } }),
                         ...(dteMinDate && { issuedDate: { gte: dteMinDate } }),
                     },
                     include: { provider: { select: { name: true } } }
                 }),
                 this.prisma.payment.findMany({
                     where: {
+                        ...(organizationId && { provider: { organizationId } }),
                         paymentDate: {
                             gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)
                         }
@@ -186,6 +192,7 @@ export class ConciliacionService {
                 const sumWhere: any = {
                     status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
                 };
+                if (organizationId) sumWhere.bankAccount = { organizationId };
                 if (minDate || toDate) {
                     sumWhere.date = {};
                     if (minDate) sumWhere.date.gte = minDate;
@@ -195,7 +202,10 @@ export class ConciliacionService {
                     where: sumWhere,
                 });
                 const remainingDtes = await this.prisma.dTE.findMany({
-                    where: { paymentStatus: 'UNPAID' },
+                    where: {
+                        paymentStatus: 'UNPAID',
+                        ...(organizationId && { provider: { organizationId } }),
+                    },
                     include: { provider: { select: { name: true } } },
                 });
                 const suggestions = await this.sumMatchStrategy.findSumSuggestions(remainingTx, remainingDtes);
@@ -215,6 +225,7 @@ export class ConciliacionService {
                 const splitWhere: any = {
                     status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
                 };
+                if (organizationId) splitWhere.bankAccount = { organizationId };
                 if (minDate || toDate) {
                     splitWhere.date = {};
                     if (minDate) splitWhere.date.gte = minDate;
@@ -224,7 +235,10 @@ export class ConciliacionService {
                     where: splitWhere,
                 });
                 const remainingDtes2 = await this.prisma.dTE.findMany({
-                    where: { paymentStatus: 'UNPAID' },
+                    where: {
+                        paymentStatus: 'UNPAID',
+                        ...(organizationId && { provider: { organizationId } }),
+                    },
                     include: { provider: { select: { name: true } } },
                 });
                 const splits = await this.splitPaymentStrategy.findSplitPaymentSuggestions(remainingTx2, remainingDtes2);

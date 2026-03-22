@@ -7,10 +7,11 @@ export class PagoMasivoExportService {
 
     constructor(private prisma: PrismaService) {}
 
-    async exportPagoMasivo(): Promise<Buffer> {
+    async exportPagoMasivo(organizationId?: string): Promise<Buffer> {
         const providers = await this.prisma.provider.findMany({
             where: {
                 dtes: { some: { paymentStatus: 'UNPAID' } },
+                ...(organizationId ? { organizationId } : {}),
             },
             include: {
                 dtes: {
@@ -75,10 +76,11 @@ export class PagoMasivoExportService {
         return Buffer.from(buffer);
     }
 
-    async getSummary() {
+    async getSummary(organizationId?: string) {
         const providers = await this.prisma.provider.findMany({
             where: {
                 dtes: { some: { paymentStatus: 'UNPAID' } },
+                ...(organizationId ? { organizationId } : {}),
             },
             include: {
                 dtes: {

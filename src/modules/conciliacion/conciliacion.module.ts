@@ -10,6 +10,7 @@ import { SumMatchStrategy } from './strategies/sum-match.strategy';
 import { SplitPaymentMatchStrategy } from './strategies/split-payment-match.strategy';
 import { ConciliacionController } from './conciliacion.controller';
 import { AutoRecoveryService } from './services/auto-recovery.service';
+import { MorningBriefingService } from './services/morning-briefing.service';
 import { IngestionModule } from '../ingestion/ingestion.module';
 
 @Module({
@@ -26,7 +27,8 @@ import { IngestionModule } from '../ingestion/ingestion.module';
         SumMatchStrategy,
         SplitPaymentMatchStrategy,
         AutoRecoveryService,
+        MorningBriefingService,
     ],
-    exports: [ConciliacionService, ConciliacionDashboardService, MatchManagementService, MatchSuggestionsService, ExportService],
+    exports: [ConciliacionService, ConciliacionDashboardService, MatchManagementService, MatchSuggestionsService, ExportService, MorningBriefingService],
 })
 export class ConciliacionModule { }
