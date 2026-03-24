@@ -20,4 +20,17 @@ export class AuthController {
     getProfile(@Request() req) {
         return req.user;
     }
+
+    @UseGuards(JwtAuthGuard)
+    @Post('change-password')
+    async changePassword(@Request() req, @Body() body: any) {
+        if (!body.oldPassword || !body.newPassword) {
+            return { error: 'Se requiere contraseña anterior y nueva' };
+        }
+        try {
+            return await this.authService.changePassword(req.user.id, body.oldPassword, body.newPassword);
+        } catch (err: any) {
+            return { error: err.message || 'Error al actualizar contraseña' };
+        }
+    }
 }

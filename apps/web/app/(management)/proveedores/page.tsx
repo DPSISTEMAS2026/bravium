@@ -45,17 +45,27 @@ const PAGE_SIZE = 20;
 export default function ProveedoresPage() {
     const API_URL = getApiUrl();
     const [search, setSearch] = useState('');
+    const [inputValue, setInputValue] = useState(''); // Estado para la escritura rápida
     const [statusFilter, setStatusFilter] = useState<string>('ALL');
     const [selectedYear, setSelectedYear] = useState('2026');
+    const [selectedMonth, setSelectedMonth] = useState('ALL');
     const [page, setPage] = useState(1);
-
+ 
+    // Debounce de 500ms para el buscador
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setSearch(inputValue);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [inputValue]);
+ 
     const { data: response, isLoading: loading } = useSWR<PaginatedResponse>(
-        `${API_URL}/proveedores?page=${page}&limit=${PAGE_SIZE}&year=${selectedYear}${search ? `&search=${encodeURIComponent(search)}` : ''}${statusFilter !== 'ALL' ? `&status=${statusFilter}` : ''}`
+        `${API_URL}/proveedores?page=${page}&limit=${PAGE_SIZE}&year=${selectedYear}&month=${selectedMonth}${search ? `&search=${encodeURIComponent(search)}` : ''}${statusFilter !== 'ALL' ? `&status=${statusFilter}` : ''}`
     );
-
+ 
     useEffect(() => {
         setPage(1);
-    }, [search, selectedYear, statusFilter]);
+    }, [search, selectedYear, selectedMonth, statusFilter]);
 
     const providers = response?.data ?? [];
     const total = response?.total ?? 0;
@@ -178,8 +188,8 @@ export default function ProveedoresPage() {
                         <input
                             type="text"
                             placeholder="Buscar por nombre o RUT..."
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
                             className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
                         />
                     </div>
@@ -194,6 +204,25 @@ export default function ProveedoresPage() {
                             <option value="2026">2026</option>
                             <option value="2025">2025</option>
                             <option value="2024">2024</option>
+                        </select>
+                        <select
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-medium"
+                        >
+                            <option value="ALL">Todo el Año</option>
+                            <option value="1">Enero</option>
+                            <option value="2">Febrero</option>
+                            <option value="3">Marzo</option>
+                            <option value="4">Abril</option>
+                            <option value="5">Mayo</option>
+                            <option value="6">Junio</option>
+                            <option value="7">Julio</option>
+                            <option value="8">Agosto</option>
+                            <option value="9">Septiembre</option>
+                            <option value="10">Octubre</option>
+                            <option value="11">Noviembre</option>
+                            <option value="12">Diciembre</option>
                         </select>
                         <select
                             value={statusFilter}

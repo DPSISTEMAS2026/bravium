@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -14,7 +14,7 @@ import {
     BanknotesIcon,
     XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { getApiUrl } from '@/lib/api';
+import { getApiUrl, authFetch } from '@/lib/api';
 
 const MONTHS = [
     { value: 'ALL', label: 'Todo el año' },
@@ -40,6 +40,7 @@ interface DTEMatch {
     origin: string;
     confidence: number;
     ruleApplied?: string;
+    notes?: string;
     transaction?: {
         id: string;
         date: string;
@@ -95,8 +96,12 @@ export default function FacturasPage() {
     const [syncing, setSyncing] = useState(false);
     const [page, setPage] = useState(1);
     const limit = 15;
-    const [selectedMonth, setSelectedMonth] = useState('ALL');
-    const [selectedYear, setSelectedYear] = useState('2026');
+    const [fromDate, setFromDate] = useState<string>(() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 1);
+        return d.toISOString().split('T')[0];
+    });
+    const [toDate, setToDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
     const [reviewModal, setReviewModal] = useState<{ dte: DTE; match: DTEMatch } | null>(null);
     const [sortBy, setSortBy] = useState<string>('issuedDate');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -113,16 +118,10 @@ export default function FacturasPage() {
     const [reviewComment, setReviewComment] = useState('');
     const [reviewLoading, setReviewLoading] = useState(false);
 
-    const { fromDate, toDate, queryStr } = useMemo(() => {
-        let from = `${selectedYear}-01-01`;
-        let to = `${selectedYear}-12-31`;
-        if (selectedMonth !== 'ALL') {
-            const lastDay = new Date(parseInt(selectedYear), parseInt(selectedMonth), 0).getDate();
-            from = `${selectedYear}-${selectedMonth}-01`;
-            to = `${selectedYear}-${selectedMonth}-${lastDay}`;
-        }
+    const queryStr = useMemo(() => {
         const params = new URLSearchParams({
-            fromDate: from, toDate: to,
+            fromDate, 
+            toDate,
             page: page.toString(), limit: limit.toString(),
             paymentStatus: statusFilter,
             search: appliedSearch || '',
@@ -130,11 +129,11 @@ export default function FacturasPage() {
             sortOrder,
             hasPdf: hasPdfFilter,
         });
-        return { fromDate: from, toDate: to, queryStr: params.toString() };
-    }, [page, statusFilter, selectedMonth, selectedYear, appliedSearch, sortBy, sortOrder, hasPdfFilter]);
+        return params.toString();
+    }, [page, statusFilter, fromDate, toDate, appliedSearch, sortBy, sortOrder, hasPdfFilter]);
 
     const { data: dtesData, error: dtesError, isLoading: dtesLoading, isValidating: dtesValidating, mutate: mutateDtes } = useSWR(
-        statusFilter !== 'PAID' ? `${API_URL}/dtes?${queryStr}` : null,
+        (statusFilter !== 'PAID') ? `${API_URL}/dtes?${queryStr}` : null,
         { keepPreviousData: false }
     );
     const { data: matchesData, error: matchesError, isLoading: matchesLoading, isValidating: matchesValidating, mutate: mutateMatches } = useSWR(
@@ -171,6 +170,14 @@ export default function FacturasPage() {
     const apiError = dtesError || matchesError || summaryError;
 
     const refreshData = useCallback(() => { mutateDtes(); mutateSummary(); mutateMatches?.(); }, [mutateDtes, mutateSummary, mutateMatches]);
+    
+    useEffect(() => {
+        if (reviewModal) {
+            setReviewComment(reviewModal.match.notes || '');
+        } else {
+            setReviewComment('');
+        }
+    }, [reviewModal]);
 
     const handleSearch = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') { setPage(1); setAppliedSearch(search); }
@@ -180,7 +187,7 @@ export default function FacturasPage() {
         if (!reviewModal) return;
         setReviewLoading(true);
         try {
-            const res = await fetch(`${API_URL}/conciliacion/matches/${reviewModal.match.id}/status`, {
+            const res = await authFetch(`${API_URL}/conciliacion/matches/${reviewModal.match.id}/status`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status, reason: reviewComment || undefined }),
@@ -201,7 +208,7 @@ export default function FacturasPage() {
         if (!reviewModal) return;
         setReviewLoading(true);
         try {
-            const res = await fetch(`${API_URL}/conciliacion/matches/${reviewModal.match.id}`, { method: 'DELETE' });
+            const res = await authFetch(`${API_URL}/conciliacion/matches/${reviewModal.match.id}`, { method: 'DELETE' });
             if (!res.ok) throw new Error('Error al descartar');
             setReviewModal(null);
             refreshData();
@@ -213,10 +220,32 @@ export default function FacturasPage() {
         }
     };
 
+    const handleUpdateNotes = async () => {
+        if (!reviewModal) return;
+        setReviewLoading(true);
+        try {
+            const res = await authFetch(`${API_URL}/conciliacion/matches/${reviewModal.match.id}/notes`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes: reviewComment }),
+            });
+            if (!res.ok) throw new Error('Error al actualizar notas');
+            setReviewModal(null);
+            refreshData();
+            if (typeof globalMutate === 'function') {
+                globalMutate((k: string) => typeof k === 'string' && (k.includes('/dtes') || k.includes('/conciliacion') || k.includes('/transactions')));
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setReviewLoading(false);
+        }
+    };
+
     const downloadPdf = async (id: string, type: number, folio: number) => {
         try {
             const API_URL = getApiUrl();
-            const response = await fetch(`${API_URL}/ingestion/libredte/pdf/${id}`);
+            const response = await authFetch(`${API_URL}/ingestion/libredte/pdf/${id}`);
             if (!response.ok) throw new Error('No se pudo obtener el PDF');
 
             const blob = await response.blob();
@@ -240,11 +269,8 @@ export default function FacturasPage() {
         try {
             setSyncing(true);
             const API_URL = getApiUrl();
-            const lastDay = new Date(parseInt(selectedYear), parseInt(selectedMonth === 'ALL' ? '12' : selectedMonth), 0).getDate();
-            const fromDate = selectedMonth === 'ALL' ? `${selectedYear}-01-01` : `${selectedYear}-${selectedMonth}-01`;
-            const toDate = selectedMonth === 'ALL' ? `${selectedYear}-12-31` : `${selectedYear}-${selectedMonth}-${lastDay}`;
 
-            await fetch(`${API_URL}/ingestion/libredte/sync`, {
+            await authFetch(`${API_URL}/ingestion/libredte/sync`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -253,7 +279,7 @@ export default function FacturasPage() {
                 }),
             });
             refreshData();
-            alert(`Sincronización para ${selectedMonth === 'ALL' ? selectedYear : MONTHS.find(m => m.value === selectedMonth)?.label} completada`);
+            alert(`Sincronización completada.`);
         } catch (error) {
             console.error('Error syncing:', error);
             alert('Error al sincronizar con LibreDTE');
@@ -426,24 +452,24 @@ export default function FacturasPage() {
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 lg:w-auto">
-                        <div className="flex items-center space-x-2">
-                            <select
-                                value={selectedYear}
-                                onChange={(e) => { setSelectedYear(e.target.value); setPage(1); }}
-                                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium bg-white"
-                            >
-                                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                            </select>
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs font-bold text-slate-500">Desde</label>
+                            <input
+                                type="date"
+                                value={fromDate}
+                                onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white"
+                            />
                         </div>
 
-                        <div className="flex items-center space-x-2">
-                            <select
-                                value={selectedMonth}
-                                onChange={(e) => { setSelectedMonth(e.target.value); setPage(1); }}
-                                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium bg-white"
-                            >
-                                {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                            </select>
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs font-bold text-slate-500">Hasta</label>
+                            <input
+                                type="date"
+                                value={toDate}
+                                onChange={(e) => { setToDate(e.target.value); setPage(1); }}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white"
+                            />
                         </div>
 
                         <div className="flex items-center space-x-2">
@@ -456,6 +482,7 @@ export default function FacturasPage() {
                                 <option value="UNPAID">Pendientes</option>
                                 <option value="PARTIAL">Parciales</option>
                                 <option value="PAID">Pagadas</option>
+                                <option value="ABONOS">📋 Abonos (NC)</option>
                             </select>
                         </div>
 
@@ -510,8 +537,13 @@ export default function FacturasPage() {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                            dte.type === 61
+                                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                                : 'bg-purple-100 text-purple-700'
+                                        }`}>
                                             {getDocumentTypeName(dte.type)}
+                                            {dte.type === 61 && ' (Abono)'}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">
@@ -525,18 +557,24 @@ export default function FacturasPage() {
                                     <td className="px-6 py-4 text-slate-600">
                                         {formatDate(dte.issuedDate)}
                                     </td>
-                                    <td className="px-6 py-4 text-right font-semibold text-slate-900">
-                                        {formatCurrency(dte.totalAmount)}
+                                    <td className={`px-6 py-4 text-right font-semibold ${dte.type === 61 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                        {dte.type === 61 ? `-${formatCurrency(dte.totalAmount)}` : formatCurrency(dte.totalAmount)}
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <span
-                                            className={`font-bold ${dte.outstandingAmount > 0
-                                                ? 'text-red-600'
-                                                : 'text-slate-400'
-                                                }`}
-                                        >
-                                            {formatCurrency(dte.outstandingAmount)}
-                                        </span>
+                                        {dte.type === 61 ? (
+                                            <span className="font-bold text-emerald-600">
+                                                Abono
+                                            </span>
+                                        ) : (
+                                            <span
+                                                className={`font-bold ${dte.outstandingAmount > 0
+                                                    ? 'text-red-600'
+                                                    : 'text-slate-400'
+                                                    }`}
+                                            >
+                                                {formatCurrency(dte.outstandingAmount)}
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         {dte.paymentStatus === 'PAID' && (
@@ -621,10 +659,25 @@ export default function FacturasPage() {
                                                     </button>
                                                 );
                                             }
+                                            if ((dte as any).metadata && (dte as any).metadata.reconciliationComment) {
+                                                const comment = (dte as any).metadata.reconciliationComment;
+                                                return (
+                                                    <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-emerald-50/50 border border-emerald-100">
+                                                        <span className="inline-flex items-center text-emerald-600 font-bold text-xs">
+                                                            <CheckCircleIcon className="h-4 w-4 mr-1" />
+                                                            AMORTIZADO
+                                                        </span>
+                                                        <div className="text-[10px] text-slate-600 font-medium mt-1 text-center max-w-[150px] truncate" title={comment}>
+                                                            {comment}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+
                                             return (
-                                                <button 
-                                                    type="button" 
-                                                    onClick={() => { setManualMatchDte(dte); setManualMatchSearch(dte.provider?.name || ''); }} 
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setManualMatchDte(dte); setManualMatchSearch(dte.provider?.name || ''); }}
                                                     className="inline-flex items-center gap-1 text-slate-400 hover:text-indigo-600 font-medium px-2 py-1 rounded hover:bg-slate-100/60 transition-colors group cursor-pointer"
                                                     title="Match manual"
                                                 >
@@ -761,11 +814,27 @@ export default function FacturasPage() {
                                             {mDate && <span>Fecha: <strong className="text-slate-700">{Math.abs(Math.round((new Date(mDate).getTime() - new Date(reviewModal.dte.issuedDate).getTime()) / 86400000))} días</strong></span>}
                                         </div>
                                         <div className="flex-1 min-w-[200px]">
+                                            <div className="flex flex-wrap gap-1 mb-1.5">
+                                                {['Nota de Crédito', 'Pago Parcial', 'Diferencia de Cambio', 'Redondeo'].map(tag => (
+                                                    <button 
+                                                        key={tag}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (!reviewComment.includes(`[${tag}]`)) {
+                                                                    setReviewComment(prev => `[${tag}] ${prev}`.trim());
+                                                            }
+                                                        }}
+                                                        className="text-[9px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-md border border-indigo-100 transition-colors"
+                                                    >
+                                                        + {tag}
+                                                    </button>
+                                                ))}
+                                            </div>
                                             <input
                                                 value={reviewComment}
                                                 onChange={e => setReviewComment(e.target.value)}
-                                                placeholder="Comentario (opcional)"
-                                                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-purple-500"
+                                                placeholder="Comentario / Motivo de descuadre..."
+                                                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 outline-none"
                                             />
                                         </div>
                                     </div>
@@ -799,10 +868,16 @@ export default function FacturasPage() {
                                     </button>
                                 </>
                             ) : (
-                                <button onClick={handleDiscardMatch} disabled={reviewLoading}
-                                    className="flex-1 min-w-[120px] bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50">
-                                    <XCircleIcon className="h-5 w-5" /> Descartar match
-                                </button>
+                                <>
+                                    <button onClick={handleUpdateNotes} disabled={reviewLoading}
+                                        className="flex-1 min-w-[120px] bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-1">
+                                        <CheckCircleIcon className="h-5 w-5" /> Guardar Notas
+                                    </button>
+                                    <button onClick={handleDiscardMatch} disabled={reviewLoading}
+                                        className="flex-1 min-w-[120px] bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-1">
+                                        <XCircleIcon className="h-5 w-5" /> Descartar match
+                                    </button>
+                                </>
                             )}
                             <button onClick={() => setReviewModal(null)} disabled={reviewLoading}
                                 className="px-4 py-2.5 border border-slate-200 rounded-xl text-slate-600 font-medium text-sm hover:bg-slate-100 disabled:opacity-50">
@@ -899,7 +974,7 @@ export default function FacturasPage() {
                                                 setManualMatchLoading(true);
                                                 setManualMatchError(null);
                                                 try {
-                                                    const res = await fetch(`${API_URL}/transactions?search=${encodeURIComponent(manualMatchSearch)}&status=PENDING,UNMATCHED&limit=30&sortBy=date&order=desc`);
+                                                    const res = await authFetch(`${API_URL}/transactions?search=${encodeURIComponent(manualMatchSearch)}&status=PENDING,UNMATCHED&limit=30&sortBy=date&order=desc`);
                                                     const data = await res.json().catch(() => ({}));
                                                     setManualMatchTxResults(Array.isArray(data) ? data : data.data || []);
                                                 } catch { setManualMatchError('Error al buscar movimientos'); } finally { setManualMatchLoading(false); }
@@ -981,7 +1056,7 @@ export default function FacturasPage() {
                                     setManualMatchSaving(true);
                                     setManualMatchError(null);
                                     try {
-                                        const res = await fetch(`${API_URL}/conciliacion/matches/manual`, {
+                                        const res = await authFetch(`${API_URL}/conciliacion/matches/manual`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ 

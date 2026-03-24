@@ -24,7 +24,7 @@ export class ProveedoresService {
     /**
      * Obtener proveedores con información de deuda (paginado)
      */
-    async getAllProviders(search?: string, page: number = 1, limit: number = ProveedoresService.DEFAULT_PAGE_SIZE, organizationId?: string, year?: string, statusFilter?: string) {
+    async getAllProviders(search?: string, page: number = 1, limit: number = ProveedoresService.DEFAULT_PAGE_SIZE, organizationId?: string, year?: string, statusFilter?: string, month?: string) {
         const where: any = search
             ? {
                 OR: [
@@ -36,11 +36,15 @@ export class ProveedoresService {
         if (organizationId) {
             where.organizationId = organizationId;
         }
-
+ 
         let minDate = this.getMinDate();
         let maxDate: Date | undefined = undefined;
-
-        if (year) {
+ 
+        if (year && month && month !== 'ALL') {
+            const m = parseInt(month, 10);
+            minDate = new Date(parseInt(year, 10), m - 1, 1);
+            maxDate = new Date(parseInt(year, 10), m, 0, 23, 59, 59, 999);
+        } else if (year) {
             minDate = new Date(`${year}-01-01`);
             maxDate = new Date(`${year}-12-31T23:59:59.999Z`);
         }
@@ -205,6 +209,19 @@ export class ProveedoresService {
             throw new Error('Proveedor no encontrado');
         }
 
+        // Obtener movimientos bancarios asociados por alias/revisión manual
+        const aliasMovements = await this.prisma.bankTransaction.findMany({
+            where: {
+                metadata: {
+                    path: ['providerId'],
+                    equals: providerId
+                }
+            },
+            include: { bankAccount: true },
+            orderBy: { date: 'desc' },
+            take: 100
+        });
+
         const totalDebt = provider.dtes.reduce(
             (sum, dte) => sum + dte.outstandingAmount,
             0
@@ -216,6 +233,7 @@ export class ProveedoresService {
 
         return {
             ...provider,
+            aliasMovements,
             metrics: {
                 totalDebt,
                 totalInvoiced,

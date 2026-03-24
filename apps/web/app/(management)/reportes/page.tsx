@@ -36,19 +36,21 @@ interface FlujoCajaMonth {
     matchRate: number;
 }
 
-/** Período por defecto para reportes e informes: solo 2026. */
-const REPORT_YEAR = 2026;
-const REPORT_FROM = `${REPORT_YEAR}-01-01`;
-const REPORT_TO = `${REPORT_YEAR}-12-31`;
-
 export default function ReportesPage() {
     const API_URL = getApiUrl();
 
+    const [fromDate, setFromDate] = useState<string>(() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 1);
+        return d.toISOString().split('T')[0];
+    });
+    const [toDate, setToDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+
     const { data: deudaData, isLoading: deudaLoading } = useSWR(
-        `${API_URL}/reportes/deuda-proveedores?fromDate=${REPORT_FROM}&toDate=${REPORT_TO}`
+        `${API_URL}/reportes/deuda-proveedores?fromDate=${fromDate}&toDate=${toDate}`
     );
     const { data: flujoData, isLoading: flujoLoading } = useSWR(
-        `${API_URL}/reportes/flujo-caja?fromDate=${REPORT_FROM}&toDate=${REPORT_TO}`
+        `${API_URL}/reportes/flujo-caja?fromDate=${fromDate}&toDate=${toDate}`
     );
 
     const deudaProveedores: DeudaProveedor[] = deudaData?.providers || [];
@@ -109,7 +111,7 @@ export default function ReportesPage() {
                         Reportes e Inteligencia
                     </h1>
                     <p className="text-slate-600 mt-1">
-                        Análisis y exportación de datos — solo {REPORT_YEAR} (LibreDTE vs cartolas)
+                        Análisis y exportación de datos mediante filtros de fecha personalizados
                     </p>
                 </div>
                 <button
@@ -119,6 +121,29 @@ export default function ReportesPage() {
                     <ArrowDownTrayIcon className="h-5 w-5" />
                     <span>Exportar a Excel</span>
                 </button>
+            </div>
+            {/* Filters Bar */}
+            <div className="card p-4 flex flex-col md:flex-row gap-4 items-end bg-white shadow-sm">
+                <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-slate-500">Desde</label>
+                    <input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white"
+                    />
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-slate-500">Hasta</label>
+                    <input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white"
+                    />
+                </div>
+                <div className="flex-1"></div>
+                <div className="text-xs text-slate-400 italic">Los reportes se actualizarán al cambiar de fecha.</div>
             </div>
 
             {/* Summary Cards */}

@@ -53,11 +53,21 @@ export class TransactionsService {
         }
 
         if (filters.status && filters.status !== 'ALL') {
-            const statuses = filters.status.split(',').map((s) => s.trim()).filter(Boolean);
-            if (statuses.length > 1) {
-                where.status = { in: statuses };
+            if (filters.status === 'CREDIT_ABONOS') {
+                where.status = 'PENDING';
+                where.type = 'CREDIT';
             } else {
-                where.status = filters.status;
+                const statuses = filters.status.split(',').map((s) => s.trim()).filter(Boolean);
+                if (statuses.length > 1) {
+                    where.status = { in: statuses };
+                } else {
+                    where.status = filters.status;
+                }
+
+                // Si se consultan transacciones pendientes, excluir Abonos (tipo CREDIT)
+                if (filters.status === 'PENDING') {
+                    where.type = 'DEBIT'; // Solo cargos quedarán como pendientes por defecto
+                }
             }
         }
 
@@ -673,16 +683,66 @@ export class TransactionsService {
         });
     }
 
-    async markAsReviewed(id: string, note: string) {
+    async markAsReviewed(id: string, note: string, providerId?: string, newProviderName?: string) {
         const tx = await this.prisma.bankTransaction.findUnique({
             where: { id },
-            select: { metadata: true, status: true },
+             include: { bankAccount: true },
         });
         if (!tx) throw new Error('Transacción no encontrada');
 
         const meta = (tx.metadata as Record<string, any>) || {};
         meta.reviewNote = note;
         meta.reviewedAt = new Date().toISOString();
+
+        let finalProviderId = providerId;
+
+        if (!finalProviderId && newProviderName && newProviderName.trim()) {
+             const nameTrim = newProviderName.trim();
+             let provider = await this.prisma.provider.findFirst({
+                 where: { name: { equals: nameTrim, mode: 'insensitive' } }
+             });
+
+             if (!provider) {
+                 this.logger.log(`Auto-creating provider profile for review: ${nameTrim}`);
+                 const mockRut = `AUTO-${Date.now()}`;
+                 provider = await this.prisma.provider.create({
+                     data: {
+                         name: nameTrim,
+                         rut: mockRut,
+                         organizationId: tx.bankAccount?.organizationId || null
+                     }
+                 });
+             }
+             finalProviderId = provider.id;
+        }
+
+        if (finalProviderId) {
+            // Guardar el alias para futuras cargas
+            await this.prisma.providerAlias.upsert({
+                where: {
+                    description_providerId: {
+                        description: tx.description,
+                        providerId: finalProviderId
+                    }
+                },
+                update: {},
+                create: {
+                    description: tx.description,
+                    providerId: finalProviderId
+                }
+            });
+
+            // Timbrar en la metadata actual para el listado actual
+            const provider = await this.prisma.provider.findUnique({
+                where: { id: finalProviderId },
+                select: { name: true }
+            });
+
+            if (provider) {
+                meta.providerId = finalProviderId;
+                meta.providerName = provider.name;
+            }
+        }
 
         const result = await this.prisma.bankTransaction.update({
             where: { id },

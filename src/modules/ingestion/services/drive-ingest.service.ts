@@ -307,6 +307,9 @@ export class DriveIngestService {
                 // I will use 'MANUAL_UPLOAD' provided it exists or string. 
                 // Actually Enum DataOrigin usually has MANUAL. Let's start with 'MANUAL'.
 
+                // Notas de Crédito (61) son abonos a favor
+                const isAbono = typeCode === 61;
+
                 const dteData = {
                     folio,
                     type: typeCode,
@@ -316,8 +319,8 @@ export class DriveIngestService {
                     issuedDate,
                     siiStatus: 'ACEPTADO',
                     providerId: provider.id,
-                    outstandingAmount: totalAmount,
-                    paymentStatus: 'UNPAID', // Enum DtePaymentStatus.UNPAID
+                    outstandingAmount: isAbono ? 0 : totalAmount,
+                    paymentStatus: isAbono ? 'PAID' : 'UNPAID',
                     origin: DataOrigin.MANUAL_UPLOAD || 'MANUAL',
                 };
 

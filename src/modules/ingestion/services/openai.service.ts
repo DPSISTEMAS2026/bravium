@@ -48,6 +48,7 @@ export class OpenAiService {
                - Las fechas ya vienen como texto legible (DD/MM/YYYY o YYYY-MM-DD). Cópialas tal cual, solo conviértelas al formato YYYY-MM-DD.
                - Si una fecha viene como número (ej: 46054), es un serial de Excel: conviértelo usando la fórmula (número - 25569) * 86400000 ms desde epoch Unix. Ejemplo: 46054 → 2026-02-02. NO adivines, calcula correctamente.
                - Las fechas son de Chile (UTC-3). Preserva el día exacto que aparece en los datos.
+               - **REGLA CONTINUACIÓN (CRÍTICA)**: En cartolas bancarias (PDF/Excel), a veces solo la primera fila de un día tiene la fecha y las siguientes filas están en blanco para ese mismo día. Si una fila de transacción VÁLIDA no tiene fecha, **HEREDA la fecha de la transacción inmediatamente anterior**. No descartes filas solo por no tener la fecha repetida.
             7. CRÍTICO - ESTADOS DE CUENTA DE TARJETA DE CRÉDITO:
                - Los PDFs de estados de cuenta de TC suelen tener dos secciones: "PERÍODO ANTERIOR" y "PERÍODO ACTUAL".
                - IGNORA completamente la sección de "PERÍODO ANTERIOR" o "PERÍODO DE FACTURACIÓN ANTERIOR". Esas transacciones ya fueron contabilizadas en el estado anterior.

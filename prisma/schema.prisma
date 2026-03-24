@@ -101,11 +101,23 @@ model Provider {
   ledgerEntries FinancialLedgerEntry[]
   supplierProducts SupplierProduct[]
   priceHistory     ProductPriceHistory[]
+  aliases          ProviderAlias[] // <--- NUEVA RELACIÓN
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
   @@map("providers")
+}
+
+model ProviderAlias {
+  id          String   @id @default(uuid())
+  description String   // Glosa del banco (ej. "Transf a AVILA RAMIREZ")
+  providerId  String
+  provider    Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([description, providerId])
+  @@map("provider_aliases")
 }
 
 // ==============================

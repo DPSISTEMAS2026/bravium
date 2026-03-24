@@ -29,7 +29,7 @@ import {
     TrashIcon,
     PencilSquareIcon,
 } from '@heroicons/react/24/outline';
-import { getApiUrl } from '../../../lib/api';
+import { getApiUrl, authFetch } from '../../../lib/api';
 import { useCartolaIngestion } from '../../../contexts/CartolaIngestionContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { CartolasManualMatchSection } from './CartolasConciliacionSections';
@@ -170,8 +170,12 @@ export default function CartolasPage() {
     // Filters
     const [search, setSearch] = useState(() => searchParams.get('search') || '');
     const [appliedSearch, setAppliedSearch] = useState(() => searchParams.get('search') || '');
-    const [selectedMonth, setSelectedMonth] = useState(() => searchParams.get('month') || 'ALL');
-    const [selectedYear, setSelectedYear] = useState(() => searchParams.get('year') || '2026');
+    const [fromDate, setFromDate] = useState<string>(() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 1);
+        return d.toISOString().split('T')[0];
+    });
+    const [toDate, setToDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
     const [selectedAccount, setSelectedAccount] = useState(() => searchParams.get('bankAccountId') || 'ALL');
     const [typeFilter, setTypeFilter] = useState(() => searchParams.get('type') || 'ALL');
     const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || 'ALL');
@@ -189,6 +193,7 @@ export default function CartolasPage() {
     // Motor de conciliación: ejecutar manual, paneles Sugerencias / Match manual
     const [runMatchLoading, setRunMatchLoading] = useState(false);
     const [showManualMatch, setShowManualMatch] = useState(false);
+    const [isCartolasVisible, setIsCartolasVisible] = useState(false); // Minimizar cartolas cargadas
 
     // Match review modal
     const [reviewTx, setReviewTx] = useState<Transaction | null>(null);
@@ -246,6 +251,11 @@ export default function CartolasPage() {
     const [sortBy, setSortBy] = useState<'date' | 'amount' | 'description' | 'type'>('date');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
+    // Asociar proveedor en la anotación
+    const [annotateProviderSearch, setAnnotateProviderSearch] = useState('');
+    const [annotateProviderResults, setAnnotateProviderResults] = useState<any[]>([]);
+    const [annotateProviderSelected, setAnnotateProviderSelected] = useState<any>(null);
+
     const handleSort = (field: 'date' | 'amount' | 'description' | 'type') => {
         if (sortBy === field) {
             setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -272,46 +282,12 @@ export default function CartolasPage() {
     // Aceptar rápido (sin abrir modal): match id o suggestion id en curso
     const [quickAcceptingId, setQuickAcceptingId] = useState<string | null>(null);
 
-    // Meses disponibles: 2025 solo Nov/Dic; 2026 solo hasta el mes actual
-    const availableMonths = selectedYear === '2025' ? MONTHS_2025 : getMonths2026();
 
-    // Al cambiar a 2025, si el mes no es Nov/Dic/ALL, usar Nov-Dic completo
-    useEffect(() => {
-        if (selectedYear === '2025' && !['ALL', '11', '12'].includes(selectedMonth)) {
-            setSelectedMonth('ALL');
-            setPage(1);
-        }
-    }, [selectedYear]);
-
-    // En 2026, si el mes elegido ya no está disponible (ej. abril aún no activo), usar "Todo" o primer disponible
-    useEffect(() => {
-        if (selectedYear !== '2026') return;
-        const validMonths = getMonths2026().map(m => m.value);
-        if (!validMonths.includes(selectedMonth)) {
-            setSelectedMonth('ALL');
-            setPage(1);
-        }
-    }, [selectedYear, selectedMonth]);
 
     // Rango del periodo seleccionado (para requests y cartolas visibles)
     const periodDates = useMemo(() => {
-        const year = parseInt(selectedYear);
-        let fromDate: string;
-        let toDate: string;
-        if (selectedYear === '2025') {
-            fromDate = selectedMonth === 'ALL' ? '2025-11-01' : `2025-${selectedMonth}-01`;
-            const lastDay = new Date(2025, parseInt(selectedMonth === 'ALL' ? '12' : selectedMonth), 0).getDate();
-            toDate = selectedMonth === 'ALL' ? '2025-12-31' : `2025-${selectedMonth}-${lastDay}`;
-        } else {
-            const now = new Date();
-            const is2026YTD = year === 2026 && selectedMonth === 'ALL';
-            const endMonth = is2026YTD ? now.getMonth() + 1 : parseInt(selectedMonth === 'ALL' ? '12' : selectedMonth);
-            const lastDay = new Date(year, endMonth, 0).getDate();
-            fromDate = selectedMonth === 'ALL' ? `${year}-01-01` : `${year}-${selectedMonth}-01`;
-            toDate = selectedMonth === 'ALL' ? `${year}-${String(endMonth).padStart(2, '0')}-${lastDay}` : `${year}-${selectedMonth}-${lastDay}`;
-        }
         return { fromDate, toDate };
-    }, [selectedYear, selectedMonth]);
+    }, [fromDate, toDate]);
 
     // Build query params for SWR keys (cartolas: solo Nov-Dic 2025 y 2026 hasta mes actual)
     const queryParams = useMemo(() => {
@@ -415,7 +391,7 @@ export default function CartolasPage() {
         const matchId = reviewMatch.id;
         const txId = reviewTx.id;
         try {
-            const res = await fetch(`${API_URL}/conciliacion/matches/${matchId}/status`, {
+            const res = await authFetch(`${API_URL}/conciliacion/matches/${matchId}/status`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: action, reason: reviewComment || undefined }),
@@ -457,7 +433,7 @@ export default function CartolasPage() {
         e.stopPropagation();
         setQuickAcceptingId(matchId);
         try {
-            const res = await fetch(`${API_URL}/conciliacion/matches/${matchId}/status`, {
+            const res = await authFetch(`${API_URL}/conciliacion/matches/${matchId}/status`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'CONFIRMED' }),
@@ -489,7 +465,7 @@ export default function CartolasPage() {
         e.stopPropagation();
         setQuickAcceptingId(suggestionId);
         try {
-            const res = await fetch(`${API_URL}/conciliacion/suggestions/${suggestionId}/accept`, { method: 'POST' });
+            const res = await authFetch(`${API_URL}/conciliacion/suggestions/${suggestionId}/accept`, { method: 'POST' });
             if (!res.ok) throw new Error('Error al aceptar sugerencia');
             // Optimistic: marcar como MATCHED las tx de esta sugerencia
             optimisticUpdate((list) =>
@@ -512,7 +488,7 @@ export default function CartolasPage() {
         const txId = reviewTx.id;
         setReviewLoading(true);
         try {
-            const res = await fetch(`${API_URL}/conciliacion/matches/${matchId}`, { method: 'DELETE' });
+            const res = await authFetch(`${API_URL}/conciliacion/matches/${matchId}`, { method: 'DELETE' });
             if (!res.ok) throw new Error('Error al descartar');
             closeReviewModal();
             // Optimistic: quitar el match de la tx y volver a PENDING
@@ -544,9 +520,9 @@ export default function CartolasPage() {
         setPendingReplaceDte(null);
         try {
             if (reviewMatch?.id) {
-                await fetch(`${API_URL}/conciliacion/matches/${reviewMatch.id}`, { method: 'DELETE' });
+                await authFetch(`${API_URL}/conciliacion/matches/${reviewMatch.id}`, { method: 'DELETE' });
             }
-            const res = await fetch(`${API_URL}/conciliacion/matches/manual`, {
+            const res = await authFetch(`${API_URL}/conciliacion/matches/manual`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ transactionId: reviewTx.id, dteId: dte.id }),
@@ -618,6 +594,20 @@ export default function CartolasPage() {
     }, [API_URL, showAlternatives, providerSearchDebounced]);
 
     useEffect(() => {
+        if (!annotateProviderSearch.trim() || annotateProviderSearch.trim().length < 2) {
+            setAnnotateProviderResults([]);
+            return;
+        }
+        const t = setTimeout(() => {
+            fetch(`${API_URL}/proveedores?search=${encodeURIComponent(annotateProviderSearch)}`)
+                .then(res => res.json())
+                .then(j => setAnnotateProviderResults(j.data || j || []))
+                .catch(() => setAnnotateProviderResults([]));
+        }, 300);
+        return () => clearTimeout(t);
+    }, [API_URL, annotateProviderSearch]);
+
+    useEffect(() => {
         if (!selectedProvider?.id) {
             setProviderDtes([]);
             return;
@@ -654,7 +644,7 @@ export default function CartolasPage() {
         }
         let cancelled = false;
         setSuggestionDetailLoading(true);
-        fetch(`${API_URL}/conciliacion/suggestions/${suggestionModalId}`)
+        authFetch(`${API_URL}/conciliacion/suggestions/${suggestionModalId}`)
             .then((r) => r.ok ? r.json() : null)
             .then((data) => {
                 if (!cancelled) {
@@ -732,7 +722,7 @@ export default function CartolasPage() {
                 opts.headers = { 'Content-Type': 'application/json' };
                 opts.body = JSON.stringify({ transactionIds: effectiveTxIds, dteId: effectiveDteId });
             }
-            const res = await fetch(`${API_URL}/conciliacion/suggestions/${curSuggestionId}/accept`, opts);
+            const res = await authFetch(`${API_URL}/conciliacion/suggestions/${curSuggestionId}/accept`, opts);
             if (res.ok) {
                 setSuggestionModalId(null);
                 // Optimistic: marcar tx afectadas como MATCHED
@@ -760,7 +750,7 @@ export default function CartolasPage() {
         const curSuggestionId = suggestionModalId;
         setSuggestionActionLoading(true);
         try {
-            const res = await fetch(`${API_URL}/conciliacion/suggestions/${curSuggestionId}/reject`, {
+            const res = await authFetch(`${API_URL}/conciliacion/suggestions/${curSuggestionId}/reject`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ reason: 'Rechazada por usuario' }),
@@ -825,7 +815,7 @@ export default function CartolasPage() {
         setAnnotateMatchLoading(true);
         setAnnotateMatchError(null);
         try {
-            const res = await fetch(`${API_URL}/conciliacion/matches/manual`, {
+            const res = await authFetch(`${API_URL}/conciliacion/matches/manual`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -850,7 +840,7 @@ export default function CartolasPage() {
     };
 
     const handleAnnotateSave = async () => {
-        if (!annotateTx || !annotateNote.trim()) return;
+        if (!annotateTx) return;
         const txId = annotateTx.id;
         const note = annotateNote.trim();
         setAnnotateLoading(true);
@@ -858,7 +848,10 @@ export default function CartolasPage() {
             const res = await fetch(`${API_URL}/transactions/${txId}/review`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ note }),
+                body: JSON.stringify({ 
+                    note: note || '', 
+                    providerId: annotateProviderSelected?.id 
+                }),
             });
             if (!res.ok) throw new Error('Error al guardar');
             closeAnnotateModal();
@@ -867,7 +860,13 @@ export default function CartolasPage() {
                 list.map((tx) => (tx.id !== txId ? tx : {
                     ...tx,
                     status: 'UNMATCHED',
-                    metadata: { ...tx.metadata, reviewNote: note, reviewedAt: new Date().toISOString() },
+                    metadata: { 
+                        ...(tx.metadata as any || {}), 
+                        reviewNote: note, 
+                        reviewedAt: new Date().toISOString(),
+                        providerId: annotateProviderSelected?.id,
+                        providerName: annotateProviderSelected?.name
+                    },
                 })),
             );
         } catch (err) {
@@ -908,12 +907,10 @@ export default function CartolasPage() {
     const runConciliacion = async () => {
         setRunMatchLoading(true);
         try {
-            await fetch(`${API_URL}/conciliacion/run-auto-match`, {
+            await authFetch(`${API_URL}/conciliacion/run-auto-match`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    fromDate: periodDates.fromDate,
-                    toDate: periodDates.toDate,
                     syncFromSources: false,
                     organizationId: user?.organizationId,
                 }),
@@ -966,13 +963,27 @@ export default function CartolasPage() {
             {/* Cartolas cargadas: listar y eliminar */}
             {allCartolas.length > 0 && (
                 <div className="card p-4 border-slate-200 bg-white">
-                    <h2 className="text-lg font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                        <DocumentTextIcon className="h-5 w-5 text-slate-500" />
-                        Cartolas cargadas
-                    </h2>
-                    <p className="text-sm text-slate-600 mb-4">
-                        Puedes eliminar los movimientos de una cartola para volver a cargarla desde cero (ej. si la carga falló y reportó 0 movimientos).
-                    </p>
+                    <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => setIsCartolasVisible(!isCartolasVisible)}>
+                        <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                            <DocumentTextIcon className="h-5 w-5 text-slate-500" />
+                            Cartolas cargadas
+                        </h2>
+                        <button
+                            type="button"
+                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
+                        >
+                            {isCartolasVisible ? (
+                                <ChevronUpIcon className="h-5 w-5 font-bold" />
+                            ) : (
+                                <ChevronDownIcon className="h-5 w-5 font-bold" />
+                            )}
+                        </button>
+                    </div>
+                    {isCartolasVisible && (
+                        <>
+                            <p className="text-sm text-slate-600 mt-2 mb-4">
+                                Puedes eliminar los movimientos de una cartola para volver a cargarla desde cero (ej. si la carga falló y reportó 0 movimientos).
+                            </p>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead>
@@ -1005,6 +1016,8 @@ export default function CartolasPage() {
                             </tbody>
                         </table>
                     </div>
+                    </>
+                    )}
                 </div>
             )}
 
@@ -1171,21 +1184,19 @@ export default function CartolasPage() {
                             ))}
                         </select>
 
-                        <select
-                            value={selectedYear}
-                            onChange={(e) => { setSelectedYear(e.target.value); setPage(1); }}
-                            className="px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-medium bg-white shadow-sm w-[80px]"
-                        >
-                            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
+                        <input
+                            type="date"
+                            value={fromDate}
+                            onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
+                            className="px-2 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-medium bg-white shadow-sm w-[115px]"
+                        />
 
-                        <select
-                            value={selectedYear === '2025' && !['ALL', '11', '12'].includes(selectedMonth) ? 'ALL' : selectedMonth}
-                            onChange={(e) => { setSelectedMonth(e.target.value); setPage(1); }}
-                            className="px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-medium bg-white shadow-sm w-[110px]"
-                        >
-                            {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                        </select>
+                        <input
+                            type="date"
+                            value={toDate}
+                            onChange={(e) => { setToDate(e.target.value); setPage(1); }}
+                            className="px-2 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-medium bg-white shadow-sm w-[115px]"
+                        />
 
                         <select
                             value={statusFilter}
@@ -1195,7 +1206,8 @@ export default function CartolasPage() {
                             <option value="ALL">Todos</option>
                             <option value="MATCHED">Conciliados</option>
                             <option value="PARTIALLY_MATCHED">Sugerencias</option>
-                            <option value="PENDING">Pendientes</option>
+                            <option value="PENDING">Pendientes (Cargos)</option>
+                            <option value="CREDIT_ABONOS">⬇ Abonos Bancarios</option>
                             <option value="UNMATCHED">Revisados</option>
                         </select>
 
@@ -1308,6 +1320,11 @@ export default function CartolasPage() {
                                             <td className="px-6 py-4 max-w-xs xl:max-w-md">
                                                 <div className="truncate text-slate-700 font-medium" title={tx.description}>
                                                     {tx.description}
+                                                    {tx.metadata && (tx.metadata as any).providerName && (
+                                                        <span className="flex items-center gap-1 text-[11px] bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded-full mt-1 w-max border border-slate-200">
+                                                            {(tx.metadata as any).providerName}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 {tx.reference && (
                                                     <div className="text-[10px] text-slate-400 mt-0.5">Ref: {tx.reference}</div>
@@ -1871,7 +1888,7 @@ export default function CartolasPage() {
                                 <>
                                     <button
                                         onClick={handleAnnotateSave}
-                                        disabled={annotateLoading || !annotateNote.trim()}
+                                        disabled={annotateLoading}
                                         className="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-5 py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-lg shadow-amber-600/20"
                                     >
                                         {annotateLoading ? <ArrowPathIcon className="h-5 w-5 animate-spin" /> : <CheckCircleIcon className="h-5 w-5" />}
@@ -2118,7 +2135,40 @@ export default function CartolasPage() {
                                 </p>
                             </div>
 
-                            <div className="border-t border-slate-200 pt-5">
+                            <div className="border-t border-slate-200 pt-4">
+                                <p className="text-xs font-semibold text-slate-600 mb-1.5">Asociar a Proveedor (Opcional)</p>
+                                <p className="text-[10px] text-slate-500 mb-2">Si asocias un proveedor, futuros movimientos con esta descripción se auto-asignarán a él.</p>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={annotateProviderSearch}
+                                        onChange={e => { setAnnotateProviderSearch(e.target.value); if(annotateProviderSelected) setAnnotateProviderSelected(null); }}
+                                        placeholder="Buscar proveedor por nombre..."
+                                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
+                                    />
+                                    {annotateProviderResults.length > 0 && (
+                                        <div className="absolute z-20 bg-white border border-slate-200 rounded-lg mt-1 w-full max-h-48 overflow-auto shadow-lg">
+                                            {annotateProviderResults.map((p: any) => (
+                                                <button
+                                                    key={p.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setAnnotateProviderSelected(p);
+                                                        setAnnotateProviderSearch(p.name);
+                                                        setAnnotateProviderResults([]);
+                                                    }}
+                                                    className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-100 last:border-b-0"
+                                                >
+                                                    <span className="font-medium text-slate-700">{p.name}</span>
+                                                    <span className="text-xs text-slate-400 ml-1">({p.rut})</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="border-t border-slate-200 pt-4">
                                 <p className="text-xs font-semibold text-slate-600 mb-2">O matchear con factura</p>
                                 <p className="text-[10px] text-slate-500 mb-2">Busca por folio (ej. 416423) o proveedor y vincula este movimiento a una factura.</p>
                                 <div className="flex gap-2 mb-2">
@@ -2473,7 +2523,7 @@ export default function CartolasPage() {
                                                     if (data.status === 'ok') {
                                                         ingestion.setStep('matching');
                                                         try {
-                                                            await fetch(`${apiUrl}/conciliacion/run-auto-match`, {
+                                                            await authFetch(`${apiUrl}/conciliacion/run-auto-match`, {
                                                                 method: 'POST',
                                                                 headers: { 'Content-Type': 'application/json' },
                                                                 body: JSON.stringify({
@@ -2490,7 +2540,7 @@ export default function CartolasPage() {
                                                         globalMutate((k: string) => typeof k === 'string' && (k.includes('/conciliacion/') || k.includes('/transactions')));
                                                     } else if (data.status === 'skipped') {
                                                         ingestion.setStep('done');
-                                                        ingestion.setResult({ insertedRows: 0, message: data.message });
+                                                        ingestion.setResult({ insertedRows: 0, message: data.message } as any);
                                                         refreshData();
                                                         globalMutate((k: string) => typeof k === 'string' && (k.includes('/conciliacion/') || k.includes('/transactions')));
                                                     } else if (data.status === 'error' || data.status === 'warning') {

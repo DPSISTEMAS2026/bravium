@@ -22,14 +22,15 @@ export class ProveedoresController {
         @Query('page') page?: string,
         @Query('limit') limit?: string,
         @Query('year') year?: string,
+        @Query('month') month?: string,
         @Query('status') status?: string,
         @Req() req?: Request,
     ) {
         const pageNum = page ? Math.max(1, parseInt(page, 10)) : 1;
         const limitNum = limit ? Math.min(100, Math.max(1, parseInt(limit, 10))) : 20;
         const organizationId = (req as any).user?.organizationId;
-        this.logger.log(`Fetching providers page ${pageNum}${search ? ` search: ${search}` : ''} year: ${year} status: ${status}`);
-        return this.proveedoresService.getAllProviders(search, pageNum, limitNum, organizationId, year, status);
+        this.logger.log(`Fetching providers page ${pageNum}${search ? ` search: ${search}` : ''} year: ${year} month: ${month} status: ${status}`);
+        return this.proveedoresService.getAllProviders(search, pageNum, limitNum, organizationId, year, status, month);
     }
 
     /**

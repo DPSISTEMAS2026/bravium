@@ -190,10 +190,10 @@ export class TransactionsController {
     @Patch(':id/review')
     async reviewTransaction(
         @Param('id') id: string,
-        @Body() body: { note: string },
+        @Body() body: { note: string; providerId?: string; newProviderName?: string },
     ) {
-        this.logger.log(`Marking transaction ${id} as reviewed: ${body.note}`);
-        return this.transactionsService.markAsReviewed(id, body.note);
+        this.logger.log(`Marking transaction ${id} as reviewed. Note: ${body.note}, Prov: ${body.providerId}, NewProv: ${body.newProviderName}`);
+        return this.transactionsService.markAsReviewed(id, body.note, body.providerId, body.newProviderName);
     }
 
     /**

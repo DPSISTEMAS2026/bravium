@@ -7,7 +7,8 @@ import {
     ReconciliationMatch,
     TransactionStatus,
     Payment,
-    DTE
+    DTE,
+    TransactionType
 } from '@prisma/client';
 import * as fs from 'fs';
 import { ExactMatchStrategy } from './strategies/exact-match.strategy';
@@ -57,6 +58,7 @@ export class ConciliacionService {
         // Solo los CONFIRMED bloquean; consideramos PENDING y PARTIALLY_MATCHED (DRAFT) para re-buscar la mejor opción
         const whereClause: any = {
             status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
+            type: TransactionType.DEBIT // Excluir Abonos para no matchearlos con facturas
         };
         
         if (organizationId) {
@@ -129,6 +131,57 @@ export class ConciliacionService {
             const usedTxIds = new Set<string>();
             const usedPaymentIds = new Set<string>();
             let matchCount = 0;
+
+            // === 1.5 Auto-Amortizar Notas de Crédito (NC) contra Facturas de igual monto ===
+            this.fileLog('AUTO-AMORTIZING: 1:1 Credit Notes against Invoices...');
+            
+            // Consultar Notas de Crédito (tipo 61) directamente para traer también las que estén 'PAID'
+            const creditNotes = await this.prisma.dTE.findMany({
+                where: {
+                    type: 61,
+                    ...(organizationId && { provider: { organizationId } }),
+                    ...(dteMinDate && { issuedDate: { gte: dteMinDate } }),
+                }
+            });
+            const invoices = allUnpaidDtes.filter(d => d.type !== 61);
+
+            for (const cn of creditNotes) {
+                const match = invoices.find(inv => 
+                    inv.providerId === cn.providerId && 
+                    inv.totalAmount === cn.totalAmount && 
+                    !usedDteIds.has(inv.id)
+                );
+                if (match) {
+                    await this.prisma.$transaction(async (prisma) => {
+                        await prisma.dTE.update({
+                            where: { id: match.id },
+                            data: { 
+                                paymentStatus: 'PAID', 
+                                outstandingAmount: 0,
+                                metadata: {
+                                    ...(match.metadata as any || {}),
+                                    reconciliationComment: `Neteado contra NC ${cn.folio}`
+                                }
+                            }
+                        });
+                        // Asegurar que ambas estén PAID
+                        await prisma.dTE.update({
+                            where: { id: cn.id },
+                            data: { 
+                                paymentStatus: 'PAID', 
+                                outstandingAmount: 0,
+                                metadata: {
+                                    ...(cn.metadata as any || {}),
+                                    reconciliationComment: `Amortizado contra Factura ${match.folio}`
+                                }
+                            }
+                        });
+                    });
+                    usedDteIds.add(match.id);
+                    usedDteIds.add(cn.id);
+                    this.fileLog(`NC AUTONULLED: NC ${cn.folio} nulled Invoice ${match.folio} (Amt: ${cn.totalAmount})`);
+                }
+            }
 
             // Recolectar todos los pares (TX, DTE) candidatos con diferencia de días para priorizar por fecha cercana
             type Pair = { tx: BankTransaction; dte: DTE & { provider?: { name: string } | null }; score: number; reason: string; strategyName: string; dateDiffDays: number };

@@ -15,9 +15,12 @@ export class MatchSuggestionsService {
     async listSuggestions(status?: string, organizationId?: string) {
         const where: any = {};
         if (status) where.status = status;
-        if (organizationId) {
-            where.dte = { provider: { organizationId } };
-        }
+        
+        // Excluir sugerencias para DTEs que ya están Pagados
+        where.dte = {
+            paymentStatus: { not: 'PAID' },
+            ...(organizationId ? { provider: { organizationId } } : {}),
+        };
 
         const suggestions = await this.prisma.matchSuggestion.findMany({
             where,

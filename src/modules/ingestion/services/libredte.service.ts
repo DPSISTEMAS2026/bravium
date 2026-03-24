@@ -235,6 +235,11 @@ export class LibreDteService {
             }
         }
 
+        // Notas de Crédito (61) son abonos: no generan deuda pendiente
+        const isNotaCredito = dteType === 61;
+        const isNotaDebito = dteType === 56;
+        const isAbono = isNotaCredito; // NC = abono a favor
+
         // 3. Create new DTE
         await this.prisma.dTE.create({
             data: {
@@ -243,11 +248,11 @@ export class LibreDteService {
                 rutIssuer: rutIssuer,
                 rutReceiver: companyRut, // Org RUT
                 totalAmount: totalAmount,
-                outstandingAmount: totalAmount,
+                outstandingAmount: isAbono ? 0 : totalAmount,
                 issuedDate: new Date(issuedDateStr),
                 dueDate: item.vencimiento ? new Date(item.vencimiento) : null,
                 siiStatus: 'RECIBIDO',
-                paymentStatus: DtePaymentStatus.UNPAID,
+                paymentStatus: isAbono ? DtePaymentStatus.PAID : DtePaymentStatus.UNPAID,
                 providerId: provider.id,
                 origin: DataOrigin.API_INTEGRATION,
                 metadata: item // Store raw data for audit

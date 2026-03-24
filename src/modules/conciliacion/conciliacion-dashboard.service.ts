@@ -99,22 +99,24 @@ export class ConciliacionDashboardService {
     private async getTransactionStats(filters: DashboardFiltersDto) {
         const dateFilter = this.buildTransactionDateFilter(filters);
 
+        const dateFilterWithDebit = { ...dateFilter, type: 'DEBIT' as const };
+
         const [total, matched, pending, totalAmount] = await Promise.all([
-            this.prisma.bankTransaction.count({ where: dateFilter }),
+            this.prisma.bankTransaction.count({ where: dateFilterWithDebit }),
             this.prisma.bankTransaction.count({
                 where: {
-                    ...dateFilter,
+                    ...dateFilterWithDebit,
                     status: 'MATCHED'
                 }
             }),
             this.prisma.bankTransaction.count({
                 where: {
-                    ...dateFilter,
+                    ...dateFilterWithDebit,
                     status: 'PENDING'
                 }
             }),
             this.prisma.bankTransaction.aggregate({
-                where: dateFilter,
+                where: dateFilterWithDebit,
                 _sum: { amount: true }
             })
         ]);
@@ -227,7 +229,8 @@ export class ConciliacionDashboardService {
         return this.prisma.bankTransaction.findMany({
             where: {
                 ...dateFilter,
-                status: 'PENDING'
+                status: 'PENDING',
+                type: 'DEBIT'
             },
             orderBy: [
                 { amount: 'desc' }, // Priorizar montos altos

@@ -20,7 +20,7 @@ import {
     MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { getApiUrl } from '@/lib/api';
+import { getApiUrl, authFetch } from '@/lib/api';
 
 interface DTE {
     id: string;
@@ -96,7 +96,7 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
     const { id } = use(params);
     const [provider, setProvider] = useState<ProviderDetail | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'PENDIENTES' | 'TODOS' | 'PAGOS'>('PENDIENTES');
+    const [activeTab, setActiveTab] = useState<'PENDIENTES' | 'TODOS' | 'PAGOS' | 'MOVIMIENTOS_ALIAS'>('PENDIENTES');
     const [selectedDteIds, setSelectedDteIds] = useState<string[]>([]);
     const [selectedYear, setSelectedYear] = useState('2026');
     const [reviewModal, setReviewModal] = useState<{ dte: DTE; match: any } | null>(null);
@@ -125,7 +125,7 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
     useEffect(() => {
         const fetchBanks = async () => {
             const API_URL = getApiUrl();
-            const res = await fetch(`${API_URL}/transactions/source-files-all`);
+            const res = await authFetch(`${API_URL}/transactions/source-files-all`);
             const data = await res.json();
             setBankAccounts(data);
         };
@@ -136,7 +136,7 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
         try {
             setLoading(true);
             const API_URL = getApiUrl();
-            const response = await fetch(`${API_URL}/proveedores/${id}`);
+            const response = await authFetch(`${API_URL}/proveedores/${id}`);
             const data = await response.json();
             setProvider(data);
         } catch (error) {
@@ -151,7 +151,7 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
         setManualMatchTxLoading(true);
         try {
             const API_URL = getApiUrl();
-            const res = await fetch(`${API_URL}/transactions?search=${encodeURIComponent(manualMatchSearch)}&status=PENDING&limit=20`);
+            const res = await authFetch(`${API_URL}/transactions?search=${encodeURIComponent(manualMatchSearch)}&status=PENDING&limit=20`);
             const data = await res.json();
             setManualMatchTxList(data.data || data || []);
         } catch (err) {
@@ -166,7 +166,7 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
         setManualMatchLoading(true);
         try {
             const API_URL = getApiUrl();
-            const res = await fetch(`${API_URL}/conciliacion/matches/manual`, {
+            const res = await authFetch(`${API_URL}/conciliacion/matches/manual`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ transactionId: txId, dteId: manualMatchDte.id })
@@ -193,7 +193,7 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
         try {
             const API_URL = getApiUrl();
             // 1. Create manual transaction
-            const resCreate = await fetch(`${API_URL}/transactions`, {
+            const resCreate = await authFetch(`${API_URL}/transactions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(creationForm),
@@ -202,7 +202,7 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
             const createdTx = await resCreate.json();
 
             // 2. Link it to the DTE
-            const resLink = await fetch(`${API_URL}/conciliacion/matches/manual`, {
+            const resLink = await authFetch(`${API_URL}/conciliacion/matches/manual`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ transactionId: createdTx.id, dteId: manualMatchDte.id })
@@ -227,7 +227,7 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
         setReviewLoading(true);
         try {
             const API_URL = getApiUrl();
-            const res = await fetch(`${API_URL}/conciliacion/matches/${reviewModal.match.id}/status`, {
+            const res = await authFetch(`${API_URL}/conciliacion/matches/${reviewModal.match.id}/status`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status, reason: reviewComment || undefined }),
@@ -247,7 +247,7 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
         if (!confirm('¿Estás seguro de que deseas desvincular este pago?')) return;
         try {
             const API_URL = getApiUrl();
-            const res = await fetch(`${API_URL}/conciliacion/matches/${matchId}`, { method: 'DELETE' });
+            const res = await authFetch(`${API_URL}/conciliacion/matches/${matchId}`, { method: 'DELETE' });
             if (!res.ok) throw new Error('Error al desvincular.');
             loadProviderDetail();
         } catch (err: any) {
@@ -451,10 +451,13 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
             {/* Tabs & Content */}
             <div className="card-glass overflow-hidden flex flex-col min-h-[400px]">
                 <div className="flex border-b border-slate-100">
-                    {(['PENDIENTES', 'TODOS', 'PAGOS'] as const).map(tab => (
+                    {(['PENDIENTES', 'TODOS', 'PAGOS', 'MOVIMIENTOS_ALIAS'] as const).map(tab => (
                         <button key={tab} onClick={() => setActiveTab(tab)}
                             className={`flex-1 py-4 text-sm font-bold uppercase tracking-widest transition-colors ${activeTab === tab ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/30' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50/50'}`}>
-                            {tab === 'PENDIENTES' ? `Por Pagar (${pendingDtes.length})` : tab === 'TODOS' ? `Todos (${pendingDtes.length} pend. / ${paidDtes.length} pag.)` : `Pagos (${allPaymentsForTab.length})`}
+                            {tab === 'PENDIENTES' ? `Por Pagar (${pendingDtes.length})` : 
+                             tab === 'TODOS' ? `Todos (${pendingDtes.length} pend. / ${paidDtes.length} pag.)` : 
+                             tab === 'PAGOS' ? `Pagos (${allPaymentsForTab.length})` : 
+                             `Movimientos Alias (${(provider as any).aliasMovements?.length || 0})`}
                         </button>
                     ))}
                 </div>
@@ -667,6 +670,46 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
                                                 </span>
                                             )}
                                             {payment.source === 'manual' && <CreditCardIcon className="h-5 w-5 mx-auto text-slate-300" />}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                    
+                    {activeTab === 'MOVIMIENTOS_ALIAS' && (
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50/50 text-slate-500 font-semibold border-b border-slate-100 uppercase tracking-tight text-[11px]">
+                                <tr>
+                                    <th className="px-6 py-4">Fecha</th>
+                                    <th className="px-6 py-4">Descripción / Cartola</th>
+                                    <th className="px-6 py-4 text-right">Monto</th>
+                                    <th className="px-6 py-4 text-center">Nota / Alias</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {!(provider as any).aliasMovements || (provider as any).aliasMovements.length === 0 ? (
+                                    <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-400 italic">Sin movimientos vinculados por alias</td></tr>
+                                ) : (provider as any).aliasMovements.map((m: any) => (
+                                    <tr key={m.id} className="hover:bg-slate-50/30 transition-colors">
+                                        <td className="px-6 py-4 text-slate-900 font-medium whitespace-nowrap">{formatDate(m.date)}</td>
+                                        <td className="px-6 py-4">
+                                            <div className="font-semibold text-slate-900 truncate max-w-[240px]" title={m.description}>{m.description}</div>
+                                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                                                {m.bankAccount?.bankName || 'Banco'} &middot; {m.bankAccount?.accountNumber || '—'}
+                                            </div>
+                                        </td>
+                                        <td className={`px-6 py-4 text-right font-bold ${m.type === 'CREDIT' ? 'text-green-600' : 'text-red-700'}`}>
+                                            {formatCurrency(m.amount)}
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            {m.metadata?.reviewNote ? (
+                                                <span className="inline-flex items-center px-2 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-xs font-medium">
+                                                    {m.metadata.reviewNote}
+                                                </span>
+                                            ) : (
+                                                <span className="text-slate-400 italic text-xs">Anotado sin nota</span>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}

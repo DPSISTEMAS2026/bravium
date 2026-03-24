@@ -47,11 +47,19 @@ export class DtesService {
             where.providerId = filters.providerId;
         }
 
-        if (filters.paymentStatus && filters.paymentStatus !== 'ALL') {
-            where.paymentStatus = filters.paymentStatus;
-            // Pendientes = solo DTEs sin match CONFIRMED (aceptado en Cartolas)
-            if (filters.paymentStatus === 'UNPAID') {
-                where.matches = { none: { status: 'CONFIRMED' } };
+        if (filters.paymentStatus === 'ABONOS') {
+            // Filtro especial: solo Notas de Crédito (tipo 61)
+            where.type = 61;
+        } else {
+            // Excluir Notas de Crédito del listado normal (son abonos, no deudas)
+            where.type = { not: 61 };
+
+            if (filters.paymentStatus && filters.paymentStatus !== 'ALL') {
+                where.paymentStatus = filters.paymentStatus;
+                // Pendientes = solo DTEs sin match CONFIRMED (aceptado en Cartolas)
+                if (filters.paymentStatus === 'UNPAID') {
+                    where.matches = { none: { status: 'CONFIRMED' } };
+                }
             }
         }
 
@@ -199,6 +207,8 @@ export class DtesService {
         const cacheKey = `dte-summary:${JSON.stringify(filters)}`;
         return this.cache.getOrFetch(cacheKey, CACHE_TTL, async () => {
             const where = this.buildWhere(filters);
+            // Siempre excluir NC del resumen (son abonos, no deudas)
+            where.type = { not: 61 };
 
             const [agg, statusGroups, typeGroups, dtesWithMatchCount] = await Promise.all([
                 this.prisma.dTE.aggregate({
@@ -350,6 +360,7 @@ export class DtesService {
         const minDate = this.visibility.getVisibleFromDate();
         const dtes = await this.prisma.dTE.findMany({
             where: {
+                type: { not: 61 }, // Excluir NC (son abonos)
                 paymentStatus: {
                     in: ['UNPAID', 'PARTIAL'],
                 },
@@ -377,6 +388,7 @@ export class DtesService {
 
         const dtes = await this.prisma.dTE.findMany({
             where: {
+                type: { not: 61 }, // Excluir NC (son abonos)
                 paymentStatus: {
                     in: ['UNPAID', 'PARTIAL'],
                 },

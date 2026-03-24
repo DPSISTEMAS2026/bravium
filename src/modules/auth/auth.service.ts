@@ -42,6 +42,22 @@ export class AuthService {
         };
     }
 
+    async changePassword(userId: string, oldPass: string, newPass: string) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new Error('Usuario no encontrado');
+
+        const isMatch = await bcrypt.compare(oldPass, user.passwordHash);
+        if (!isMatch) throw new Error('Contraseña anterior incorrecta');
+
+        const hash = await this.hashPassword(newPass);
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { passwordHash: hash }
+        });
+
+        return { success: true, message: 'Contraseña actualizada' };
+    }
+
     async hashPassword(password: string): Promise<string> {
         return bcrypt.hash(password, 10);
     }
