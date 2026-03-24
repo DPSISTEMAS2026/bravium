@@ -438,20 +438,23 @@ export default function FacturasPage() {
 
             {/* Filters */}
             <div className="card p-4">
-                <div className="flex flex-col lg:flex-row gap-4">
-                    <div className="relative flex-1">
-                        <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                        <input
-                            type="text"
-                            placeholder="Folio, monto (con o sin puntos), RUT (con o sin DV)... Enter para filtrar"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            onKeyDown={handleSearch}
-                            className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm transition-all"
-                        />
+                <div className="flex flex-col lg:flex-row gap-4 items-end">
+                    <div className="relative flex-1 w-full flex flex-col gap-1">
+                        <label className="text-xs font-bold text-slate-500">Búsqueda rápida</label>
+                        <div className="relative w-full">
+                            <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder="Folio, monto (con o sin puntos), RUT (con o sin DV)... Enter para filtrar"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                onKeyDown={handleSearch}
+                                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm transition-all"
+                            />
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 lg:w-auto">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 w-full lg:w-auto items-end">
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-bold text-slate-500">Desde</label>
                             <input
@@ -472,13 +475,14 @@ export default function FacturasPage() {
                             />
                         </div>
 
-                        <div className="flex items-center space-x-2">
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs font-bold text-slate-500">Estado</label>
                             <select
                                 value={statusFilter}
                                 onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium bg-white"
+                                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium bg-white"
                             >
-                                <option value="ALL">Estados: Todos</option>
+                                <option value="ALL">Todos</option>
                                 <option value="UNPAID">Pendientes</option>
                                 <option value="PARTIAL">Parciales</option>
                                 <option value="PAID">Pagadas</option>
@@ -486,13 +490,14 @@ export default function FacturasPage() {
                             </select>
                         </div>
 
-                        <div className="flex items-center space-x-2">
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs font-bold text-slate-500">DTE / PDF</label>
                             <select
                                 value={hasPdfFilter}
                                 onChange={(e) => { setHasPdfFilter(e.target.value); setPage(1); }}
-                                className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium bg-white"
+                                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium bg-white"
                             >
-                                <option value="ALL">PDF: Todos</option>
+                                <option value="ALL">Todos</option>
                                 <option value="YES">Con PDF</option>
                                 <option value="NO">Sin PDF</option>
                             </select>
@@ -500,7 +505,7 @@ export default function FacturasPage() {
 
                         <button
                             onClick={() => { setPage(1); setAppliedSearch(search); }}
-                            className="btn-primary py-2 text-xs"
+                            className="btn-primary py-2 text-sm w-full h-[38px] flex items-center justify-center font-bold"
                         >
                             Filtrar
                         </button>
