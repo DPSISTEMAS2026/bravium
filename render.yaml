@@ -1,61 +1,42 @@
-
-# Blueprint de Render para BRAVIUM
-# Guía: https://render.com/docs/blueprint-spec
-
 services:
-  # 1. Backend Service (NestJS)
+  # ------------------------------------------------------------------
+  # 1. BACKEND API (NestJS + Prisma)
+  # ------------------------------------------------------------------
   - type: web
-    name: bravium-backend
+    name: bravium-api
     env: node
-    plan: starter # Se recomienda starter para evitar que el servicio entre en ahorro de energía
-    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy && npm run build
-    startCommand: npm run start:prod
+    plan: starter # Se recomienda starter para que no se duerma (tareas de match en segundo plano)
+    buildCommand: "npm ci && npx prisma generate && npm run build"
+    startCommand: "npm run start:prod"
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3001
       - key: DATABASE_URL
-        sync: false # El usuario debe proveer este valor en el Dashboard de Render
-      - key: JWT_SECRET
-        generateValue: true
-      - key: LIBREDTE_API_KEY
-        sync: false
-      - key: COMPANY_RUT
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false # User setting in Dashboard
-      - key: GOOGLE_DRIVE_FOLDER_ID
-        value: "1TA-_Ll12LdPwY0hnuD_nRM9ZyvuVIdxH"
-      - key: GOOGLE_DRIVE_CREDENTIALS_JSON
-        sync: false # JSON from Service Account
-      - key: MATCH_AMOUNT_TOLERANCE_CLP
-        value: "1000"
-      - key: MATCH_DATE_WINDOW_DAYS
-        value: "60"
+        fromDatabase:
+          name: bravium-db
+          property: connectionString
 
-  # 2. Frontend Service (Next.js)
+  # ------------------------------------------------------------------
+  # 2. FRONTEND (Next.js)
+  # ------------------------------------------------------------------
   - type: web
     name: bravium-frontend
     env: node
     plan: starter
-    rootDir: apps/web
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    # Como es un monorepo, entramos a la carpeta y construimos
+    buildCommand: "cd apps/web && npm ci && npm run build"
+    startCommand: "cd apps/web && npm run start"
     envVars:
       - key: NODE_ENV
         value: production
+      # URL de la API de arriba. Render te dará una automáticamente tipo: bravium-api.onrender.com
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          name: bravium-backend
-          type: web
-          property: host
-        # NOTA: Render expondrá esto como http://... por defecto. 
-        # Es ideal usar https:// en producción una vez asignado el dominio.
+        value: "https://bravium-api.onrender.com"
 
+# ------------------------------------------------------------------
+# 3. BASE DE DATOS POSTGRESQL (Opcional si ya tienes una)
+# ------------------------------------------------------------------
 databases:
-  # Opcional: Si deseas una base de datos Postgres interna de Render en lugar de la de Supabase
   - name: bravium-db
-    plan: free
-    databaseName: bravium_db
-    user: bravium_user
+    plan: starter
+    postgresMajorVersion: 15
