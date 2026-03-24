@@ -16,7 +16,8 @@ import {
     ChevronRightIcon,
     SparklesIcon,
     DocumentTextIcon,
-    ClipboardDocumentListIcon
+    ClipboardDocumentListIcon,
+    MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
 import { getApiUrl, apiFetcher } from '../../lib/api';
@@ -25,6 +26,7 @@ interface NavItem {
     name: string;
     href: string;
     icon: any;
+    mobileOnly?: boolean;
 }
 
 interface NavSection {
@@ -37,6 +39,7 @@ const sections: NavSection[] = [
         title: 'Módulos Principales',
         items: [
             { name: 'Dashboard', href: '/', icon: HomeIcon },
+            { name: 'Súper Búsqueda', href: '/busqueda', icon: MagnifyingGlassIcon, mobileOnly: true },
             { name: 'Facturas (DTE)', href: '/facturas', icon: DocumentTextIcon },
             { name: 'Cartolas Bancarias', href: '/cartolas', icon: CreditCardIcon },
             { name: 'Proveedores', href: '/proveedores', icon: UsersIcon },
@@ -83,13 +86,12 @@ export default function Sidebar() {
     return (
         <div className="sidebar d-flex flex-column transition-all">
             {/* Logo Section */}
-            <div className="px-5 py-4 mb-2 d-flex align-items-center justify-content-center">
-                <Link href="/" className="d-block">
+            <div className="px-5 py-4 mb-2 flex items-center justify-center">
+                <Link href="/" className="block">
                     <img
                         src="/logo.svg"
                         alt="BRAVIUM Logo"
-                        className="img-fluid"
-                        style={{ height: '24px', width: 'auto' }}
+                        className="h-6 w-auto object-contain brightness-0 invert"
                     />
                 </Link>
             </div>
@@ -103,7 +105,7 @@ export default function Sidebar() {
                             {section.items.map((item) => {
                                 const active = pathname === item.href;
                                 return (
-                                    <li key={item.name} className="nav-item">
+                                    <li key={item.name} className={`nav-item ${!item.mobileOnly ? 'hidden md:block' : 'md:hidden'}`}>
                                         <Link
                                             href={item.href}
                                             className={`nav-link ${active ? 'active' : ''}`}

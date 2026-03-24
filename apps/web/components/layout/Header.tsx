@@ -1,14 +1,26 @@
 'use client';
 
-import { BellIcon, ArrowLeftOnRectangleIcon } from '@heroicons/react/24/outline';
+import { BellIcon, ArrowLeftOnRectangleIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
 
-export default function Header() {
+interface HeaderProps {
+    onToggle: () => void;
+}
+
+export default function Header({ onToggle }: HeaderProps) {
     const { user, logout } = useAuth();
 
     return (
-        <header className="header shadow-sm flex items-center justify-end w-full overflow-hidden">
-            <div className="flex items-center gap-3 sm:gap-4 px-4 sm:px-6 min-w-0 flex-1 justify-end flex-nowrap">
+        <header className="header shadow-sm flex items-center justify-between w-full overflow-hidden px-4">
+            <button
+                type="button"
+                onClick={onToggle}
+                className="p-2 -ml-2 text-slate-500 rounded-lg hover:bg-slate-100 transition-colors z-50 md:hidden"
+            >
+                <Bars3Icon className="w-6 h-6" />
+            </button>
+
+            <div className="flex items-center gap-3 sm:gap-4 px-2 min-w-0 flex-1 justify-end flex-nowrap">
                 {/* Status */}
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full border border-slate-200 shrink-0">
                     <div className="w-2 h-2 rounded-full bg-emerald-500" />

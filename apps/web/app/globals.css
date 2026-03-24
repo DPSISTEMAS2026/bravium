@@ -87,6 +87,23 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  transition: margin-left 0.2s ease;
+}
+
+
+/* Responsive Sidebar */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  .sidebar-collapsed .sidebar {
+    transform: translateX(0);
+    width: 280px; /* Full width on mobile drawer toggle */
+  }
+  .main-content {
+    margin-left: 0 !important;
+  }
 }
 
 /* Header: no scroll, elementos derecha siempre visibles */

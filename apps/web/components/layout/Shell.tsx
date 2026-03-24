@@ -13,10 +13,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
     const { active: ingestionActive } = useCartolaIngestion();
+    const [isCollapsed, setIsCollapsed] = React.useState(false);
 
     React.useEffect(() => {
         if (!isLoading && !user && pathname !== '/login') {
             router.push('/login');
+            return;
+        }
+
+        // Redirección móvil desde el Dashboard
+        if (typeof window !== 'undefined' && window.innerWidth < 768 && pathname === '/') {
+            router.push('/busqueda');
         }
     }, [user, isLoading, pathname, router]);
 
@@ -35,19 +42,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
         return <>{children}</>;
     }
 
-    if (!user && pathname !== '/login') {
-        return null; // Avoid flashing dashboard
-    }
-
     return (
-        <div className="d-flex w-100 min-vh-100">
+        <div className={`d-flex w-100 min-vh-100 ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
             <Sidebar />
             <div className="main-content flex-grow-1 d-flex flex-column">
-                <Header />
+                <Header onToggle={() => setIsCollapsed(!isCollapsed)} />
                 <main className={`flex-grow-1 p-4 p-lg-5 ${ingestionActive ? 'pb-20' : ''}`}>
                     {children}
                 </main>
             </div>
+            {isCollapsed && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsCollapsed(false)} />}
             <CartolaIngestionBar />
         </div>
     );

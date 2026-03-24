@@ -17,6 +17,8 @@ import { ReportesModule } from './modules/reportes/reportes.module';
 import { PaymentRecordsModule } from './modules/payment-records/payment-records.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 
+import { SearchModule } from './modules/search/search.module';
+
 @Global()
 @Module({
   imports: [
@@ -35,6 +37,7 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
     ReportesModule,
     PaymentRecordsModule,
     OrganizationsModule,
+    SearchModule,
   ],
   controllers: [],
   providers: [SchedulerService, CacheService, DataVisibilityService],

@@ -341,7 +341,7 @@ export default function HomePage() {
                             <div className="p-2.5 bg-slate-100 rounded-xl group-hover:bg-emerald-50 transition-colors">
                                 <ChartBarIcon className="h-5 w-5 text-slate-600 group-hover:text-emerald-600" />
                             </div>
-                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">
                                 {stats.transacciones.tasaConciliacion.toFixed(0)}% MATCH
                             </span>
                         </div>
@@ -349,27 +349,6 @@ export default function HomePage() {
                         <div className="text-xs text-slate-500 font-bold uppercase tracking-widest">Transacciones</div>
                         <div className="mt-3 text-[11px] text-slate-400">{stats.transacciones.conciliadas} conciliadas</div>
                     </Link>
-
-                    {/* Flujo Neto */}
-                    <div className="card-glass p-5 hover:shadow-xl transition-all">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className={`p-2.5 rounded-xl ${stats.flujo.neto >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                                <CurrencyDollarIcon className="h-5 w-5" />
-                            </div>
-                            {stats.flujo.neto >= 0 ? (
-                                <ArrowTrendingUpIcon className="h-4 w-4 text-emerald-600" />
-                            ) : (
-                                <ArrowTrendingDownIcon className="h-4 w-4 text-red-600" />
-                            )}
-                        </div>
-                        <div className={`text-2xl font-bold mb-0.5 ${stats.flujo.neto >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                            {formatCurrency(Math.abs(stats.flujo.neto))}
-                        </div>
-                        <div className="text-xs text-slate-500 font-bold uppercase tracking-widest">Flujo Neto</div>
-                        <div className={`mt-3 text-[10px] font-bold uppercase ${stats.flujo.neto >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {stats.flujo.neto >= 0 ? 'Estructura Saludable' : 'Revisar Egresos'}
-                        </div>
-                    </div>
                 </div>
             )}
 

@@ -47,7 +47,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.setItem('bravium_token', data.access_token);
             localStorage.setItem('bravium_user', JSON.stringify(data.user));
             setUser(data.user);
-            router.push('/');
+            
+            const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+            router.push(isMobile ? '/busqueda' : '/');
         } else {
             throw new Error(data.error || 'Login failed');
         }
