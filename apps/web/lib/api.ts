@@ -10,7 +10,7 @@ export function getApiUrl() {
   const env = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL;
   const url = (env && env.trim() !== '') ? env.trim() : API_BASE;
   if (url.includes(':8000') || !url.startsWith('http')) return API_BASE;
-  return url;
+  return url.replace(/\/$/, "");
 }
 
 export const apiFetcher = async (url: string) => {
