@@ -72,9 +72,9 @@ export default function LoginPage() {
                     <div className="login-left-scroll">
                         {/* Logo */}
                         <div className="login-logo-area">
-                            <img src="/logo-dp.png" alt="DP Sistemas" className="login-logo" />
-                            <h2 className="login-brand-name">DP Sistemas</h2>
-                            <p className="login-brand-tagline">Sistemas y Automatizaciones</p>
+                            <img src="/logo-login.png" alt="DP Sistemas" className="login-logo" />
+                            {/* <h2 className="login-brand-name">DP Sistemas</h2>
+                            <p className="login-brand-tagline">Sistemas y Automatizaciones</p> */}
                         </div>
 
                         {/* Features */}
@@ -128,10 +128,10 @@ export default function LoginPage() {
                     <div className="login-form-wrapper">
                         {/* Mobile logo */}
                         <div className="login-mobile-logo">
-                            <img src="/logo-dp.png" alt="DP" className="login-mobile-logo-img" />
+                            <img src="/logo-login.png" alt="DP" className="login-mobile-logo-img" />
                         </div>
 
-                        <div className="login-header">
+                        <div className="login-header text-center">
                             <h1 className="login-title">Iniciar sesión</h1>
                             <p className="login-subtitle">
                                 {orgName
