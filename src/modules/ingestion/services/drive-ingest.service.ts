@@ -247,7 +247,32 @@ export class DriveIngestService {
             const XLSX = await import('xlsx');
             const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
             const sheetName = workbook.SheetNames[0];
-            const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { raw: false, dateNF: 'yyyy-mm-dd' });
+            const sheet = workbook.Sheets[sheetName];
+
+            // Buscar dinámicamente la fila de encabezados para evitar saltarse filas estáticas/totales arriba
+            const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+            const headerIndex = rawRows.findIndex(row => {
+                if (!Array.isArray(row)) return false;
+                const cells = row.map(c => String(c).toUpperCase());
+                const hasAmount = cells.some(c => c.includes('MONTO')) || 
+                                 (cells.some(c => c.includes('CARGO')) && cells.some(c => c.includes('ABONO')));
+                const hasContext = cells.some(c => c.includes('FECHA')) || 
+                                  cells.some(c => c.includes('DESCRIPCI')) || 
+                                  cells.some(c => c.includes('DETALLE'));
+                return hasAmount && hasContext;
+            });
+
+            let rows = [];
+            if (headerIndex !== -1) {
+                this.logger.log(`Found headers at row ${headerIndex + 1} (${dto.metadata?.filename})`);
+                rows = XLSX.utils.sheet_to_json(sheet, { 
+                    range: headerIndex, 
+                    raw: false, 
+                    dateNF: 'yyyy-mm-dd' 
+                });
+            } else {
+                rows = XLSX.utils.sheet_to_json(sheet, { raw: false, dateNF: 'yyyy-mm-dd' });
+            }
             return rows;
         }
 
