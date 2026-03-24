@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, use, useMemo } from 'react';
+import PrintStatementModal from './PrintStatementModal';
 import {
     ArrowLeftIcon,
     DocumentTextIcon,
@@ -102,6 +103,7 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
     const [reviewModal, setReviewModal] = useState<{ dte: DTE; match: any } | null>(null);
     const [reviewComment, setReviewComment] = useState('');
     const [reviewLoading, setReviewLoading] = useState(false);
+    const [printModalOpen, setPrintModalOpen] = useState(false);
     
     // Manual match states
     const [manualMatchDte, setManualMatchDte] = useState<DTE | null>(null);
@@ -379,6 +381,10 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
                         <option value="2026">2026</option>
                         <option value="2025">2025</option>
                     </select>
+                    <button onClick={() => setPrintModalOpen(true)} className="px-4 py-2 border border-indigo-200 rounded-lg text-sm font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 flex items-center shadow-sm">
+                        <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        Exportar
+                    </button>
                     <button onClick={loadProviderDetail} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 flex items-center">
                         <ArrowPathIcon className="h-4 w-4 mr-2" /> Actualizar
                     </button>
@@ -971,6 +977,14 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
                         </div>
                     </div>
                 </div>
+            )}
+
+            {printModalOpen && provider && (
+                <PrintStatementModal 
+                    provider={provider as any} 
+                    onClose={() => setPrintModalOpen(false)} 
+                    formatCurrency={formatCurrency} 
+                />
             )}
         </>
     );
