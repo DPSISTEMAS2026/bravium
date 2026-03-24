@@ -304,7 +304,7 @@ export default function HomePage() {
 
             {/* ===== STATS GRID ===== */}
             {stats && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {/* Proveedores */}
                     <Link href="/proveedores" className="card-glass p-5 hover:shadow-xl transition-all group">
                         <div className="flex items-center justify-between mb-3">
@@ -388,18 +388,18 @@ export default function HomePage() {
             )}
 
             {/* ===== QUICK ACTIONS ===== */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Link href="/conciliacion" className="card p-5 hover:shadow-lg transition-all border border-slate-200 group">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <a href="/cartolas" className="card p-5 hover:shadow-lg transition-all border border-slate-200 group">
                     <div className="flex items-center space-x-3">
                         <div className="p-2.5 bg-teal-50 rounded-xl group-hover:bg-teal-600 group-hover:text-white transition-all text-teal-600">
                             <SparklesIcon className="h-5 w-5" />
                         </div>
                         <div>
                             <h3 className="font-bold text-slate-900 text-sm">Auto-Match</h3>
-                            <p className="text-xs text-slate-500">Conciliación inteligente</p>
+                            <p className="text-xs text-slate-500">Conciliación inteligente en Cartolas</p>
                         </div>
                     </div>
-                </Link>
+                </a>
 
                 <Link href="/facturas" className="card p-5 hover:shadow-lg transition-all border border-slate-200 group">
                     <div className="flex items-center space-x-3">
@@ -409,18 +409,6 @@ export default function HomePage() {
                         <div>
                             <h3 className="font-bold text-slate-900 text-sm">Facturación</h3>
                             <p className="text-xs text-slate-500">DTEs y estados de pago</p>
-                        </div>
-                    </div>
-                </Link>
-
-                <Link href="/exportacion" className="card p-5 hover:shadow-lg transition-all border border-slate-200 group">
-                    <div className="flex items-center space-x-3">
-                        <div className="p-2.5 bg-slate-100 rounded-xl group-hover:bg-slate-900 group-hover:text-white transition-all text-slate-600">
-                            <ChartBarIcon className="h-5 w-5" />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-slate-900 text-sm">Exportación</h3>
-                            <p className="text-xs text-slate-500">Reportes y documentos</p>
                         </div>
                     </div>
                 </Link>
