@@ -9,8 +9,6 @@ services:
     buildCommand: "npm ci && npx prisma generate && npm run build"
     startCommand: "npm run start:prod"
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: DATABASE_URL
         fromDatabase:
           name: bravium-db
@@ -27,8 +25,6 @@ services:
     buildCommand: "cd apps/web && npm ci && npm run build"
     startCommand: "cd apps/web && npm run start"
     envVars:
-      - key: NODE_ENV
-        value: production
       # URL de la API de arriba. Render te dará una automáticamente tipo: bravium-api.onrender.com
       - key: NEXT_PUBLIC_API_URL
         value: "https://bravium-api.onrender.com"
