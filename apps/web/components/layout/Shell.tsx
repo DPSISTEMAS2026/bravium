@@ -13,17 +13,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
     const { active: ingestionActive } = useCartolaIngestion();
-    const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
 
     React.useEffect(() => {
         if (!isLoading && !user && pathname !== '/login') {
             router.push('/login');
         }
     }, [user, isLoading, pathname, router]);
-
-    React.useEffect(() => {
-        setIsSidebarOpen(false); // Close on route change
-    }, [pathname]);
 
     if (isLoading) {
         return (
@@ -35,28 +30,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
         );
     }
 
+    // If we are on the login page, just show the login page content
     if (pathname === '/login') {
         return <>{children}</>;
     }
 
     if (!user && pathname !== '/login') {
-        return null;
+        return null; // Avoid flashing dashboard
     }
 
     return (
-        <div className="flex w-100 min-vh-100 relative">
-            <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-            
-            {/* Backdrop Mobile */}
-            {isSidebarOpen && (
-                <div 
-                    className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 md:hidden"
-                    onClick={() => setIsSidebarOpen(false)}
-                />
-            )}
-
-            <div className="main-content flex-grow-1 flex flex-col min-w-0">
-                <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+        <div className="d-flex w-100 min-vh-100">
+            <Sidebar />
+            <div className="main-content flex-grow-1 d-flex flex-column">
+                <Header />
                 <main className={`flex-grow-1 p-4 p-lg-5 ${ingestionActive ? 'pb-20' : ''}`}>
                     {children}
                 </main>

@@ -59,12 +59,7 @@ const prefetchMap: Record<string, string[]> = {
     '/reportes': ['/reportes/deuda-proveedores', '/reportes/flujo-caja'],
 };
 
-interface SidebarProps {
-    isOpen: boolean;
-    onClose: () => void;
-}
-
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+export default function Sidebar() {
     const pathname = usePathname();
     const { user, logout } = useAuth();
     const API_URL = getApiUrl();
@@ -86,22 +81,17 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         .toUpperCase() || '??';
 
     return (
-        <div className={`sidebar flex flex-col fixed md:sticky top-0 left-0 z-40 h-screen w-[260px] transform ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-300 ease-in-out bg-[#0F172A] shadow-2xl md:shadow-none`}>
+        <div className="sidebar d-flex flex-column transition-all">
             {/* Logo Section */}
-            <div className="px-5 py-6 mb-2 flex items-center justify-between border-b border-slate-800/50">
-                <Link href="/" className="flex items-center gap-2">
+            <div className="px-5 py-4 mb-2 d-flex align-items-center justify-content-center">
+                <Link href="/" className="d-block">
                     <img
-                        src="/logo-dp.png"
-                        alt="DP Sistemas"
-                        className="h-7 w-auto"
+                        src="/logo.svg"
+                        alt="BRAVIUM Logo"
+                        className="img-fluid"
+                        style={{ height: '24px', width: 'auto' }}
                     />
-                    <span className="font-bold text-white tracking-wide text-sm">DP Sistemas</span>
                 </Link>
-
-                {/* Close Button Mobile */}
-                <button type="button" onClick={onClose} className="md:hidden p-1 text-slate-400 hover:text-white rounded-lg">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/></svg>
-                </button>
             </div>
 
             {/* Sections */}
