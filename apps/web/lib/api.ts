@@ -19,9 +19,63 @@ export const apiFetcher = async (url: string) => {
   return res.json();
 };
 
+// ─── Silent Token Refresh System ─────────────────────────────────────
+// Prevents multiple simultaneous refresh requests (mutex pattern)
+let refreshPromise: Promise<boolean> | null = null;
+
 /**
- * Fetch con autenticación JWT.
- * Lee el token de localStorage y lo envía como Bearer token.
+ * Attempts to refresh the access token using the stored refresh_token.
+ * Returns true if successful, false otherwise.
+ */
+async function tryRefreshToken(): Promise<boolean> {
+  const refreshToken = typeof window !== 'undefined'
+    ? localStorage.getItem('bravium_refresh_token')
+    : null;
+
+  if (!refreshToken) return false;
+
+  try {
+    const res = await fetch(`${getApiUrl()}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+
+    if (!res.ok) return false;
+
+    const data = await res.json();
+    if (data.access_token && data.refresh_token) {
+      localStorage.setItem('bravium_token', data.access_token);
+      localStorage.setItem('bravium_refresh_token', data.refresh_token);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Force logout: clears tokens and redirects to login.
+ * Called when refresh token is also expired (after 7 days of inactivity).
+ */
+function forceLogout() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('bravium_token');
+  localStorage.removeItem('bravium_refresh_token');
+  localStorage.removeItem('bravium_user');
+  // Only redirect if not already on login page
+  if (!window.location.pathname.includes('/login')) {
+    window.location.href = '/login?expired=1';
+  }
+}
+
+/**
+ * Fetch con autenticación JWT y auto-refresh silencioso.
+ * - Envía el access_token como Bearer.
+ * - Si el server responde 401, intenta renovar el token con el refresh_token.
+ * - Si la renovación funciona, reintenta la petición original (transparente para el usuario).
+ * - Si la renovación falla, redirige al login.
  */
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('bravium_token') : null;
@@ -31,7 +85,38 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  return fetch(url, { ...options, headers });
+
+  const res = await fetch(url, { ...options, headers });
+
+  // If 401, try silent refresh
+  if (res.status === 401 && typeof window !== 'undefined') {
+    // Use mutex to avoid multiple parallel refresh requests
+    if (!refreshPromise) {
+      refreshPromise = tryRefreshToken().finally(() => {
+        refreshPromise = null;
+      });
+    }
+
+    const refreshed = await refreshPromise;
+
+    if (refreshed) {
+      // Retry original request with new token
+      const newToken = localStorage.getItem('bravium_token');
+      const retryHeaders: Record<string, string> = {
+        ...(options.headers as Record<string, string> || {}),
+      };
+      if (newToken) {
+        retryHeaders['Authorization'] = `Bearer ${newToken}`;
+      }
+      return fetch(url, { ...options, headers: retryHeaders });
+    } else {
+      // Refresh failed → force logout
+      forceLogout();
+      return res;
+    }
+  }
+
+  return res;
 }
 
 export type ConciliacionDashboard = {

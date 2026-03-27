@@ -15,6 +15,18 @@ export class AuthController {
         return this.authService.login(user);
     }
 
+    /**
+     * Silent token refresh: exchange a valid refresh_token for a new token pair.
+     * No JWT guard needed — we validate the refresh token inside the service.
+     */
+    @Post('refresh')
+    async refresh(@Body() body: { refresh_token: string }) {
+        if (!body.refresh_token) {
+            return { error: 'refresh_token requerido' };
+        }
+        return this.authService.refreshTokens(body.refresh_token);
+    }
+
     @UseGuards(JwtAuthGuard)
     @Get('profile')
     getProfile(@Request() req) {

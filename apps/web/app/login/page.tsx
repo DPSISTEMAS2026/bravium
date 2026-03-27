@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTenant } from '../../contexts/TenantContext';
 
@@ -33,9 +34,11 @@ const features = [
 ];
 
 export default function LoginPage() {
+    const searchParams = useSearchParams();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [sessionExpired, setSessionExpired] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [focusedField, setFocusedField] = useState<string | null>(null);
     const [expandedFeature, setExpandedFeature] = useState<number | null>(null);
@@ -43,9 +46,16 @@ export default function LoginPage() {
     const { login } = useAuth();
     const { branding } = useTenant();
 
+    useEffect(() => {
+        if (searchParams.get('expired') === '1') {
+            setSessionExpired(true);
+        }
+    }, [searchParams]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setSessionExpired(false);
         setIsSubmitting(true);
         try {
             await login(email, password);
@@ -140,6 +150,15 @@ export default function LoginPage() {
                                 }
                             </p>
                         </div>
+
+                        {sessionExpired && (
+                            <div className="login-error" style={{ background: '#fffbeb', borderColor: '#fde68a', color: '#92400e' }}>
+                                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                    <path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                <span>Tu sesión ha expirado. Por favor, ingresa de nuevo.</span>
+                            </div>
+                        )}
 
                         {error && (
                             <div className="login-error">
