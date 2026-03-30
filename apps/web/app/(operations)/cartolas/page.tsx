@@ -28,6 +28,8 @@ import {
     XMarkIcon,
     TrashIcon,
     PencilSquareIcon,
+    EyeIcon,
+    ArrowsRightLeftIcon,
 } from '@heroicons/react/24/outline';
 import { getApiUrl, authFetch } from '../../../lib/api';
 import { useCartolaIngestion } from '../../../contexts/CartolaIngestionContext';
@@ -188,6 +190,7 @@ export default function CartolasPage() {
     const [uploadForceReplace, setUploadForceReplace] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [uploadResult, setUploadResult] = useState<{ status: string; message?: string; insertedRows?: number } | null>(null);
+    const [uploadBankAccountId, setUploadBankAccountId] = useState<string>('');
     const [dragOver, setDragOver] = useState(false);
     const ingestion = useCartolaIngestion();
     // Motor de conciliación: ejecutar manual, paneles Sugerencias / Match manual
@@ -218,7 +221,7 @@ export default function CartolasPage() {
     const [providerFolioFilter, setProviderFolioFilter] = useState('');
     const [replacingMatch, setReplacingMatch] = useState(false);
     const [reviewReplaceError, setReviewReplaceError] = useState<string | null>(null);
-    const [pendingReplaceDte, setPendingReplaceDte] = useState<{ dte: any } | null>(null);
+    const [pendingReplaceDte, setPendingReplaceDte] = useState<{ dte: any; isReassign?: boolean } | null>(null);
 
     // Modal de sugerencia pendiente (Sum/Split desde la tabla)
     const [suggestionModalId, setSuggestionModalId] = useState<string | null>(null);
@@ -543,6 +546,42 @@ export default function CartolasPage() {
         }
     };
 
+    const handleReassignDte = async (dte: { id: string }) => {
+        if (!reviewTx) return;
+        setReviewReplaceError(null);
+        setReplacingMatch(true);
+        setPendingReplaceDte(null);
+        try {
+            const res = await authFetch(`${API_URL}/conciliacion/matches/reassign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    transactionId: reviewTx.id,
+                    dteId: dte.id,
+                    currentMatchId: reviewMatch?.id || undefined,
+                }),
+            });
+            const data = await res.json().catch(() => ({}) as any);
+            if (!res.ok) throw new Error(data?.message || 'Error al reasignar');
+            const txId = reviewTx.id;
+            const releasedTxId = data.releasedTransactionId;
+            closeReviewModal();
+            // Optimistic: mark current tx as MATCHED and released tx as PENDING
+            optimisticUpdate((list) =>
+                list.map((tx) => {
+                    if (tx.id === txId) return { ...tx, status: 'MATCHED' };
+                    if (tx.id === releasedTxId) return { ...tx, status: 'PENDING', matches: [] };
+                    return tx;
+                }),
+            );
+            invalidateDtesAndProveedores();
+        } catch (err: any) {
+            setReviewReplaceError(err?.message || 'No se pudo reasignar el DTE');
+        } finally {
+            setReplacingMatch(false);
+        }
+    };
+
     const searchAltDtesByDateAmount = useCallback(async () => {
         if (!reviewTx) return;
         const absAmount = Math.abs(reviewTx.amount);
@@ -559,6 +598,7 @@ export default function CartolasPage() {
                 minAmount: String(min),
                 maxAmount: String(max),
                 limit: '30',
+                includeMatched: 'true',
             });
             const res = await fetch(`${API_URL}/dtes?${params}`);
             if (res.ok) {
@@ -614,7 +654,7 @@ export default function CartolasPage() {
         }
         let cancelled = false;
         setProviderDtesLoading(true);
-        fetch(`${API_URL}/dtes?providerId=${selectedProvider.id}&paymentStatus=UNPAID&limit=50`)
+        fetch(`${API_URL}/dtes?providerId=${selectedProvider.id}&paymentStatus=UNPAID&includeMatched=true&limit=50`)
             .then(res => res.ok ? res.json() : [])
             .then(data => { const list = Array.isArray(data) ? data : data.data || []; if (!cancelled) setProviderDtes(list); })
             .catch(() => { if (!cancelled) setProviderDtes([]); })
@@ -797,7 +837,7 @@ export default function CartolasPage() {
         setAnnotateDteLoading(true);
         setAnnotateMatchError(null);
         try {
-            const params = new URLSearchParams({ search: annotateDteSearch.trim(), paymentStatus: 'UNPAID', limit: '15' });
+            const params = new URLSearchParams({ search: annotateDteSearch.trim(), paymentStatus: 'UNPAID', includeMatched: 'true', limit: '15' });
             const res = await fetch(`${API_URL}/dtes?${params}`);
             const data = await res.json().catch(() => ({}));
             setAnnotateDteResults(Array.isArray(data) ? data : data.data || []);
@@ -1708,13 +1748,36 @@ export default function CartolasPage() {
                                             {altDtesResults.length > 0 && <span className="text-[10px] text-slate-500">{altDtesResults.length} factura(s)</span>}
                                         </div>
                                         {altDtesResults.length > 0 && (
-                                            <div className="mt-2 max-h-24 overflow-y-auto border border-slate-200 rounded divide-y divide-slate-100 bg-white">
-                                                {altDtesResults.map((dte: any) => (
-                                                    <button key={dte.id} type="button" onClick={() => setPendingReplaceDte({ dte })} disabled={replacingMatch} className="w-full text-left px-2 py-1 hover:bg-indigo-50 flex justify-between items-center text-xs disabled:opacity-50">
-                                                        <span className="truncate">Folio {dte.folio} — {dte.provider?.name || '—'}</span>
-                                                        <span className="text-indigo-600 font-semibold shrink-0 ml-1">{formatCurrency(dte.totalAmount)}</span>
-                                                    </button>
-                                                ))}
+                                            <div className="mt-2 max-h-32 overflow-y-auto border border-slate-200 rounded divide-y divide-slate-100 bg-white">
+                                                {altDtesResults.map((dte: any) => {
+                                                    const isMatched = dte.hasMatch || (dte.matches && dte.matches.length > 0 && dte.matches.some((m: any) => m.status === 'CONFIRMED'));
+                                                    const confirmedMatch = isMatched ? dte.matches?.find((m: any) => m.status === 'CONFIRMED') : null;
+                                                    return (
+                                                        <div key={dte.id} className={`w-full px-2 py-1.5 flex items-center gap-2 text-xs ${isMatched ? 'bg-amber-50/50' : 'hover:bg-indigo-50'}`}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setPendingReplaceDte({ dte, isReassign: isMatched })}
+                                                                disabled={replacingMatch}
+                                                                className="flex-1 min-w-0 text-left flex items-center gap-1.5 disabled:opacity-50"
+                                                            >
+                                                                <span className="truncate">Folio {dte.folio} — {dte.provider?.name || '—'}</span>
+                                                                {isMatched && (
+                                                                    <span className="shrink-0 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-bold">Ya asignado</span>
+                                                                )}
+                                                            </button>
+                                                            <span className="text-indigo-600 font-semibold shrink-0">{formatCurrency(dte.totalAmount)}</span>
+                                                            {isMatched && confirmedMatch?.transaction && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => { e.stopPropagation(); window.open(`/cartolas?search=${encodeURIComponent(confirmedMatch.transaction.description || '')}&status=MATCHED`, '_blank'); }}
+                                                                    className="shrink-0 p-1 rounded text-blue-600 hover:bg-blue-50" title="Ver match actual"
+                                                                >
+                                                                    <EyeIcon className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
@@ -1749,26 +1812,41 @@ export default function CartolasPage() {
                                                 ) : providerDtes.length === 0 ? (
                                                     <p className="text-[10px] text-slate-500">Sin pendientes</p>
                                                 ) : (
-                                                    <div className="max-h-24 overflow-y-auto border border-slate-200 rounded divide-y divide-slate-100 bg-white">
+                                                    <div className="max-h-32 overflow-y-auto border border-slate-200 rounded divide-y divide-slate-100 bg-white">
                                                         {providerDtes
                                                             .filter((dte: any) =>
                                                                 !providerFolioFilter ||
                                                                 String(dte.folio).includes(providerFolioFilter.trim()),
                                                             )
-                                                            .map((dte: any) => (
-                                                                <button
-                                                                    key={dte.id}
-                                                                    type="button"
-                                                                    onClick={() => setPendingReplaceDte({ dte })}
-                                                                    disabled={replacingMatch}
-                                                                    className="w-full text-left px-2 py-1 hover:bg-indigo-50 flex justify-between items-center text-xs disabled:opacity-50"
-                                                                >
-                                                                    <span>Folio {dte.folio}</span>
-                                                                    <span className="text-indigo-600 font-semibold">
-                                                                        {formatCurrency(dte.totalAmount)}
-                                                                    </span>
-                                                                </button>
-                                                            ))}
+                                                            .map((dte: any) => {
+                                                                const isMatched = dte.hasMatch || (dte.matches && dte.matches.length > 0 && dte.matches.some((m: any) => m.status === 'CONFIRMED'));
+                                                                const confirmedMatch = isMatched ? dte.matches?.find((m: any) => m.status === 'CONFIRMED') : null;
+                                                                return (
+                                                                    <div key={dte.id} className={`w-full px-2 py-1.5 flex items-center gap-2 text-xs ${isMatched ? 'bg-amber-50/50' : 'hover:bg-indigo-50'}`}>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setPendingReplaceDte({ dte, isReassign: isMatched })}
+                                                                            disabled={replacingMatch}
+                                                                            className="flex-1 min-w-0 text-left flex items-center gap-1.5 disabled:opacity-50"
+                                                                        >
+                                                                            <span>Folio {dte.folio}</span>
+                                                                            {isMatched && (
+                                                                                <span className="shrink-0 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-bold">Ya asignado</span>
+                                                                            )}
+                                                                        </button>
+                                                                        <span className="text-indigo-600 font-semibold shrink-0">{formatCurrency(dte.totalAmount)}</span>
+                                                                        {isMatched && confirmedMatch?.transaction && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => { e.stopPropagation(); window.open(`/cartolas?search=${encodeURIComponent(confirmedMatch.transaction.description || '')}&status=MATCHED`, '_blank'); }}
+                                                                                className="shrink-0 p-1 rounded text-blue-600 hover:bg-blue-50" title="Ver match actual"
+                                                                            >
+                                                                                <EyeIcon className="h-3.5 w-3.5" />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })}
                                                 </div>
                                             )}
                                             </>
@@ -1780,25 +1858,58 @@ export default function CartolasPage() {
                             )}
 
                         {/* Confirmación: reemplazar match por DTE elegido */}
-                        {reviewTx && reviewMatch && pendingReplaceDte && (
+                        {reviewTx && reviewMatch && pendingReplaceDte && (() => {
+                            const isReassign = pendingReplaceDte.isReassign;
+                            const confirmedMatch = isReassign ? pendingReplaceDte.dte.matches?.find((m: any) => m.status === 'CONFIRMED') : null;
+                            return (
                             <div className="absolute inset-0 bg-slate-900/50 flex items-center justify-center z-10 rounded-2xl" onClick={() => setPendingReplaceDte(null)}>
-                                <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-5 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
-                                    <h3 className="text-base font-bold text-slate-800 mb-2">Confirmar nuevo match</h3>
+                                <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-5 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+                                    <h3 className="text-base font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                        {isReassign ? <ArrowsRightLeftIcon className="h-5 w-5 text-amber-600" /> : null}
+                                        {isReassign ? 'Reasignar factura' : 'Confirmar nuevo match'}
+                                    </h3>
                                     <p className="text-sm text-slate-600 mb-1">
                                         ¿Asignar este movimiento a <strong>Folio {pendingReplaceDte.dte.folio}</strong> de <strong>{pendingReplaceDte.dte.provider?.name || 'proveedor'}</strong>?
                                     </p>
-                                    <p className="text-xs text-slate-500 mb-4">{formatCurrency(pendingReplaceDte.dte.totalAmount)}. Se reemplazará el match actual.</p>
+                                    <p className="text-xs text-slate-500 mb-2">{formatCurrency(pendingReplaceDte.dte.totalAmount)}. Se reemplazará el match actual.</p>
+                                    {isReassign && confirmedMatch?.transaction && (
+                                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg mb-3">
+                                            <p className="text-xs text-amber-800 font-semibold mb-1">⚠️ Esta factura está asignada a otro movimiento:</p>
+                                            <p className="text-xs text-amber-700">
+                                                {confirmedMatch.transaction.description} — {formatCurrency(confirmedMatch.transaction.amount)}
+                                            </p>
+                                            <p className="text-[10px] text-amber-600 mt-1">
+                                                Al reasignar, ese movimiento volverá a estado <strong>PENDIENTE</strong>.
+                                            </p>
+                                        </div>
+                                    )}
                                     <div className="flex gap-2 justify-end">
                                         <button type="button" onClick={() => setPendingReplaceDte(null)} className="px-3 py-2 border border-slate-200 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50">
                                             Cancelar
                                         </button>
-                                        <button type="button" onClick={() => handleReplaceWithDte(pendingReplaceDte.dte)} disabled={replacingMatch} className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
-                                            {replacingMatch ? 'Asignando...' : 'Asignar'}
+                                        {isReassign && confirmedMatch?.transaction && (
+                                            <button
+                                                type="button"
+                                                onClick={() => { window.open(`/cartolas?search=${encodeURIComponent(confirmedMatch.transaction.description || '')}&status=MATCHED`, '_blank'); }}
+                                                className="px-3 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 flex items-center gap-1"
+                                            >
+                                                <EyeIcon className="h-4 w-4" /> Ver match
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => isReassign ? handleReassignDte(pendingReplaceDte.dte) : handleReplaceWithDte(pendingReplaceDte.dte)}
+                                            disabled={replacingMatch}
+                                            className={`px-3 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center gap-1 ${isReassign ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                                        >
+                                            {isReassign && <ArrowsRightLeftIcon className="h-4 w-4" />}
+                                            {replacingMatch ? 'Procesando...' : isReassign ? 'Reasignar' : 'Asignar'}
                                         </button>
                                     </div>
                                 </div>
                             </div>
-                        )}
+                            );
+                        })()}
 
                         {/* Footer único: acciones según caso */}
                         <div className="shrink-0 p-4 border-t border-slate-100 bg-slate-50/50 flex flex-wrap gap-3">
@@ -2471,6 +2582,29 @@ export default function CartolasPage() {
                                         <h3 className="text-lg font-semibold text-slate-800">Subir archivo de banco</h3>
                                         <p className="text-sm text-slate-500 mt-1">PDF, Excel (.xlsx) o CSV. Se procesará con IA para extraer los movimientos.</p>
                                     </div>
+
+                                    {/* Selector de Cuenta Bancaria */}
+                                    <div className="text-left space-y-2">
+                                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
+                                            ¿A qué cuenta pertenece este archivo?
+                                        </label>
+                                        <select
+                                            value={uploadBankAccountId}
+                                            onChange={(e) => setUploadBankAccountId(e.target.value)}
+                                            className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium bg-white shadow-sm"
+                                        >
+                                            <option value="">-- Seleccionar cuenta (Opcional) --</option>
+                                            {bankAccounts.map((acc: any) => (
+                                                <option key={acc.id} value={acc.id}>
+                                                    {acc.bankName} - {acc.accountNumber}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="text-[10px] text-slate-400 italic">
+                                            Si no seleccionas ninguna, el sistema intentará identificarla por el nombre o contenido del archivo.
+                                        </p>
+                                    </div>
+
                                     <div
                                         className={`border-2 border-dashed rounded-xl p-8 transition-colors cursor-pointer ${dragOver ? 'border-purple-500 bg-purple-50' : uploadFile ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 hover:border-purple-400 bg-slate-50'}`}
                                         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
@@ -2517,6 +2651,7 @@ export default function CartolasPage() {
                                                     const formData = new FormData();
                                                     formData.append('file', uploadFile);
                                                     if (uploadForceReplace) formData.append('replace', '1');
+                                                    if (uploadBankAccountId) formData.append('bankAccountId', uploadBankAccountId);
                                                     const res = await fetch(`${apiUrl}/ingestion/cartolas/upload`, { method: 'POST', body: formData });
                                                     const data = await res.json();
 

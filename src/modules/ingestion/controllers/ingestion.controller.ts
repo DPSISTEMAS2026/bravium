@@ -197,6 +197,7 @@ export class IngestionController {
         @UploadedFile() file: any,
         @Body('bank') bank?: string,
         @Body('account') account?: string,
+        @Body('bankAccountId') bankAccountId?: string,
         @Body('replace') replace?: string,
         @Req() req?: Request,
     ) {
@@ -217,6 +218,7 @@ export class IngestionController {
             organizationId: (req as any).user?.organizationId,
             bank: bank || 'Carga Manual',
             account: account || 'MANUAL',
+            bankAccountId: bankAccountId,
             fileContentBase64: file.buffer.toString('base64'),
             metadata: {
                 filename: file.originalname,

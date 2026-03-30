@@ -16,6 +16,7 @@ export interface DteFilters {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
     hasPdf?: string; // 'ALL' | 'YES' | 'NO'
+    includeMatched?: boolean; // When true, don't filter out already-matched DTEs
 }
 
 const CACHE_TTL = 30_000;
@@ -57,7 +58,8 @@ export class DtesService {
             if (filters.paymentStatus && filters.paymentStatus !== 'ALL') {
                 where.paymentStatus = filters.paymentStatus;
                 // Pendientes = solo DTEs sin match CONFIRMED (aceptado en Cartolas)
-                if (filters.paymentStatus === 'UNPAID') {
+                // Unless includeMatched is true (used when reassigning DTEs)
+                if (filters.paymentStatus === 'UNPAID' && !filters.includeMatched) {
                     where.matches = { none: { status: 'CONFIRMED' } };
                 }
             }

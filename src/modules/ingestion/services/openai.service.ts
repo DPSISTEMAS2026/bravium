@@ -22,44 +22,42 @@ export class OpenAiService {
 
         try {
             const prompt = `
-            Eres un experto contable chileno. Tu tarea es extraer transacciones de los datos proporcionados.
+            Eres un experto contable chileno. Tu tarea es extraer TODAS las transacciones de los datos proporcionados.
             Los datos pueden ser un objeto JSON crudo de Excel o texto plano extraído de un PDF de una cartola bancaria o estado de cuenta de tarjeta de crédito.
             
             ESQUEMA DE SALIDA (JSON Array):
             [
               {
                 "date": "YYYY-MM-DD",
-                "description": "Limpieza de descripción (ej: quita números de ruta, quita 'TRANSF A', deja lo relevante)",
-                "amount": 1000, // Número positivo para abonos (CREDIT), negativo para cargos (DEBIT)
+                "description": "Descripción limpia del movimiento",
+                "amount": 1000,
                 "reference": "Número de operación si existe",
-                "cuotaNumero": 1,    // Solo si es una cuota: número de cuota (ej. 1 de 12)
-                "cuotaTotal": 12,    // Solo si es una cuota: total de cuotas
-                "montoOrigen": 1060530  // Solo si es cuota: monto total de la compra en número (opcional)
+                "cuotaNumero": 1,
+                "cuotaTotal": 12,
+                "montoOrigen": 1060530
               }
             ]
 
             REGLAS:
-            1. Analiza los datos de entrada. Identifica cuál es la fecha, cuál el monto y cuál la descripción para cada fila o línea que parezca una transacción.
-            2. CONVENCIÓN DE SIGNOS (crítico): En la salida "amount" debe ser: positivo = abono/nota de crédito a favor del cliente (CREDIT), negativo = cargo/cobro/comisión/debito (DEBIT). Si el documento del banco usa la convención inversa (ej. Nota de Crédito con valor negativo, Comisión con valor positivo), INVIERTE el signo al escribir "amount".
+            1. Analiza los datos de entrada. Identifica cuál es la fecha, cuál el monto y cuál la descripción para cada fila.
+            2. CONVENCIÓN DE SIGNOS: positivo = abono/depósito (CREDIT), negativo = cargo/cobro/comisión (DEBIT). Si el banco usa convención inversa, invierte el signo.
             3. Si el monto viene en dos columnas (Abono/Cargo), únelas en "amount" (Abonos positivos, Cargos negativos).
-            4. Ignora líneas que sean encabezados, totales de saldo, resumen de cuenta o información irrelevante del banco. Solo devuelve transacciones válidas.
-            5. Responde ÚNICAMENTE con el formato JSON array, sin texto adicional markdown.
+            4. Ignora solo líneas que sean encabezados de tabla o totales de saldo. TODO lo demás que tenga fecha y monto DEBE incluirse.
+            5. Responde ÚNICAMENTE con el formato JSON array, sin texto adicional.
             6. IMPORTANTE SOBRE FECHAS:
-               - Las fechas ya vienen como texto legible (DD/MM/YYYY o YYYY-MM-DD). Cópialas tal cual, solo conviértelas al formato YYYY-MM-DD.
-               - Si una fecha viene como número (ej: 46054), es un serial de Excel: conviértelo usando la fórmula (número - 25569) * 86400000 ms desde epoch Unix. Ejemplo: 46054 → 2026-02-02. NO adivines, calcula correctamente.
+               - Convierte a formato YYYY-MM-DD.
+               - Si una fecha viene como número serial de Excel (ej: 46054), conviértelo usando (número - 25569) * 86400000 ms desde epoch Unix.
                - Las fechas son de Chile (UTC-3). Preserva el día exacto que aparece en los datos.
-               - **REGLA CONTINUACIÓN (CRÍTICA)**: En cartolas bancarias (PDF/Excel), a veces solo la primera fila de un día tiene la fecha y las siguientes filas están en blanco para ese mismo día. Si una fila de transacción VÁLIDA no tiene fecha, **HEREDA la fecha de la transacción inmediatamente anterior**. No descartes filas solo por no tener la fecha repetida.
-            7. CRÍTICO - ESTADOS DE CUENTA DE TARJETA DE CRÉDITO:
-               - Los PDFs de estados de cuenta de TC suelen tener dos secciones: "PERÍODO ANTERIOR" y "PERÍODO ACTUAL".
-               - IGNORA completamente la sección de "PERÍODO ANTERIOR" o "PERÍODO DE FACTURACIÓN ANTERIOR". Esas transacciones ya fueron contabilizadas en el estado anterior.
-               - Solo extrae las transacciones de la sección "PERÍODO ACTUAL" o "2.PERÍODO ACTUAL".
-               - Si una transacción aparece duplicada con fechas distintas (en ambas secciones), usa SOLO la del período actual.
-               - Si no puedes distinguir las secciones, extrae todas pero prioriza la última aparición de cada transacción idéntica.
-            8. DEDUPLICACIÓN (solo entre secciones, no el mismo día):
-               - Si hay dos transacciones con el mismo monto Y descripción pero FECHAS DIFERENTES (ej. en período anterior y período actual), es la misma transacción en dos secciones. Conserva solo la de fecha más reciente.
-               - NO dedupliques cuando el mismo monto y descripción aparecen en la MISMA FECHA: pueden ser compras distintas (ej. varias compras Apple mismo día mismo monto). Incluye todas.
-               - Incluye también movimientos con "CANCELADO", "ANULADO" o "DEVOLUCIÓN" como transacciones válidas (con su monto) para que queden en la cartola.
-            9. CUOTAS: Si la fila corresponde a un cargo en cuotas (ej. columna "N°CUOTA" con valor "01/12", o "CARGO DEL MES" con "VALOR CUOTA MENSUAL"), incluye cuotaNumero (1), cuotaTotal (12) y si está disponible el monto total de la operación en montoOrigen (número sin puntos).
+               - REGLA CONTINUACIÓN: Si una fila de transacción no tiene fecha, HEREDA la fecha de la fila inmediatamente anterior. No descartes filas por no tener fecha repetida.
+            7. ESTADOS DE CUENTA DE TARJETA DE CRÉDITO:
+               - Si hay dos secciones "PERÍODO ANTERIOR" y "PERÍODO ACTUAL", IGNORA solo el "PERÍODO ANTERIOR".
+               - Solo extrae las transacciones de la sección "PERÍODO ACTUAL".
+            8. DEDUPLICACIÓN MÍNIMA:
+               - Si hay dos transacciones con mismo monto Y descripción pero FECHAS DIFERENTES entre secciones distintas, conserva solo la más reciente.
+               - NO dedupliques cuando el mismo monto y descripción aparecen en la MISMA FECHA: pueden ser compras distintas. Incluye todas.
+               - Incluye movimientos con "CANCELADO", "ANULADO" o "DEVOLUCIÓN" como transacciones válidas.
+            9. CUOTAS: Si la fila es un cargo en cuotas, incluye cuotaNumero, cuotaTotal y montoOrigen.
+            10. REGLA DE ORO: NO TE SALTES NINGÚN MOVIMIENTO. Si el archivo tiene 10 movimientos, tu respuesta DEBE tener 10 objetos. Extrae el 100% de los datos.
 
             DATOS ENTRANTE (JSON o Texto PDF):
             ${JSON.stringify(rawRows).substring(0, 50000)}

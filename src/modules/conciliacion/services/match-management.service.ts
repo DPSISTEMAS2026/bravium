@@ -225,6 +225,127 @@ export class MatchManagementService {
         return { success: true, message: 'Match eliminado correctamente' };
     }
 
+    /**
+     * Reassign a DTE from its current match to a new transaction.
+     * This will:
+     * 1. Delete the old match on the DTE (releasing the old transaction back to PENDING)
+     * 2. Delete any existing match on the new transaction (if reviewing a suggestion)
+     * 3. Create a new CONFIRMED manual match between the new transaction and the DTE
+     */
+    async reassignDte(
+        body: { transactionId: string; dteId: string; currentMatchId?: string },
+        userId: string,
+    ) {
+        const targetTx = await this.prisma.bankTransaction.findUnique({ where: { id: body.transactionId } });
+        if (!targetTx) throw new NotFoundException('Transacción destino no encontrada');
+
+        const dte = await this.prisma.dTE.findUnique({ where: { id: body.dteId } });
+        if (!dte) throw new NotFoundException('DTE no encontrado');
+
+        // Find the existing match on this DTE (the one we're "stealing" it from)
+        const existingDteMatch = await this.prisma.reconciliationMatch.findFirst({
+            where: {
+                dteId: body.dteId,
+                status: { in: ['CONFIRMED', 'DRAFT'] },
+            },
+            include: { transaction: true, dte: true },
+        });
+
+        const result = await this.prisma.$transaction(async (tx) => {
+            // 1. Release the DTE from its old match
+            if (existingDteMatch) {
+                // Set the old transaction back to PENDING
+                await tx.bankTransaction.update({
+                    where: { id: existingDteMatch.transactionId },
+                    data: { status: TransactionStatus.PENDING },
+                });
+
+                // Delete the old match
+                await tx.reconciliationMatch.delete({ where: { id: existingDteMatch.id } });
+            }
+
+            // 2. Delete any existing match on the current transaction (e.g., wrong suggestion)
+            if (body.currentMatchId) {
+                const currentMatch = await tx.reconciliationMatch.findUnique({
+                    where: { id: body.currentMatchId },
+                    include: { dte: true },
+                });
+                if (currentMatch) {
+                    // If the current match pointed to a different DTE, release that DTE too
+                    if (currentMatch.dteId && currentMatch.dteId !== body.dteId) {
+                        await tx.dTE.update({
+                            where: { id: currentMatch.dteId },
+                            data: { paymentStatus: 'UNPAID', outstandingAmount: currentMatch.dte?.totalAmount ?? 0 },
+                        });
+                    }
+                    await tx.reconciliationMatch.delete({ where: { id: body.currentMatchId } });
+                }
+            }
+
+            // 3. Reset DTE status (will be set to PAID by the new match)
+            await tx.dTE.update({
+                where: { id: body.dteId },
+                data: { paymentStatus: 'PAID', outstandingAmount: 0 },
+            });
+
+            // 4. Create the new manual match
+            const newMatch = await tx.reconciliationMatch.create({
+                data: {
+                    transactionId: body.transactionId,
+                    dteId: body.dteId,
+                    origin: 'MANUAL',
+                    status: 'CONFIRMED',
+                    confidence: 1.0,
+                    ruleApplied: 'MANUAL_REASSIGN',
+                    notes: existingDteMatch
+                        ? `Reasignado desde tx ${existingDteMatch.transactionId.slice(0, 8)}…`
+                        : null,
+                    createdBy: userId,
+                    confirmedAt: new Date(),
+                    confirmedBy: userId,
+                },
+            });
+
+            // 5. Mark the target transaction as MATCHED
+            await tx.bankTransaction.update({
+                where: { id: body.transactionId },
+                data: { status: TransactionStatus.MATCHED },
+            });
+
+            return newMatch;
+        });
+
+        await this.audit.logAction(
+            { userId },
+            {
+                action: 'DTE_REASSIGNED',
+                entityType: 'ReconciliationMatch',
+                entityId: result.id,
+                previousValue: existingDteMatch
+                    ? {
+                        oldMatchId: existingDteMatch.id,
+                        oldTransactionId: existingDteMatch.transactionId,
+                    }
+                    : undefined,
+                newValue: {
+                    newMatchId: result.id,
+                    transactionId: body.transactionId,
+                    dteId: body.dteId,
+                },
+            },
+        );
+
+        this.logger.log(
+            `DTE ${body.dteId} reassigned: old tx=${existingDteMatch?.transactionId || 'none'} → new tx=${body.transactionId}`,
+        );
+
+        return {
+            success: true,
+            newMatch: result,
+            releasedTransactionId: existingDteMatch?.transactionId || null,
+        };
+    }
+
     async getMatchHistory(matchId: string) {
         const logs = await this.prisma.auditLog.findMany({
             where: { entityType: 'ReconciliationMatch', entityId: matchId },

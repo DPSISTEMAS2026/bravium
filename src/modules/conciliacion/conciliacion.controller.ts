@@ -199,6 +199,19 @@ export class ConciliacionController {
         }
     }
 
+    @Post('matches/reassign')
+    async reassignDte(
+        @Body() body: { transactionId: string; dteId: string; currentMatchId?: string },
+        @Req() req: Request,
+    ) {
+        const userId = (req as any).user?.id || (req as any).user?.sub || 'unknown';
+        if (!body.transactionId || !body.dteId) {
+            throw new BadRequestException('Se requiere transactionId y dteId');
+        }
+        this.logger.log(`User ${userId} reassigning DTE ${body.dteId} to tx ${body.transactionId}`);
+        return this.matchManagement.reassignDte(body, userId);
+    }
+
     @Delete('matches/:id')
     async deleteMatch(
         @Param('id') id: string,

@@ -12,6 +12,7 @@ export interface DriveIngestDto {
     period?: string;
     rows?: any[];
     organizationId?: string;
+    bankAccountId?: string;
 
     // Legacy / Alternative Fields
     jsonRows?: any[];
@@ -73,125 +74,88 @@ export class DriveIngestService {
         const accountNumber = dto.account || dto.metadata?.account || 'UNKNOWN';
         const currency = dto.currency || 'CLP';
 
-        this.logger.log(`Processing Ingestion: Bank=${bankName}, Account=${accountNumber}, Rows=${rows.length}`);
-
-        if (!bankName) {
-            throw new Error('Bank Name is required (field: bank)');
+        // 1.5 Resolve Bank Account Early
+        let bankAccount;
+        if (dto.bankAccountId) {
+            bankAccount = await this.prisma.bankAccount.findUnique({ where: { id: dto.bankAccountId } });
+            if (!bankAccount) throw new Error('Bank Account not found: ' + dto.bankAccountId);
+        } else {
+            // ... existing findFirst logic ...
+            bankAccount = await this.prisma.bankAccount.findFirst({
+                where: {
+                    bankName: { equals: bankName, mode: 'insensitive' },
+                    accountNumber: accountNumber !== 'UNKNOWN' ? accountNumber : undefined,
+                    organizationId: dto.organizationId,
+                }
+            });
         }
+
+        if (!bankAccount) {
+            // Create default if not found (legacy behavior)
+            bankAccount = await this.prisma.bankAccount.create({
+                data: { bankName, accountNumber, currency: 'CLP', rutHolder: 'AUTO', organizationId: dto.organizationId }
+            });
+        }
+
+        // Get the latest transaction date for this account to optimize skipping
+        const latestTx = await this.prisma.bankTransaction.findFirst({
+            where: { bankAccountId: bankAccount.id },
+            orderBy: { date: 'desc' },
+        });
+        const latestDate = latestTx ? new Date(latestTx.date) : null;
+
+        this.logger.log(`Processing Ingestion: ${bankAccount.bankName} (${bankAccount.accountNumber}). Latest movement: ${latestDate ? latestDate.toISOString().split('T')[0] : 'None'}`);
 
         if (rows.length === 0) {
             this.logger.warn('No rows to process');
             return { status: 'warning', message: 'No rows found', insertedRows: 0 };
         }
 
-        // 2. Find or Create Bank Account
-        // Try to find by Name AND Account if possible, or just Name if Account is UNKNOWN
-        let accountWhereInput: any = {
-            bankName: { equals: bankName, mode: 'insensitive' }
-        };
-
-        if (accountNumber !== 'UNKNOWN') {
-            accountWhereInput.accountNumber = accountNumber;
-        }
-
-        if (dto.organizationId) {
-            accountWhereInput.organizationId = dto.organizationId;
-        }
-
-        let bankAccount = await this.prisma.bankAccount.findFirst({
-            where: accountWhereInput
-        });
-
-        if (!bankAccount) {
-            this.logger.log(`Bank Account not found. Creating new one for ${bankName}`);
-            bankAccount = await this.prisma.bankAccount.create({
-                data: {
-                    bankName: bankName,
-                    accountNumber: accountNumber,
-                    currency: currency,
-                    rutHolder: 'AUTO-GEN-N8N', // Required field placeholder
-                    isActive: true,
-                    organizationId: dto.organizationId || null,
-                }
-            });
-        }
-
-        // 3. Smart Pre-Processing with AI (Simulation or Real if Key present)
-        // We use AI to clean and normalize the rows before persisting
+        // 3. Normalize rows via OpenAI (extracts ALL transactions from the file)
         const normalizedRows = await this.openai.normalizeBankRows(rows);
+        this.logger.log(`OpenAI returned ${normalizedRows.length} normalized rows.`);
 
-        // 4. Process Rows
+        // 4. Process Rows — PURE DATE FILTER (no deduplication)
         let insertedCount = 0;
+        let skippedCount = 0;
 
         for (const row of normalizedRows) {
-            // If AI worked, fields are already named 'date', 'amount', 'description'
-            const dateStr = row['date'] || row['Date'] || row['fecha'] || row['Fecha'];
-            const date = this.parseDate(dateStr);
-
-            let description = row['description'] || row['Description'] || row['descripcion'] || row['Movimiento'] || 'Sin descripción';
-
-            // Cuota: extraer de OpenAI (cuotaNumero, cuotaTotal, montoOrigen) o de columnas Excel (N°CUOTA, MONTO ORIGEN...)
-            let cuotaNumero: number | null = row['cuotaNumero'] != null ? Number(row['cuotaNumero']) : null;
-            let cuotaTotal: number | null = row['cuotaTotal'] != null ? Number(row['cuotaTotal']) : null;
-            if (cuotaNumero == null || cuotaTotal == null) {
-                const raw = row['N°CUOTA'] ?? row['Cuota'] ?? row['Nº CUOTA'] ?? row['cuota'];
-                const match = raw ? String(raw).trim().match(/^(\d+)\s*\/\s*(\d+)$/) : null;
-                if (match) {
-                    cuotaNumero = parseInt(match[1], 10);
-                    cuotaTotal = parseInt(match[2], 10);
-                }
-            }
-            const montoOrigen = row['montoOrigen'] ?? row['MONTO ORIGEN OPERACIÓN O COBRO'] ?? row['Monto Origen'] ?? row['MONTO ORIGEN'];
-            const montoOrigenNum = montoOrigen != null ? Number(String(montoOrigen).replace(/\./g, '')) : NaN;
-            if (cuotaNumero != null && cuotaTotal != null) {
-                const parteZ = !isNaN(montoOrigenNum) && montoOrigenNum > 0
-                    ? new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(montoOrigenNum)
-                    : '';
-                description = `Cuota ${cuotaNumero}/${cuotaTotal} de compra ${parteZ}${description ? ' - ' + description : ''}`.trim();
-            }
+            const date = this.parseDate(row['fecha'] || row['Fecha'] || row['date'] || row['Date']);
+            const description = row['description'] || row['Description'] || row['descripcion'] || row['Movimiento'] || 'Sin descripción';
 
             let amount = 0;
             if (row['amount'] !== undefined) amount = Number(row['amount']);
             else if (row['monto'] !== undefined) amount = Number(row['monto']);
-            // ... the rest of the existing fallback logic below
             else {
-                // Check Credit/Debit
                 const credit = Number(row['credit'] || row['Abono'] || 0);
                 const debit = Number(row['debit'] || row['Cargo'] || 0);
                 if (credit > 0) amount = credit;
                 else if (debit > 0) amount = -debit;
             }
 
-            // Validation
+            // Skip invalid rows
             if (!date || isNaN(amount) || amount === 0) {
+                this.logger.debug(`SKIP invalid row: date=${date}, amount=${amount}`);
                 continue;
             }
 
-            // Algunas cartolas (ej. TC) exportan cobros como positivo y abonos como negativo; invertir si aplica
+            // CORE LOGIC: Only insert if date is AFTER the latest in DB
+            if (latestDate && date <= latestDate) {
+                skippedCount++;
+                continue;
+            }
+
             if (dto.metadata?.invertAmountSign) {
                 amount = -amount;
             }
 
-            let type: TransactionType = amount >= 0 ? 'CREDIT' : 'DEBIT';
-            let finalAmount = amount;
-            // Si en la descripción aparece " DE " (ej. "PAGO DE X", "TRANSFERENCIA DE Y"), marcar como abono (CREDIT); el movimiento queda PENDING para comentario si hace falta
-            const descNorm = (description || '').toUpperCase().trim();
-            if (descNorm.startsWith('DE ') || /\sDE\s/.test(descNorm) || descNorm.endsWith(' DE')) {
-                type = 'CREDIT';
-                if (finalAmount < 0) finalAmount = Math.abs(finalAmount);
-            }
+            const type: TransactionType = amount >= 0 ? 'CREDIT' : 'DEBIT';
 
-            // Detección simple de cuotas (standby: solo guardar flag en metadata para uso futuro)
-            const rawRowStr = JSON.stringify(row).toLowerCase();
-            const esCuota = /cuota|n°?\s*cuota|\d+\s*\/\s*\d+/.test(rawRowStr) || Object.keys(row).some((k) => /cuota|installment/i.test(k));
-
-            // No deduplicar por (cuenta, fecha, monto, descripción): varias compras legítimas pueden coincidir
-            // (ej. mismo monto mismo día Apple). La idempotencia a nivel archivo la hace isFileAlreadyProcessed.
             await this.prisma.bankTransaction.create({
                 data: {
                     bankAccountId: bankAccount.id,
                     date: date,
-                    amount: finalAmount,
+                    amount: amount,
                     description: description,
                     type: type,
                     origin: DataOrigin.N8N_AUTOMATION,
@@ -199,14 +163,13 @@ export class DriveIngestService {
                         sourceFile: dto.metadata?.filename,
                         rawRow: row,
                         ingestionId: Date.now(),
-                        ...(esCuota && { esCuota: true }),
                     }
                 }
             });
             insertedCount++;
         }
 
-        this.logger.log(`Ingestion Complete. Inserted: ${insertedCount}`);
+        this.logger.log(`Ingestion Complete. Inserted: ${insertedCount}, Skipped (old): ${skippedCount}`);
 
         return {
             status: 'ok',
