@@ -248,4 +248,140 @@ export class ReportesService {
             },
         };
     }
+    /**
+     * Verifica el estado de match de una lista de folios para un mes/año dado
+     */
+    async verificarFolios(folios: number[], year: number, month: number) {
+        const uniqueFolios = [...new Set(folios)].sort((a, b) => a - b);
+        const fromDate = new Date(year, month - 1, 1);
+        const toDate = new Date(year, month, 1);
+
+        // Buscar DTEs en el mes indicado
+        const dtes = await this.prisma.dTE.findMany({
+            where: {
+                folio: { in: uniqueFolios },
+                issuedDate: { gte: fromDate, lt: toDate },
+            },
+            include: {
+                matches: {
+                    select: {
+                        id: true,
+                        status: true,
+                        origin: true,
+                        confidence: true,
+                        confirmedAt: true,
+                        ruleApplied: true,
+                    },
+                },
+                provider: { select: { name: true, rut: true } },
+            },
+            orderBy: { folio: 'asc' },
+        });
+
+        // Mapa de folios encontrados
+        const foundMap = new Map<number, typeof dtes>();
+        for (const dte of dtes) {
+            if (!foundMap.has(dte.folio)) foundMap.set(dte.folio, []);
+            foundMap.get(dte.folio)!.push(dte);
+        }
+
+        // Clasificar
+        const withConfirmed: any[] = [];
+        const withDraft: any[] = [];
+        const withRejected: any[] = [];
+        const noMatch: any[] = [];
+        const notFoundFolios: number[] = [];
+
+        for (const folio of uniqueFolios) {
+            const dtesF = foundMap.get(folio);
+            if (!dtesF || dtesF.length === 0) {
+                notFoundFolios.push(folio);
+                continue;
+            }
+            for (const dte of dtesF) {
+                const confirmed = dte.matches.filter(m => m.status === 'CONFIRMED');
+                const drafts = dte.matches.filter(m => m.status === 'DRAFT');
+                const rejected = dte.matches.filter(m => m.status === 'REJECTED');
+
+                const entry = {
+                    folio: dte.folio,
+                    type: dte.type,
+                    totalAmount: dte.totalAmount,
+                    paymentStatus: dte.paymentStatus,
+                    issuedDate: dte.issuedDate,
+                    provider: dte.provider?.name || dte.rutIssuer,
+                    rut: dte.provider?.rut || dte.rutIssuer,
+                    matchOrigin: confirmed[0]?.origin || drafts[0]?.origin || null,
+                    matchRule: confirmed[0]?.ruleApplied || drafts[0]?.ruleApplied || null,
+                    confidence: confirmed[0]?.confidence ?? drafts[0]?.confidence ?? null,
+                };
+
+                if (confirmed.length > 0) withConfirmed.push(entry);
+                else if (drafts.length > 0) withDraft.push(entry);
+                else if (rejected.length > 0) withRejected.push(entry);
+                else noMatch.push(entry);
+            }
+        }
+
+        // Para los no encontrados, buscar en otros meses
+        let notFoundDetails: any[] = [];
+        if (notFoundFolios.length > 0) {
+            const elsewhere = await this.prisma.dTE.findMany({
+                where: { folio: { in: notFoundFolios } },
+                select: {
+                    folio: true,
+                    issuedDate: true,
+                    type: true,
+                    totalAmount: true,
+                    paymentStatus: true,
+                    provider: { select: { name: true, rut: true } },
+                    matches: { select: { status: true } },
+                },
+                orderBy: { folio: 'asc' },
+            });
+
+            const elseMap = new Map<number, any[]>();
+            for (const d of elsewhere) {
+                if (!elseMap.has(d.folio)) elseMap.set(d.folio, []);
+                elseMap.get(d.folio)!.push(d);
+            }
+
+            notFoundDetails = notFoundFolios.map(f => {
+                const entries = elseMap.get(f);
+                if (entries && entries.length > 0) {
+                    return entries.map(e => ({
+                        folio: f,
+                        existsElsewhere: true,
+                        issuedDate: e.issuedDate,
+                        type: e.type,
+                        totalAmount: e.totalAmount,
+                        paymentStatus: e.paymentStatus,
+                        provider: e.provider?.name || '?',
+                        rut: e.provider?.rut || '',
+                        matchStatuses: e.matches.map((m: any) => m.status),
+                        hasConfirmedMatch: e.matches.some((m: any) => m.status === 'CONFIRMED'),
+                    }));
+                }
+                return [{ folio: f, existsElsewhere: false }];
+            }).flat();
+        }
+
+        return {
+            period: `${year}-${String(month).padStart(2, '0')}`,
+            totalFoliosRequested: uniqueFolios.length,
+            foundInMonth: dtes.length,
+            summary: {
+                confirmed: withConfirmed.length,
+                draft: withDraft.length,
+                rejected: withRejected.length,
+                noMatch: noMatch.length,
+                notFoundInMonth: notFoundFolios.length,
+            },
+            withConfirmed,
+            withDraft,
+            withRejected,
+            noMatch,
+            notFoundDetails,
+        };
+    }
 }

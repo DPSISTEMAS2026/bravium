@@ -84,9 +84,12 @@ export class SchedulerService implements OnModuleInit {
 
     /**
      * Sincronización Diaria y Conciliación Automática
-     * Se ejecuta todos los días a las 04:00 AM
+     * Se ejecuta todos los días a las 04:00 AM hora de Chile
      */
-    @Cron(CronExpression.EVERY_DAY_AT_4AM)
+    @Cron('0 4 * * *', {
+        name: 'daily_sync_match',
+        timeZone: 'America/Santiago'
+    })
     async handleDailySyncAndMatch() {
         this.logger.log('⏰ DAILY CRON: Starting full automation cycle for all active tenants...');
 
@@ -217,9 +220,9 @@ export class SchedulerService implements OnModuleInit {
 
         // 2. Ejecutar Auto-Match (+ log the result)
         const today = new Date();
-        const lastMonth = new Date(today);
-        lastMonth.setDate(lastMonth.getDate() - 30);
-        const startDate = lastMonth.toISOString().split('T')[0];
+        const sixtyDaysAgo = new Date(today);
+        sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+        const startDate = sixtyDaysAgo.toISOString().split('T')[0];
         const endDate = today.toISOString().split('T')[0];
 
         this.logger.log(`🤖 [${org.slug}] Running Auto-Match algorithm...`);

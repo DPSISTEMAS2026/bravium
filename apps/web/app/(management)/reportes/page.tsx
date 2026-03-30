@@ -10,6 +10,7 @@ import {
     ExclamationTriangleIcon,
     ArrowPathIcon,
     ArrowTopRightOnSquareIcon,
+    ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
 import { getApiUrl } from '@/lib/api';
 
@@ -121,6 +122,25 @@ export default function ReportesPage() {
                     <ArrowDownTrayIcon className="h-5 w-5" />
                     <span>Exportar a Excel</span>
                 </button>
+            </div>
+
+            {/* Quick Links */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Link
+                    href="/reportes/verificar-folios"
+                    className="card p-5 bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200 hover:border-indigo-400 rounded-2xl transition-all hover:shadow-md group"
+                >
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-indigo-200 rounded-xl group-hover:bg-indigo-300 transition-colors">
+                            <ClipboardDocumentListIcon className="h-7 w-7 text-indigo-700" />
+                        </div>
+                        <div>
+                            <div className="text-lg font-bold text-indigo-900">Verificar Folios por Mes</div>
+                            <div className="text-sm text-indigo-600">Pega una lista de folios y verifica si tienen match confirmado</div>
+                        </div>
+                        <ArrowTopRightOnSquareIcon className="h-5 w-5 text-indigo-400 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                </Link>
             </div>
             {/* Filters Bar */}
             <div className="card p-4 flex flex-col md:flex-row gap-4 items-end bg-white shadow-sm">

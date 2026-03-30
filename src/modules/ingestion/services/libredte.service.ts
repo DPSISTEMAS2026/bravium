@@ -94,24 +94,28 @@ export class LibreDteService {
             const rawText = await response.text();
             this.logger.log(`Raw Response length: ${rawText.length}`);
 
-            // LibreDTE sometimes includes PHP notices in the response, clean them
-            let cleanedText = rawText;
-            if (rawText.includes('<br />')) {
-                // Remove PHP notices/warnings
-                const jsonStart = rawText.indexOf('[');
-                if (jsonStart !== -1) {
-                    cleanedText = rawText.substring(jsonStart);
-                    this.logger.warn('Cleaned PHP notices from response');
-                }
-            }
-
             let data: any;
             try {
-                data = JSON.parse(cleanedText);
+                let cleaned = rawText.trim();
+                const firstBracket = Math.min(
+                    cleaned.indexOf('[') === -1 ? cleaned.length : cleaned.indexOf('['),
+                    cleaned.indexOf('{') === -1 ? cleaned.length : cleaned.indexOf('{')
+                );
+                if (firstBracket < cleaned.length) {
+                    cleaned = cleaned.substring(firstBracket);
+                }
+                const lastBracket = Math.max(
+                    cleaned.lastIndexOf(']'),
+                    cleaned.lastIndexOf('}')
+                );
+                if (lastBracket !== -1) {
+                    cleaned = cleaned.substring(0, lastBracket + 1);
+                }
+                data = JSON.parse(cleaned);
             } catch (e) {
                 this.logger.error('Failed to parse JSON response', e);
-                this.logger.error('Raw text:', rawText.substring(0, 500));
-                throw new Error('Invalid JSON from LibreDTE');
+                this.logger.error('Raw text sample:', rawText.substring(0, 500));
+                throw new Error('Invalid JSON from LibreDTE: ' + e.message);
             }
 
             // LibreDTE returns an array directly for this endpoint

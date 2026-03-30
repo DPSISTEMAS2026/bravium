@@ -979,7 +979,7 @@ export default function FacturasPage() {
                                                 setManualMatchLoading(true);
                                                 setManualMatchError(null);
                                                 try {
-                                                    const res = await authFetch(`${API_URL}/transactions?search=${encodeURIComponent(manualMatchSearch)}&status=PENDING,UNMATCHED&limit=30&sortBy=date&order=desc`);
+                                                    const res = await authFetch(`${API_URL}/transactions?search=${encodeURIComponent(manualMatchSearch)}&status=PENDING,UNMATCHED,PARTIALLY_MATCHED,MATCHED&limit=30&sortBy=date&order=desc`);
                                                     const data = await res.json().catch(() => ({}));
                                                     setManualMatchTxResults(Array.isArray(data) ? data : data.data || []);
                                                 } catch { setManualMatchError('Error al buscar movimientos'); } finally { setManualMatchLoading(false); }
