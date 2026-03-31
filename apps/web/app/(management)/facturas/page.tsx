@@ -15,6 +15,7 @@ import {
     XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { getApiUrl, authFetch } from '@/lib/api';
+import { Pagination } from '@/components/ui/Pagination';
 
 const MONTHS = [
     { value: 'ALL', label: 'Todo el año' },
@@ -718,25 +719,11 @@ export default function FacturasPage() {
                         <div className="text-sm text-slate-500">
                             Mostrando <span className="font-semibold text-slate-700">{displayDTEs.length}</span> de <span className="font-semibold text-slate-700">{displayMeta.total}</span> {statusFilter === 'PAID' ? 'movimientos conciliados' : 'facturas'}
                         </div>
-                        <div className="flex space-x-2">
-                            <button
-                                onClick={() => setPage(p => Math.max(1, p - 1))}
-                                disabled={page === 1}
-                                className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-white transition-colors"
-                            >
-                                Anterior
-                            </button>
-                            <div className="flex items-center px-4 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-purple-600">
-                                Página {page} de {displayMeta.lastPage}
-                            </div>
-                            <button
-                                onClick={() => setPage(p => Math.min(displayMeta.lastPage, p + 1))}
-                                disabled={page === displayMeta.lastPage}
-                                className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-white transition-colors"
-                            >
-                                Siguiente
-                            </button>
-                        </div>
+                        <Pagination 
+                            currentPage={page} 
+                            totalPages={displayMeta.lastPage} 
+                            onPageChange={(p: number) => setPage(p)} 
+                        />
                     </div>
                 )}
 

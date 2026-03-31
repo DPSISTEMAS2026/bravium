@@ -14,6 +14,7 @@ import {
     ChevronLeftIcon,
     ChevronRightIcon,
 } from '@heroicons/react/24/outline';
+import { Pagination } from '@/components/ui/Pagination';
 import { getApiUrl } from '@/lib/api';
 import Link from 'next/link';
 
@@ -374,29 +375,11 @@ export default function ProveedoresPage() {
                             {' de '}
                             <span className="font-semibold">{total}</span> proveedores
                         </p>
-                        <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                                disabled={currentPage <= 1}
-                                className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
-                                aria-label="Página anterior"
-                            >
-                                <ChevronLeftIcon className="h-5 w-5" />
-                            </button>
-                            <span className="text-sm font-medium text-slate-700 min-w-[120px] text-center">
-                                Página {currentPage} de {totalPages}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                                disabled={currentPage >= totalPages}
-                                className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
-                                aria-label="Página siguiente"
-                            >
-                                <ChevronRightIcon className="h-5 w-5" />
-                            </button>
-                        </div>
+                            <Pagination 
+                                currentPage={currentPage} 
+                                totalPages={totalPages} 
+                                onPageChange={(p) => setPage(p)} 
+                            />
                     </div>
                 )}
             </div>

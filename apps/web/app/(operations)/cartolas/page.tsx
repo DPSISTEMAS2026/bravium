@@ -32,6 +32,7 @@ import {
     ArrowsRightLeftIcon,
 } from '@heroicons/react/24/outline';
 import { getApiUrl, authFetch } from '../../../lib/api';
+import { Pagination } from '@/components/ui/Pagination';
 import { useCartolaIngestion } from '../../../contexts/CartolaIngestionContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { CartolasManualMatchSection } from './CartolasConciliacionSections';
@@ -1570,25 +1571,11 @@ export default function CartolasPage() {
                             Mostrando <span className="font-semibold text-slate-700">{transactions.length}</span> de <span className="font-semibold text-slate-700">{meta!.total}</span>
                             {statusFilter === 'PARTIALLY_MATCHED' ? ' sugerencias' : ' movimientos'}
                         </div>
-                        <div className="flex space-x-2">
-                            <button
-                                onClick={() => setPage(p => Math.max(1, p - 1))}
-                                disabled={page === 1}
-                                className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium bg-white hover:bg-slate-50 disabled:opacity-50"
-                            >
-                                Anterior
-                            </button>
-                            <div className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-purple-600">
-                                {page} / {meta!.lastPage}
-                            </div>
-                            <button
-                                onClick={() => setPage(p => Math.min(meta!.lastPage, p + 1))}
-                                disabled={page === meta!.lastPage}
-                                className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium bg-white hover:bg-slate-50 disabled:opacity-50"
-                            >
-                                Siguiente
-                            </button>
-                        </div>
+                        <Pagination 
+                            currentPage={page} 
+                            totalPages={meta!.lastPage} 
+                            onPageChange={(p: number) => setPage(p)} 
+                        />
                     </div>
                 ) : null}
             </div>

@@ -11,6 +11,7 @@ import {
     ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 import { getApiUrl } from '@/lib/api';
+import { Pagination } from '@/components/ui/Pagination';
 
 const API = getApiUrl();
 
@@ -282,17 +283,11 @@ export default function RegistroPagosPage() {
                     )}
 
                     {/* Pagination */}
-                    {pages > 1 && (
-                        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-                            <span className="text-xs text-slate-500">Pagina {page} de {pages}</span>
-                            <div className="flex gap-2">
-                                <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}
-                                    className="px-3 py-1 text-xs rounded border border-slate-300 disabled:opacity-30 hover:bg-slate-100">Anterior</button>
-                                <button disabled={page >= pages} onClick={() => setPage(p => p + 1)}
-                                    className="px-3 py-1 text-xs rounded border border-slate-300 disabled:opacity-30 hover:bg-slate-100">Siguiente</button>
-                            </div>
-                        </div>
-                    )}
+                    <Pagination 
+                        currentPage={page} 
+                        totalPages={pages} 
+                        onPageChange={(p: number) => setPage(p)} 
+                    />
                 </div>
             )}
         </div>
