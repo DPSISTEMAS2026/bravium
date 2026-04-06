@@ -1498,7 +1498,7 @@ export default function CartolasPage() {
                                                             {cartolaName}
                                                         </span>
                                                         <span className={`text-[9px] mt-1 font-bold uppercase ${tx.metadata?.source === 'MANUAL_UPLOAD' ? 'text-purple-500' : 'text-indigo-400'}`}>
-                                                            {tx.metadata?.source === 'MANUAL_UPLOAD' ? 'Carga manual' : 'Automático'}
+                                                            {tx.metadata?.source === 'MANUAL_UPLOAD' ? 'Carga manual' : `${tx.bankAccount?.bankName || 'Banco'}${tx.bankAccount?.accountNumber ? ' · ' + tx.bankAccount.accountNumber.slice(-4) : ''}`}
                                                         </span>
                                                     </div>
                                                 ) : (
