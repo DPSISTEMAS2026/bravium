@@ -399,22 +399,42 @@ export class MatchManagementService {
             where: {
                 notes: { not: null },
                 NOT: { notes: '' },
+                status: 'CONFIRMED',
                 transaction: {
                     bankAccount: organizationId ? { organizationId } : undefined,
                 },
             },
             include: {
-                transaction: { select: { description: true } }
+                transaction: { select: { description: true, amount: true } }
             },
             orderBy: { confirmedAt: 'desc' },
             take: 1000,
         });
 
+        // Generic bank descriptions that shouldn't be matched
+        const GENERIC_GLOSAS = new Set([
+            'COMPRA NACIONAL POR INTERNET',
+            'COMPRA INTERNACIONAL POR INTERNET',
+            'COMPRA NORMAL',
+            'TRASPASO',
+            'CARGO',
+            'ABONO',
+            'TEF',
+        ]);
+
         const notesMap: Record<string, string> = {};
         for (const m of matches as any[]) {
             const desc = m.transaction?.description;
-            if (desc && !notesMap[desc] && m.notes) {
-                notesMap[desc] = m.notes;
+            const amount = m.transaction?.amount;
+            if (!desc || !m.notes) continue;
+            // Skip system-generated notes
+            if (m.notes.startsWith('[REJECTED]') || m.notes.startsWith('[CONFIRMED]')) continue;
+            // Skip generic descriptions
+            if (GENERIC_GLOSAS.has(desc.toUpperCase().trim())) continue;
+            // Use description|amount as composite key so same glosa with different amount won't match
+            const key = `${desc}|${amount}`;
+            if (!notesMap[key]) {
+                notesMap[key] = m.notes;
             }
         }
         return notesMap;

@@ -1630,15 +1630,15 @@ export default function CartolasPage() {
                                                                 PENDIENTE
                                                             </span>
                                                         </button>
-                                                        {historicalNotes[tx.description] && (
+                                                        {(() => { const noteKey = `${tx.description}|${tx.amount}`; const note = historicalNotes[noteKey]; return note ? (
                                                             <button
-                                                                onClick={(e) => { e.stopPropagation(); quickAnnotateNote(tx.id, historicalNotes[tx.description]); }}
+                                                                onClick={(e) => { e.stopPropagation(); quickAnnotateNote(tx.id, note); }}
                                                                 className="px-2 py-0.5 mt-1 bg-amber-50 border border-amber-200 text-amber-600 rounded-lg text-[9px] font-semibold hover:bg-amber-100/80 transition-all flex items-center shadow-sm max-w-[140px] truncate"
-                                                                title={`Sugerencia: ${historicalNotes[tx.description]}`}
+                                                                title={`Sugerencia: ${note}`}
                                                             >
-                                                                💡 {historicalNotes[tx.description]}
+                                                                💡 {note}
                                                             </button>
-                                                        )}
+                                                        ) : null; })()}
                                                     </div>
                                                 ) : (
                                                     <button
