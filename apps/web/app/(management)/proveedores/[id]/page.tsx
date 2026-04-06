@@ -723,18 +723,16 @@ function TransferBankCard({ provider, onSaved, formatCurrency }: {
     const handleSave = async () => {
         setSaving(true);
         try {
-            const API_URL = getApiUrl();
-            const res = await fetch(`${API_URL}/proveedores/${provider.id}`, {
+            const res = await authFetch(`${getApiUrl()}/proveedores/${provider.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(form),
             });
-            if (res.ok) {
-                setEditing(false);
-                onSaved();
-            } else {
-                alert('Error al guardar datos bancarios');
-            }
+            if (!res.ok) throw new Error('Error al guardar datos bancarios');
+            setEditing(false);
+            onSaved();
+        } catch (err: any) {
+            alert(err.message);
         } finally {
             setSaving(false);
         }
