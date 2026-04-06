@@ -183,12 +183,15 @@ export class ConciliacionController {
 
     @Post('matches/manual')
     async createManualMatch(
-        @Body() body: { transactionId: string; dteId?: string; dteIds?: string[]; paymentId?: string; notes?: string },
+        @Body() body: { transactionId?: string; transactionIds?: string[]; dteId?: string; dteIds?: string[]; paymentId?: string; notes?: string },
         @Req() req: Request
     ) {
         const userId = (req as any).user?.id || (req as any).user?.sub || 'unknown';
-        if (!body.transactionId || (!body.dteId && (!body.dteIds || body.dteIds.length === 0) && !body.paymentId)) {
-            throw new BadRequestException('Se requiere transactionId y al menos dteId/dteIds o paymentId');
+        const hasTx = body.transactionId || (body.transactionIds && body.transactionIds.length > 0);
+        const hasTarget = body.dteId || (body.dteIds && body.dteIds.length > 0) || body.paymentId;
+
+        if (!hasTx || !hasTarget) {
+            throw new BadRequestException('Se requiere transactionId(s) y al menos dteId(s) o paymentId');
         }
         this.logger.log(`User ${userId} creating manual match: tx=${body.transactionId}, dteIds=${body.dteIds?.join(',') || body.dteId}`);
         try {

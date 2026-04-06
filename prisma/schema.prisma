@@ -92,6 +92,16 @@ model Provider {
   transferRut           String?   // RUT titular (puede diferir del proveedor)
   transferEmail         String?   // Email para notificación
 
+  // Datos de control interno / Relación comercial
+  contactName           String?   // Persona a cargo contable
+  logisticsContact      String?   // Logistica
+  creditLine            Int?      // Linea de credito
+  comments              String?   // Comentarios
+  deliveryTime          String?   // Plazos de entrega
+  differential          String?   // Diferencial
+  boardReview           Boolean   @default(false) // Revision del directorio
+  favorableBalance      Int       @default(0) // Saldos a favor
+
   // Multi-tenancy
   organizationId String?
   organization   Organization?    @relation(fields: [organizationId], references: [id])

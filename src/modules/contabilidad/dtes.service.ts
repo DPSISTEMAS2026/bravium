@@ -17,6 +17,7 @@ export interface DteFilters {
     sortOrder?: 'asc' | 'desc';
     hasPdf?: string; // 'ALL' | 'YES' | 'NO'
     includeMatched?: boolean; // When true, don't filter out already-matched DTEs
+    type?: number;
 }
 
 const CACHE_TTL = 30_000;
@@ -48,21 +49,30 @@ export class DtesService {
             where.providerId = filters.providerId;
         }
 
-        if (filters.paymentStatus === 'ABONOS') {
-            // Filtro especial: solo Notas de Crédito (tipo 61)
+        if (filters.type !== undefined) {
+            where.type = filters.type;
+        } else if (filters.paymentStatus === 'ABONOS') {
+            // Filtro especial compatibilad: solo Notas de Crédito (tipo 61)
             where.type = 61;
+        } else if (filters.paymentStatus === 'UNPAID_OR_ABONOS') {
+            // Incluir tanto facturas pendientes como Notas de Crédito (que nacen PAID)
+            where.OR = [
+                { type: { not: 61 }, paymentStatus: 'UNPAID' },
+                { type: 61 }
+            ];
         } else {
             // Excluir Notas de Crédito del listado normal (son abonos, no deudas)
             where.type = { not: 61 };
+        }
 
-            if (filters.paymentStatus && filters.paymentStatus !== 'ALL') {
-                where.paymentStatus = filters.paymentStatus;
-                // Pendientes = solo DTEs sin match CONFIRMED (aceptado en Cartolas)
-                // Unless includeMatched is true (used when reassigning DTEs)
-                if (filters.paymentStatus === 'UNPAID' && !filters.includeMatched) {
-                    where.matches = { none: { status: 'CONFIRMED' } };
-                }
-            }
+        if (filters.paymentStatus && filters.paymentStatus !== 'ALL' && filters.paymentStatus !== 'ABONOS' && filters.paymentStatus !== 'UNPAID_OR_ABONOS') {
+            where.paymentStatus = filters.paymentStatus;
+        }
+
+        // Pendientes = solo DTEs sin match CONFIRMED (aceptado en Cartolas)
+        // Unless includeMatched is true (used when reassigning DTEs)
+        if (!filters.includeMatched && (filters.paymentStatus === 'UNPAID' || filters.paymentStatus === 'ABONOS' || filters.paymentStatus === 'UNPAID_OR_ABONOS' || filters.type === 61)) {
+            where.matches = { none: { status: 'CONFIRMED' } };
         }
 
         if (filters.minAmount || filters.maxAmount) {

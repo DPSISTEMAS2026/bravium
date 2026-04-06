@@ -113,7 +113,7 @@ export class MatchSuggestionsService {
         return { ...s, transactions, relatedDtes };
     }
 
-    async acceptSuggestion(id: string, userId?: string, overrides?: { transactionIds?: string[]; dteId?: string }) {
+    async acceptSuggestion(id: string, userId?: string, overrides?: { transactionIds?: string[]; dteId?: string; dteIds?: string[] }) {
         const suggestion = await this.prisma.matchSuggestion.findUnique({
             where: { id },
             include: { dte: { include: { provider: true } } },
@@ -123,14 +123,14 @@ export class MatchSuggestionsService {
             throw new BadRequestException('Sugerencia ya fue procesada');
         }
 
-        if (suggestion.type === 'SPLIT') {
+        if (suggestion.type === 'SPLIT' && !overrides) {
             await this.acceptSplitSuggestion(suggestion, userId);
         } else {
             await this.acceptSumSuggestion(suggestion, userId, overrides);
         }
 
         const finalTxIds = overrides?.transactionIds ?? (suggestion.transactionIds as string[]);
-        const finalDteId = overrides?.dteId ?? suggestion.dteId;
+        const finalDteIds = overrides?.dteIds ?? (overrides?.dteId ? [overrides.dteId] : [suggestion.dteId]);
 
         await this.auditService.logAction(
             { userId },
@@ -141,7 +141,7 @@ export class MatchSuggestionsService {
                 newValue: {
                     type: suggestion.type,
                     transactionIds: finalTxIds,
-                    dteId: finalDteId,
+                    dteIds: finalDteIds,
                     relatedDteIds: suggestion.relatedDteIds,
                     overrides: overrides ? true : undefined,
                 },
@@ -152,10 +152,10 @@ export class MatchSuggestionsService {
     }
 
     /**
-     * SUM (N:1): N transacciones -> 1 DTE.
-     * Opcionalmente overrides: transactionIds (subconjunto de original + opcionalmente más movimientos del mismo RUT) y/o dteId (otro DTE del mismo proveedor, sin pagar).
+     * SUM (N:1) o M:N: Varias transacciones -> Una o varias facturas.
+     * Opcionalmente overrides: transactionIds y/o dteIds.
      */
-    private async acceptSumSuggestion(suggestion: any, userId?: string, overrides?: { transactionIds?: string[]; dteId?: string }) {
+    private async acceptSumSuggestion(suggestion: any, userId?: string, overrides?: { transactionIds?: string[]; dteId?: string; dteIds?: string[] }) {
         const originalTxIds = (suggestion.transactionIds || []) as string[];
         let txIds: string[];
         if (overrides?.transactionIds != null && overrides.transactionIds.length > 0) {
@@ -168,7 +168,7 @@ export class MatchSuggestionsService {
             throw new BadRequestException('Debe incluir al menos un movimiento para aceptar la sugerencia');
         }
 
-        // Validar que todos los movimientos existan y estén PENDING o UNMATCHED (permite añadir movimientos al RUT)
+        // Validar que todos los movimientos existan y estén PENDING o UNMATCHED
         const existing = await this.prisma.bankTransaction.findMany({
             where: { id: { in: txIds } },
             select: { id: true, status: true },
@@ -183,36 +183,49 @@ export class MatchSuggestionsService {
             throw new BadRequestException('Todos los movimientos deben estar pendientes o sin match');
         }
 
-        let dteId = suggestion.dteId;
-        if (overrides?.dteId) {
-            const dte = await this.prisma.dTE.findUnique({
-                where: { id: overrides.dteId },
-                include: { provider: true },
-            });
-            if (!dte) throw new BadRequestException('DTE no encontrado');
-            if (dte.paymentStatus !== 'UNPAID') {
-                throw new BadRequestException('El DTE seleccionado ya está marcado como pagado');
+        let dteIds = overrides?.dteIds || (overrides?.dteId ? [overrides.dteId] : [suggestion.dteId]);
+        
+        // Si es SPLIT con overrides, usamos los relatedDteIds si no hay overrides manuales
+        if (suggestion.type === 'SPLIT' && !overrides?.dteIds && !overrides?.dteId) {
+            dteIds = (suggestion.relatedDteIds || [suggestion.dteId]) as string[];
+        }
+
+        if (dteIds.length === 0) {
+            throw new BadRequestException('Debe incluir al menos una factura para aceptar la sugerencia');
+        }
+
+        // Validar DTEs
+        const dtes = await this.prisma.dTE.findMany({
+            where: { id: { in: dteIds } },
+            include: { provider: true },
+        });
+
+        if (dtes.length !== dteIds.length) {
+            throw new BadRequestException('Uno o más DTEs no fueron encontrados');
+        }
+
+        for (const dte of dtes) {
+            if (dte.paymentStatus === 'PAID') {
+                throw new BadRequestException(`El DTE Folio ${dte.folio} ya está marcado como pagado`);
             }
-            const suggestionProviderId = suggestion.dte?.providerId ?? suggestion.dte?.provider?.id;
-            if (dte.providerId && suggestionProviderId && dte.providerId !== suggestionProviderId) {
-                throw new BadRequestException('El DTE debe ser del mismo proveedor que la sugerencia');
-            }
-            dteId = overrides.dteId;
         }
 
         await this.prisma.$transaction(async (prisma) => {
+            // Para cada transacción, crear un match con cada DTE (Muchos a Muchos)
             for (const txId of txIds) {
-                await prisma.reconciliationMatch.create({
-                    data: {
-                        transactionId: txId,
-                        dteId,
-                        origin: 'MANUAL',
-                        status: MatchStatus.CONFIRMED,
-                        confidence: suggestion.confidence,
-                        ruleApplied: `SumMatch (sugerencia ${suggestion.id})`,
-                        createdBy: userId,
-                    },
-                });
+                for (const dId of dteIds) {
+                    await prisma.reconciliationMatch.create({
+                        data: {
+                            transactionId: txId,
+                            dteId: dId,
+                            origin: 'MANUAL',
+                            status: MatchStatus.CONFIRMED,
+                            confidence: suggestion.confidence,
+                            ruleApplied: overrides ? `ManualOverride (sugerencia ${suggestion.id})` : `SuggestionAccept (sugerencia ${suggestion.id})`,
+                            createdBy: userId,
+                        },
+                    });
+                }
 
                 await prisma.bankTransaction.update({
                     where: { id: txId },
@@ -220,10 +233,12 @@ export class MatchSuggestionsService {
                 });
             }
 
-            await prisma.dTE.update({
-                where: { id: dteId },
-                data: { paymentStatus: 'PAID', outstandingAmount: 0 },
-            });
+            for (const dId of dteIds) {
+                await prisma.dTE.update({
+                    where: { id: dId },
+                    data: { paymentStatus: 'PAID', outstandingAmount: 0 },
+                });
+            }
 
             await prisma.matchSuggestion.update({
                 where: { id: suggestion.id },

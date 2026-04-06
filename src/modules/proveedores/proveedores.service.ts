@@ -176,72 +176,78 @@ export class ProveedoresService {
      * Obtener detalle de un proveedor específico
      */
     async getProviderDetail(providerId: string, organizationId?: string) {
-        const minDate = this.getMinDate();
-        const provider = await this.prisma.provider.findFirst({
-            where: { id: providerId, ...(organizationId ? { organizationId } : {}) },
-            include: {
-                dtes: {
-                    where: minDate ? { issuedDate: { gte: minDate } } : undefined,
-                    orderBy: { issuedDate: 'desc' },
-                    include: {
-                        matches: {
-                            include: {
-                                transaction: {
-                                    include: {
-                                        bankAccount: true,
+        try {
+            const minDate = this.getMinDate();
+            const provider = await this.prisma.provider.findFirst({
+                where: { id: providerId, ...(organizationId ? { organizationId } : {}) },
+                include: {
+                    dtes: {
+                        where: minDate ? { issuedDate: { gte: minDate } } : undefined,
+                        orderBy: { issuedDate: 'desc' },
+                        include: {
+                            matches: {
+                                include: {
+                                    transaction: {
+                                        include: {
+                                            bankAccount: true,
+                                        },
                                     },
                                 },
                             },
                         },
                     },
+                    payments: {
+                        orderBy: { paymentDate: 'desc' },
+                    },
+                    ledgerEntries: {
+                        orderBy: { transactionDate: 'desc' },
+                        take: 50,
+                    },
                 },
-                payments: {
-                    orderBy: { paymentDate: 'desc' },
-                },
-                ledgerEntries: {
-                    orderBy: { transactionDate: 'desc' },
-                    take: 50,
-                },
-            },
-        });
+            });
 
-        if (!provider) {
-            throw new Error('Proveedor no encontrado');
+            if (!provider) {
+                throw new Error('Proveedor no encontrado');
+            }
+
+            // Obtener movimientos bancarios asociados por alias/revisión manual
+            const aliasMovements = await this.prisma.bankTransaction.findMany({
+                where: {
+                    metadata: {
+                        path: ['providerId'],
+                        equals: providerId
+                    }
+                },
+                include: { bankAccount: true },
+                orderBy: { date: 'desc' },
+                take: 100
+            });
+
+            const totalDebt = provider.dtes.reduce(
+                (sum, dte) => sum + dte.outstandingAmount,
+                0
+            );
+            const totalInvoiced = provider.dtes.reduce(
+                (sum, dte) => sum + dte.totalAmount,
+                0
+            );
+
+            return {
+                ...provider,
+                aliasMovements,
+                metrics: {
+                    totalDebt,
+                    totalInvoiced,
+                    paidAmount: totalInvoiced - totalDebt,
+                    invoiceCount: provider.dtes.length,
+                    paymentCount: provider.payments.length,
+                },
+            };
+        } catch (error: any) {
+            console.error('CRITICAL getProviderDetail error:', error);
+            const { HttpException, HttpStatus } = require('@nestjs/common');
+            throw new HttpException(error.message || 'Internal error getProviderDetail: ' + String(error), HttpStatus.INTERNAL_SERVER_ERROR);
         }
-
-        // Obtener movimientos bancarios asociados por alias/revisión manual
-        const aliasMovements = await this.prisma.bankTransaction.findMany({
-            where: {
-                metadata: {
-                    path: ['providerId'],
-                    equals: providerId
-                }
-            },
-            include: { bankAccount: true },
-            orderBy: { date: 'desc' },
-            take: 100
-        });
-
-        const totalDebt = provider.dtes.reduce(
-            (sum, dte) => sum + dte.outstandingAmount,
-            0
-        );
-        const totalInvoiced = provider.dtes.reduce(
-            (sum, dte) => sum + dte.totalAmount,
-            0
-        );
-
-        return {
-            ...provider,
-            aliasMovements,
-            metrics: {
-                totalDebt,
-                totalInvoiced,
-                paidAmount: totalInvoiced - totalDebt,
-                invoiceCount: provider.dtes.length,
-                paymentCount: provider.payments.length,
-            },
-        };
     }
 
     async updateProvider(providerId: string, data: {
@@ -250,6 +256,14 @@ export class ProveedoresService {
         transferAccountType?: string;
         transferRut?: string;
         transferEmail?: string;
+        contactName?: string;
+        logisticsContact?: string;
+        creditLine?: number;
+        comments?: string;
+        deliveryTime?: string;
+        differential?: string;
+        boardReview?: boolean;
+        favorableBalance?: number;
     }) {
         return this.prisma.provider.update({
             where: { id: providerId },

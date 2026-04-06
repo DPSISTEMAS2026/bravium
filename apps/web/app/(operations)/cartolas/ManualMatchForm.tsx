@@ -16,7 +16,7 @@ export function ManualMatchForm({
     const [dteSearch, setDteSearch] = useState('');
     const [pendingTxs, setPendingTxs] = useState<any[]>([]);
     const [unpaidDtes, setUnpaidDtes] = useState<any[]>([]);
-    const [selectedTx, setSelectedTx] = useState<any>(null);
+    const [selectedTxs, setSelectedTxs] = useState<any[]>([]);
     const [selectedDte, setSelectedDte] = useState<any>(null);
     const [creating, setCreating] = useState(false);
     const [txLoading, setTxLoading] = useState(false);
@@ -51,16 +51,19 @@ export function ManualMatchForm({
     };
 
     const createManualMatch = async () => {
-        if (!selectedTx || !selectedDte) return;
+        if (selectedTxs.length === 0 || !selectedDte) return;
         setCreating(true);
         try {
             const res = await fetch(`${API_URL}/conciliacion/matches/manual`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ transactionId: selectedTx.id, dteId: selectedDte.id }),
+                body: JSON.stringify({ 
+                    transactionIds: selectedTxs.map(t => t.id), 
+                    dteId: selectedDte.id 
+                }),
             });
             if (res.ok) {
-                setSelectedTx(null);
+                setSelectedTxs([]);
                 setSelectedDte(null);
                 setPendingTxs([]);
                 setUnpaidDtes([]);
@@ -100,22 +103,30 @@ export function ManualMatchForm({
                                 <MagnifyingGlassIcon className="h-4 w-4" />
                             </button>
                         </div>
-                        {selectedTx && (
-                            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-2 mb-2 flex justify-between items-center">
-                                <div className="text-sm text-indigo-900 truncate">{selectedTx.description}</div>
-                                <button type="button" onClick={() => setSelectedTx(null)}>
-                                    <XMarkIcon className="h-4 w-4 text-indigo-500" />
-                                </button>
+                        {selectedTxs.length > 0 && (
+                            <div className="space-y-1 mb-2">
+                                {selectedTxs.map(tx => (
+                                    <div key={tx.id} className="bg-indigo-50 border border-indigo-200 rounded-lg p-2 flex justify-between items-center">
+                                        <div className="text-xs text-indigo-900 truncate flex-1">{tx.description}</div>
+                                        <button type="button" onClick={() => setSelectedTxs(prev => prev.filter(t => t.id !== tx.id))}>
+                                            <XMarkIcon className="h-4 w-4 text-indigo-500" />
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
                         )}
-                        {pendingTxs.length > 0 && !selectedTx && (
+                        {pendingTxs.length > 0 && (
                             <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
                                 {pendingTxs.map((tx: any) => (
                                     <button
                                         key={tx.id}
                                         type="button"
-                                        onClick={() => setSelectedTx(tx)}
-                                        className="w-full text-left px-2 py-1.5 hover:bg-indigo-50 text-sm"
+                                        onClick={() => {
+                                            if (!selectedTxs.find(t => t.id === tx.id)) {
+                                                setSelectedTxs(prev => [...prev, tx]);
+                                            }
+                                        }}
+                                        className={`w-full text-left px-2 py-1.5 hover:bg-indigo-50 text-sm ${selectedTxs.find(t => t.id === tx.id) ? 'bg-indigo-50 font-bold' : ''}`}
                                     >
                                         {tx.description} · {formatCurrency(tx.amount)}
                                     </button>
@@ -164,11 +175,11 @@ export function ManualMatchForm({
                         )}
                     </div>
                 </div>
-                {selectedTx && selectedDte && (
+                {selectedTxs.length > 0 && selectedDte && (
                     <div className="mt-4 pt-4 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2">
                         <span className="text-sm text-slate-600">
-                            {selectedTx.description} ↔ Folio {selectedDte.folio} · Dif:{' '}
-                            {formatCurrency(Math.abs(Math.abs(selectedTx.amount) - Math.abs(selectedDte.totalAmount)))}
+                            {selectedTxs.length} transacciones ↔ Folio {selectedDte.folio} · Total Tx:{' '}
+                            {formatCurrency(selectedTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0))}
                         </span>
                         <button
                             type="button"
@@ -176,7 +187,7 @@ export function ManualMatchForm({
                             disabled={creating}
                             className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1"
                         >
-                            <LinkIcon className="h-4 w-4" /> Crear match
+                            <LinkIcon className="h-4 w-4" /> Crear match ({selectedTxs.length})
                         </button>
                     </div>
                 )}

@@ -102,30 +102,87 @@ export class MatchManagementService {
     }
 
     async createManualMatch(
-        body: { transactionId: string; dteId?: string; dteIds?: string[]; paymentId?: string; notes?: string },
+        body: { transactionId?: string; transactionIds?: string[]; dteId?: string; dteIds?: string[]; paymentId?: string; notes?: string },
         userId: string,
     ) {
-        const tx = await this.prisma.bankTransaction.findUnique({ where: { id: body.transactionId } });
-        if (!tx) throw new NotFoundException('Transacción no encontrada');
-        if (tx.status === 'MATCHED') throw new BadRequestException('Esta transacción ya tiene un match activo');
+        const txIds = body.transactionIds && body.transactionIds.length > 0 
+            ? body.transactionIds 
+            : body.transactionId ? [body.transactionId] : [];
 
-        const ids = body.dteIds && body.dteIds.length > 0 ? body.dteIds : body.dteId ? [body.dteId] : [];
+        if (txIds.length === 0) throw new BadRequestException('Se requiere al menos un transactionId');
 
-        if (ids.length > 0) {
-            const dtes = await this.prisma.dTE.findMany({ where: { id: { in: ids } } });
-            if (dtes.length !== ids.length) throw new NotFoundException('Uno o más DTEs no encontrados');
+        const transactions = await this.prisma.bankTransaction.findMany({ where: { id: { in: txIds } } });
+        if (transactions.length !== txIds.length) throw new NotFoundException('Una o más transacciones no encontradas');
+        
+        // Auto-release any existing CONFIRMED matches on these transactions
+        for (const tx of transactions) {
+            if (tx.status === 'MATCHED') {
+                const existingMatches = await this.prisma.reconciliationMatch.findMany({
+                    where: { transactionId: tx.id, status: 'CONFIRMED' },
+                    include: { dte: true },
+                });
+                for (const m of existingMatches) {
+                    if (m.dteId && m.dte) {
+                        await this.prisma.dTE.update({
+                            where: { id: m.dteId },
+                            data: { paymentStatus: 'UNPAID', outstandingAmount: m.dte.totalAmount },
+                        });
+                    }
+                    await this.prisma.reconciliationMatch.delete({ where: { id: m.id } });
+                }
+                await this.prisma.bankTransaction.update({
+                    where: { id: tx.id },
+                    data: { status: TransactionStatus.PENDING },
+                });
+                this.logger.log(`Auto-released ${existingMatches.length} match(es) from tx ${tx.id.slice(0,8)} for manual re-match`);
+            }
+        }
+
+        const dteIds = body.dteIds && body.dteIds.length > 0 ? body.dteIds : body.dteId ? [body.dteId] : [];
+
+        if (dteIds.length > 0) {
+            const dtes = await this.prisma.dTE.findMany({ where: { id: { in: dteIds } } });
+            if (dtes.length !== dteIds.length) throw new NotFoundException('Uno o más DTEs no encontrados');
         }
 
         const matchResult = await this.prisma.$transaction(async (prisma) => {
             const createdMatches = [];
             
-            if (ids.length > 0) {
-                for (const dId of ids) {
+            // Caso N:1 (Varios Tx -> 1 DTE) o M:N
+            // Si hay varios Tx y varios DTEs, vinculamos todos con todos? 
+            // Normalmente es N Tx -> 1 DTE o 1 Tx -> N DTEs.
+            
+            for (const tId of txIds) {
+                if (dteIds.length > 0) {
+                    for (const dId of dteIds) {
+                        const created = await prisma.reconciliationMatch.create({
+                            data: {
+                                transactionId: tId,
+                                dteId: dId,
+                                paymentId: body.paymentId || null,
+                                origin: 'MANUAL',
+                                status: 'CONFIRMED',
+                                confidence: 1.0,
+                                ruleApplied: 'MANUAL_USER',
+                                notes: body.notes || null,
+                                createdBy: userId,
+                                confirmedAt: new Date(),
+                                confirmedBy: userId,
+                            },
+                        });
+                        createdMatches.push(created);
+
+                        await prisma.dTE.update({
+                            where: { id: dId },
+                            data: { paymentStatus: 'PAID', outstandingAmount: 0 },
+                        });
+                    }
+                } else if (body.paymentId) {
                     const created = await prisma.reconciliationMatch.create({
                         data: {
-                            transactionId: body.transactionId,
-                            dteId: dId,
-                            paymentId: body.paymentId || null,
+                            transactionId: tId,
+                            dteId: null,
+                            paymentId: body.paymentId,
                             origin: 'MANUAL',
                             status: 'CONFIRMED',
                             confidence: 1.0,
@@ -137,35 +194,13 @@ export class MatchManagementService {
                         },
                     });
                     createdMatches.push(created);
-
-                    await prisma.dTE.update({
-                        where: { id: dId },
-                        data: { paymentStatus: 'PAID', outstandingAmount: 0 },
-                    });
                 }
-            } else if (body.paymentId) {
-                const created = await prisma.reconciliationMatch.create({
-                    data: {
-                        transactionId: body.transactionId,
-                        dteId: null,
-                        paymentId: body.paymentId,
-                        origin: 'MANUAL',
-                        status: 'CONFIRMED',
-                        confidence: 1.0,
-                        ruleApplied: 'MANUAL_USER',
-                        notes: body.notes || null,
-                        createdBy: userId,
-                        confirmedAt: new Date(),
-                        confirmedBy: userId,
-                    },
-                });
-                createdMatches.push(created);
-            }
 
-            await prisma.bankTransaction.update({
-                where: { id: body.transactionId },
-                data: { status: TransactionStatus.MATCHED },
-            });
+                await prisma.bankTransaction.update({
+                    where: { id: tId },
+                    data: { status: TransactionStatus.MATCHED },
+                });
+            }
 
             return createdMatches[0];
         });
@@ -176,7 +211,12 @@ export class MatchManagementService {
                 action: 'MANUAL_MATCH_CREATED',
                 entityType: 'ReconciliationMatch',
                 entityId: matchResult.id,
-                newValue: { transactionId: body.transactionId, dteId: body.dteId, dteIds: body.dteIds, paymentId: body.paymentId },
+                newValue: { 
+                    transactionIds: txIds, 
+                    dteId: body.dteId, 
+                    dteIds: body.dteIds, 
+                    paymentId: body.paymentId 
+                },
                 metadata: { notes: body.notes },
             },
         );

@@ -60,77 +60,91 @@ export default function PrintStatementModal({ provider, onClose, formatCurrency 
         to: new Date().toISOString().split('T')[0]
     });
 
-    const timelineItems = useMemo(() => {
-        const items: Array<{
-            date: string;
-            type: 'DTE' | 'PAGO' | 'ALIAS';
-            label: string;
-            description: string;
-            folio?: number;
-            amount: number;
-            reference?: string;
+    const exportRows = useMemo(() => {
+        const rows: Array<{
+             isDte: boolean;
+             folio: number | string;
+             dteDate: string;
+             dteAmount: number | null;
+             paymentDate: string | null;
+             paymentAmount: number | null;
+             description: string;
+             timestamp: number;
         }> = [];
 
         (provider.dtes || []).forEach(dte => {
+            const hasMatches = dte.matches && dte.matches.length > 0;
+            const confirmedMatches = hasMatches ? dte.matches.filter(m => m.status === 'CONFIRMED') : [];
+            
             const dteDate = dte.issuedDate.split('T')[0];
-            if (dteDate >= dateRange.from && dteDate <= dateRange.to) {
-                items.push({
-                    date: dte.issuedDate,
-                    type: 'DTE',
-                    label: DTE_TYPE_LABELS[dte.type] || `DTE ${dte.type}`,
-                    description: `Cobro Factura Folio ${dte.folio}`,
-                    folio: dte.folio,
-                    amount: dte.totalAmount,
+            const inRange = dteDate >= dateRange.from && dteDate <= dateRange.to;
+            
+            if (confirmedMatches.length > 0) {
+                confirmedMatches.forEach((match, idx) => {
+                    const mDate = match.transaction?.date?.split('T')[0];
+                    if (inRange || (mDate && mDate >= dateRange.from && mDate <= dateRange.to)) {
+                        rows.push({
+                            isDte: true,
+                            folio: dte.folio,
+                            dteDate: dte.issuedDate,
+                            dteAmount: idx === 0 ? dte.totalAmount : null,
+                            paymentDate: match.transaction?.date || null,
+                            paymentAmount: match.transaction ? Math.abs(match.transaction.amount) : null,
+                            description: match.transaction?.description || 'Abono/Pago',
+                            timestamp: new Date(match.transaction?.date || dte.issuedDate).getTime()
+                        });
+                    }
                 });
-            }
-        });
-
-        (provider.dtes || []).forEach(dte => {
-            (dte.matches || []).forEach(match => {
-                if (match.status !== 'CONFIRMED') return;
-                const mDate = match.transaction?.date.split('T')[0];
-                if (mDate && mDate >= dateRange.from && mDate <= dateRange.to) {
-                    items.push({
-                        date: match.transaction.date,
-                        type: 'PAGO',
-                        label: 'Pago en Cartola',
-                        description: match.transaction.description,
+            } else {
+                if (inRange) {
+                    rows.push({
+                        isDte: true,
                         folio: dte.folio,
-                        amount: -Math.abs(match.transaction.amount),
+                        dteDate: dte.issuedDate,
+                        dteAmount: dte.totalAmount,
+                        paymentDate: null,
+                        paymentAmount: null,
+                        description: dte.paymentStatus === 'PAID' ? 'Pagado (Manual)' : 'Pendiente de Pago',
+                        timestamp: new Date(dte.issuedDate).getTime()
                     });
                 }
-            });
+            }
         });
 
         (provider.payments || []).forEach(p => {
-            const pDate = p.paymentDate.split('T')[0];
-            if (pDate >= dateRange.from && pDate <= dateRange.to) {
-                items.push({
-                    date: p.paymentDate,
-                    type: 'PAGO',
-                    label: 'Pago Registrado',
-                    description: p.reference || 'Registro de pago manual',
-                    amount: -Math.abs(p.amount),
-                });
-            }
+             const pDate = p.paymentDate.split('T')[0];
+             if (pDate >= dateRange.from && pDate <= dateRange.to) {
+                 rows.push({
+                     isDte: false,
+                     folio: '—',
+                     dteDate: '—',
+                     dteAmount: null,
+                     paymentDate: p.paymentDate,
+                     paymentAmount: Math.abs(p.amount),
+                     description: p.reference || 'Registro Pago',
+                     timestamp: new Date(p.paymentDate).getTime()
+                 });
+             }
         });
 
         const aliasMovements = (provider as any).aliasMovements || [];
         aliasMovements.forEach((m: any) => {
             const mDate = m.date.split('T')[0];
             if (mDate >= dateRange.from && mDate <= dateRange.to) {
-                items.push({
-                    date: m.date,
-                    type: 'ALIAS',
-                    label: 'Movimiento Vinculado',
-                    description: m.description,
-                    amount: m.type === 'CREDIT' ? Math.abs(m.amount) : -Math.abs(m.amount),
-                    reference: m.metadata?.reviewNote
+                rows.push({
+                     isDte: false,
+                     folio: '—',
+                     dteDate: '—',
+                     dteAmount: null,
+                     paymentDate: m.date,
+                     paymentAmount: Math.abs(m.amount),
+                     description: m.description || 'Mov. Alias',
+                     timestamp: new Date(m.date).getTime()
                 });
             }
         });
 
-        return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        return rows.sort((a, b) => a.timestamp - b.timestamp);
     }, [provider, dateRange]);
 
     const handlePrint = async () => {
@@ -141,19 +155,17 @@ export default function PrintStatementModal({ provider, onClose, formatCurrency 
         try {
             const response = await fetch('/logo.svg');
             const svgText = await response.text();
-            // logo.svg has fill="white" paths, we change it to dark-slate for printing on white sheets
             const darkSvg = svgText.replace(/fill="white"/g, 'fill="#1e293b"');
             logoBase64 = `data:image/svg+xml,${encodeURIComponent(darkSvg)}`;
         } catch (e) {
             console.error('Error loading logo for print:', e);
         }
 
-        const win = window.open('', '', 'height=700,width=900');
+        const win = window.open('', '', 'height=700,width=1000');
         if (!win) return;
 
         let htmlContent = printContent.innerHTML;
         if (logoBase64) {
-            // Replace full src with base64 embedded data
             htmlContent = htmlContent.replace(/src="[^"]*logo\.svg"/, `src="${logoBase64}"`);
         }
 
@@ -163,16 +175,15 @@ export default function PrintStatementModal({ provider, onClose, formatCurrency 
                     <title>Estado de Cuenta - ${provider.name}</title>
                     <style>
                         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-                        body { font-family: 'Inter', sans-serif; color: #1e293b; margin: 0; padding: 30px; font-size: 12px; }
+                        body { font-family: 'Inter', sans-serif; color: #1e293b; margin: 0; padding: 30px; font-size: 11px; }
                         .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #e2e8f0; }
                         .title { font-size: 18px; font-weight: 800; margin-bottom: 5px; color: #0f172a; }
                         .provider-info { margin-bottom: 30px; }
                         .table { width: 100%; border-collapse: collapse; margin-top: 20px; }
                         .th { background: #f8fafc; text-align: left; padding: 10px; font-weight: 800; text-transform: uppercase; font-size: 10px; color: #64748b; border-bottom: 2px solid #e2e8f0; }
                         .td { padding: 10px; border-bottom: 1px solid #f1f5f9; }
-                        .amount { text-align: right; font-weight: 600; }
-                        .positive { color: #dc2626; }
-                        .negative { color: #16a34a; }
+                        .amount-dte { text-align: right; font-weight: 600; color: #0f172a; }
+                        .amount-payment { text-align: right; font-weight: 600; color: #16a34a; }
                         .footer { margin-top: 50px; text-align: center; color: #94a3b8; font-size: 10px; }
                     </style>
                 </head>
@@ -189,7 +200,7 @@ export default function PrintStatementModal({ provider, onClose, formatCurrency 
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
                     <div>
                         <h3 className="font-bold text-slate-800 flex items-center space-x-2">
@@ -232,7 +243,7 @@ export default function PrintStatementModal({ provider, onClose, formatCurrency 
                         <div style={{ fontSize: '11px', color: '#64748b' }}>RUT: {provider.rut}</div>
                     </div>
 
-                    {timelineItems.length === 0 ? (
+                    {exportRows.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic' }}>
                             Sin movimientos registrados en este periodo.
                         </div>
@@ -240,24 +251,23 @@ export default function PrintStatementModal({ provider, onClose, formatCurrency 
                         <table className="table">
                             <thead>
                                 <tr>
-                                    <th className="th">Fecha</th>
                                     <th className="th" style={{ width: '80px' }}>Folio</th>
-                                    <th className="th">Descripción</th>
-                                    <th className="th" style={{ textAlign: 'right' }}>Monto</th>
+                                    <th className="th">Emisión</th>
+                                    <th className="th" style={{ textAlign: 'right' }}>Monto DTE</th>
+                                    <th className="th" style={{ borderLeft: '2px solid #f1f5f9', paddingLeft: '15px' }}>Fecha Pago</th>
+                                    <th className="th" style={{ textAlign: 'right' }}>Monto Pago</th>
+                                    <th className="th">Detalle del Pago</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {timelineItems.map((item, idx) => (
+                                {exportRows.map((row, idx) => (
                                     <tr key={idx}>
-                                        <td className="td" style={{ whiteSpace: 'nowrap' }}>{formatDate(item.date)}</td>
-                                        <td className="td" style={{ fontWeight: 'bold', fontSize: '11px', color: '#64748b' }}>{item.folio || '—'}</td>
-                                        <td className="td">
-                                            <div style={{ fontWeight: '600' }}>{item.description}</div>
-                                            {item.reference && <div style={{ fontSize: '10px', color: '#f59e0b' }}>{item.reference}</div>}
-                                        </td>
-                                        <td className={`td amount ${item.amount > 0 ? 'positive' : 'negative'}`}>
-                                            {item.amount > 0 ? '+' : ''}{formatCurrency(item.amount)}
-                                        </td>
+                                        <td className="td" style={{ fontWeight: 'bold', fontSize: '11px', color: '#475569' }}>{row.folio}</td>
+                                        <td className="td" style={{ whiteSpace: 'nowrap' }}>{row.dteDate !== '—' ? formatDate(row.dteDate) : '—'}</td>
+                                        <td className="td amount-dte">{row.dteAmount !== null ? formatCurrency(row.dteAmount) : '—'}</td>
+                                        <td className="td" style={{ whiteSpace: 'nowrap', borderLeft: '2px solid #f1f5f9', paddingLeft: '15px' }}>{row.paymentDate ? formatDate(row.paymentDate) : '—'}</td>
+                                        <td className="td amount-payment">{row.paymentAmount !== null ? formatCurrency(row.paymentAmount) : '—'}</td>
+                                        <td className="td" style={{ fontSize: '10px', color: '#64748b' }}>{row.description}</td>
                                     </tr>
                                 ))}
                             </tbody>

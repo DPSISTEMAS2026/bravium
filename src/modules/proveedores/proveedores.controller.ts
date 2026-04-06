@@ -101,6 +101,14 @@ export class ProveedoresController {
             transferAccountType?: string;
             transferRut?: string;
             transferEmail?: string;
+            contactName?: string;
+            logisticsContact?: string;
+            creditLine?: number;
+            comments?: string;
+            deliveryTime?: string;
+            differential?: string;
+            boardReview?: boolean;
+            favorableBalance?: number;
         },
     ) {
         this.logger.log(`Updating provider ${id}: ${JSON.stringify(body)}`);

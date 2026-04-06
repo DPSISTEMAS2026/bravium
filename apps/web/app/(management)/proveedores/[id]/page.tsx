@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use, useMemo } from 'react';
 import PrintStatementModal from './PrintStatementModal';
+import { UniversalMatchModal } from '@/components/conciliacion/UniversalMatchModal';
 import {
     ArrowLeftIcon,
     DocumentTextIcon,
@@ -44,6 +45,11 @@ interface DTE {
             bankAccount?: { bankName: string };
         };
     }>;
+    provider?: {
+        id: string;
+        rut: string;
+        name: string;
+    };
 }
 
 interface Payment {
@@ -64,6 +70,14 @@ interface ProviderDetail {
     transferAccountType: string | null;
     transferRut: string | null;
     transferEmail: string | null;
+    contactName: string | null;
+    logisticsContact: string | null;
+    creditLine: number | null;
+    comments: string | null;
+    deliveryTime: string | null;
+    differential: string | null;
+    boardReview: boolean;
+    favorableBalance: number;
     dtes: DTE[];
     payments: Payment[];
     metrics: {
@@ -97,21 +111,17 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
     const { id } = use(params);
     const [provider, setProvider] = useState<ProviderDetail | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'PENDIENTES' | 'TODOS' | 'PAGOS' | 'MOVIMIENTOS_ALIAS'>('PENDIENTES');
+    const [activeTab, setActiveTab] = useState<'PENDIENTES' | 'TODOS' | 'PAGOS' | 'MOVIMIENTOS_ALIAS' | 'PERFIL_COMERCIAL'>('PENDIENTES');
     const [selectedDteIds, setSelectedDteIds] = useState<string[]>([]);
     const [selectedYear, setSelectedYear] = useState('2026');
-    const [reviewModal, setReviewModal] = useState<{ dte: DTE; match: any } | null>(null);
-    const [reviewComment, setReviewComment] = useState('');
-    const [reviewLoading, setReviewLoading] = useState(false);
     const [printModalOpen, setPrintModalOpen] = useState(false);
     
-    // Manual match states
-    const [manualMatchDte, setManualMatchDte] = useState<DTE | null>(null);
-    const [manualMatchSearch, setManualMatchSearch] = useState('');
-    const [manualMatchTxList, setManualMatchTxList] = useState<any[]>([]);
-    const [manualMatchTxLoading, setManualMatchTxLoading] = useState(false);
-    const [manualMatchLoading, setManualMatchLoading] = useState(false);
-
+    // Universal Match states
+    const [isUniversalModalOpen, setIsUniversalModalOpen] = useState(false);
+    const [selectedUniversalDtes, setSelectedUniversalDtes] = useState<DTE[]>([]);
+    const [selectedUniversalTxs, setSelectedUniversalTxs] = useState<any[]>([]);
+    const [universalModalMode, setUniversalModalMode] = useState<'MANUAL' | 'SUGGESTION' | 'ANNOTATE' | 'REVIEW'>('MANUAL');
+    const [universalReviewMatchId, setUniversalReviewMatchId] = useState<string | undefined>(undefined);
     const [bankAccounts, setBankAccounts] = useState<any[]>([]);
     const [creationView, setCreationView] = useState(false);
     const [creationForm, setCreationForm] = useState({
@@ -148,102 +158,8 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
         }
     };
 
-    const searchManualMatchTransactions = async () => {
-        if (!manualMatchSearch.trim()) return;
-        setManualMatchTxLoading(true);
-        try {
-            const API_URL = getApiUrl();
-            const res = await authFetch(`${API_URL}/transactions?search=${encodeURIComponent(manualMatchSearch)}&status=PENDING&limit=20`);
-            const data = await res.json();
-            setManualMatchTxList(data.data || data || []);
-        } catch (err) {
-            console.error('Error searching tx:', err);
-        } finally {
-            setManualMatchTxLoading(false);
-        }
-    };
 
-    const handleSaveManualMatch = async (txId: string) => {
-        if (!manualMatchDte) return;
-        setManualMatchLoading(true);
-        try {
-            const API_URL = getApiUrl();
-            const res = await authFetch(`${API_URL}/conciliacion/matches/manual`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ transactionId: txId, dteId: manualMatchDte.id })
-            });
-            if (!res.ok) throw new Error('Error al vincular');
-            setManualMatchDte(null);
-            setManualMatchSearch('');
-            setManualMatchTxList([]);
-            loadProviderDetail();
-        } catch (err) {
-            alert('No se pudo vincular. Revisa los montos o deudas.');
-            console.error('Error in manual match:', err);
-        } finally {
-            setManualMatchLoading(false);
-        }
-    };
 
-    const handleCreateAndLink = async () => {
-        if (!manualMatchDte || !creationForm.bankAccountId || !creationForm.description || !creationForm.amount) {
-            alert('Por favor, completa todos los campos del formulario.');
-            return;
-        }
-        setManualMatchLoading(true);
-        try {
-            const API_URL = getApiUrl();
-            // 1. Create manual transaction
-            const resCreate = await authFetch(`${API_URL}/transactions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(creationForm),
-            });
-            if (!resCreate.ok) throw new Error('Error al crear movimiento manual');
-            const createdTx = await resCreate.json();
-
-            // 2. Link it to the DTE
-            const resLink = await authFetch(`${API_URL}/conciliacion/matches/manual`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ transactionId: createdTx.id, dteId: manualMatchDte.id })
-            });
-
-            if (!resLink.ok) throw new Error('Error al vincular con el DTE');
-
-            setManualMatchDte(null);
-            setCreationView(false);
-            setCreationForm({ bankAccountId: '', sourceFile: '', date: '', description: '', amount: 0, type: 'DEBIT' });
-            loadProviderDetail();
-        } catch (err: any) {
-            alert('Error: ' + (err?.message || 'No se pudo vincular.'));
-            console.error(err);
-        } finally {
-            setManualMatchLoading(false);
-        }
-    };
-
-    const handleMatchAction = async (status: 'CONFIRMED' | 'REJECTED') => {
-        if (!reviewModal) return;
-        setReviewLoading(true);
-        try {
-            const API_URL = getApiUrl();
-            const res = await authFetch(`${API_URL}/conciliacion/matches/${reviewModal.match.id}/status`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status, reason: reviewComment || undefined }),
-            });
-            if (!res.ok) throw new Error('Error al actualizar');
-            setReviewModal(null);
-            setReviewComment('');
-            loadProviderDetail();
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setReviewLoading(false);
-        }
-    };
 
     const handleDiscardMatch = async (matchId: string) => {
         if (!confirm('¿Estás seguro de que deseas desvincular este pago?')) return;
@@ -451,18 +367,16 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
                 </div>
             </div>
 
-            {/* Datos de Transferencia */}
-            <TransferBankCard provider={provider} onSaved={loadProviderDetail} formatCurrency={formatCurrency} />
-
             {/* Tabs & Content */}
             <div className="card-glass overflow-hidden flex flex-col min-h-[400px]">
-                <div className="flex border-b border-slate-100">
-                    {(['PENDIENTES', 'TODOS', 'PAGOS', 'MOVIMIENTOS_ALIAS'] as const).map(tab => (
+                <div className="flex border-b border-slate-100 overflow-x-auto custom-scrollbar">
+                    {(['PENDIENTES', 'TODOS', 'PAGOS', 'MOVIMIENTOS_ALIAS', 'PERFIL_COMERCIAL'] as const).map(tab => (
                         <button key={tab} onClick={() => setActiveTab(tab)}
-                            className={`flex-1 py-4 text-sm font-bold uppercase tracking-widest transition-colors ${activeTab === tab ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/30' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50/50'}`}>
+                            className={`px-4 py-4 text-xs font-bold uppercase tracking-widest transition-colors flex-shrink-0 ${activeTab === tab ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/30' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50/50'}`}>
                             {tab === 'PENDIENTES' ? `Por Pagar (${pendingDtes.length})` : 
                              tab === 'TODOS' ? `Todos (${pendingDtes.length} pend. / ${paidDtes.length} pag.)` : 
                              tab === 'PAGOS' ? `Pagos (${allPaymentsForTab.length})` : 
+                             tab === 'PERFIL_COMERCIAL' ? `Cuenta Bancaria & CRM` :
                              `Movimientos Alias (${(provider as any).aliasMovements?.length || 0})`}
                         </button>
                     ))}
@@ -502,6 +416,13 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
                 )}
 
                 <div className="p-0 overflow-x-auto">
+                    {activeTab === 'PERFIL_COMERCIAL' && (
+                        <div className="p-4 grid grid-cols-1 xl:grid-cols-2 gap-6 bg-slate-50/10">
+                            <TransferBankCard provider={provider} onSaved={loadProviderDetail} formatCurrency={formatCurrency} />
+                            <ProviderCrmCard provider={provider} onSaved={loadProviderDetail} formatCurrency={formatCurrency} />
+                        </div>
+                    )}
+                    
                     {(activeTab === 'PENDIENTES' || activeTab === 'TODOS') && (
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50/50 text-slate-500 font-semibold border-b border-slate-100 uppercase tracking-tight text-[11px]">
@@ -536,7 +457,11 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
                                     </td></tr>
                                 ) : dtesForTab.map(dte => {
                                     const due = getDueDays(dte);
-                                    const match = dte.matches?.[0];
+                                    const match = [...(dte.matches || [])].sort((a: any, b: any) => {
+                                        if (a.status === 'CONFIRMED' && b.status !== 'CONFIRMED') return -1;
+                                        if (b.status === 'CONFIRMED' && a.status !== 'CONFIRMED') return 1;
+                                        return (b.confidence || 0) - (a.confidence || 0);
+                                    })[0];
                                     const urgencyStyles = {
                                         overdue: 'bg-red-100 text-red-700 border-red-200',
                                         urgent: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -596,9 +521,18 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
                                                     return (
                                                         <button 
                                                             type="button" 
-                                                            onClick={(e) => { e.stopPropagation(); setReviewModal({ dte, match }); }} 
+                                                            onClick={(e) => { 
+                                                                e.stopPropagation(); 
+                                                                setSelectedUniversalDtes([{ ...dte, provider: { id: provider.id, rut: provider.rut, name: provider.name } }]);
+                                                                if (match.transaction) setSelectedUniversalTxs([match.transaction]);
+                                                                else setSelectedUniversalTxs([]);
+                                                                
+                                                                setUniversalModalMode('REVIEW');
+                                                                setUniversalReviewMatchId(match.id);
+                                                                setIsUniversalModalOpen(true);
+                                                            }} 
                                                             className="flex flex-col items-start gap-1 p-1 hover:bg-slate-100 rounded transition-colors w-full text-left cursor-pointer border border-transparent hover:border-slate-200"
-                                                            title="Revisar match"
+                                                            title="Revisar match en Modal Universal"
                                                         >
                                                             {match.status === 'CONFIRMED' ? (
                                                                 <div className="flex items-center text-emerald-600 font-bold text-[11px] mb-0.5">
@@ -623,9 +557,11 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
                                                         {dte.paymentStatus !== 'PAID' && (
                                                             <button 
                                                                 onClick={() => {
-                                                                    setManualMatchDte(dte);
-                                                                    setManualMatchSearch(dte.totalAmount.toString());
-                                                                    searchManualMatchTransactions();
+                                                                    setSelectedUniversalDtes([{ ...dte, provider: { id: provider.id, rut: provider.rut, name: provider.name } }]);
+                                                                    setSelectedUniversalTxs([]);
+                                                                    setUniversalModalMode('MANUAL');
+                                                                    setUniversalReviewMatchId(undefined);
+                                                                    setIsUniversalModalOpen(true);
                                                                 }}
                                                                 className="text-[9px] bg-slate-50 border border-slate-200 text-indigo-600 font-bold px-1.5 py-0.5 rounded hover:bg-indigo-50 hover:border-indigo-200 transition-all flex items-center shadow-sm"
                                                             >
@@ -725,259 +661,23 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
                 </div>
             </div>
         </div>
-        
-        {manualMatchDte && (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden border border-slate-200 animate-fade-in-up">
-                    <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-                        <div>
-                            <h3 className="font-bold text-slate-800">Vincular Pago Manualmente</h3>
-                            <p className="text-[11px] text-slate-500">DTE Folio {manualMatchDte.folio} &bull; Total: {formatCurrency(manualMatchDte.totalAmount)}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button 
-                                onClick={() => { 
-                                    setCreationView(!creationView); 
-                                    if (!creationView) {
-                                        setCreationForm({
-                                            bankAccountId: '',
-                                            sourceFile: '',
-                                            date: new Date().toISOString().split('T')[0],
-                                            description: `Pago Folio ${manualMatchDte.folio}`,
-                                            amount: manualMatchDte.totalAmount,
-                                            type: 'DEBIT'
-                                        });
-                                    }
-                                }} 
-                                className="text-[10px] text-indigo-600 font-bold hover:underline"
-                            >
-                                {creationView ? 'Volver a Buscar' : '¿No está aquí? Ingrésalo'}
-                            </button>
-                            <button onClick={() => { setManualMatchDte(null); setCreationView(false); setManualMatchSearch(''); setManualMatchTxList([]); }} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200">
-                                <span className="text-xl font-bold">&times;</span>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    {creationView ? (
-                        <div className="p-4 space-y-3 flex-1 overflow-y-auto bg-slate-50">
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1">Cartola de Origen</label>
-                                <select 
-                                    className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm"
-                                    value={`${creationForm.bankAccountId}|${creationForm.sourceFile}`}
-                                    onChange={e => {
-                                        const [bId, file] = e.target.value.split('|');
-                                        setCreationForm({ ...creationForm, bankAccountId: bId, sourceFile: file });
-                                    }}
-                                >
-                                    <option value="|">Selecciona cartola...</option>
-                                    {bankAccounts.map((c: any) => (
-                                        <option key={`${c.bankAccountId}-${c.filename}`} value={`${c.bankAccountId}|${c.filename}`}>
-                                            {c.filename} - {c.bankName} ({c.accountNumber})
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Fecha</label>
-                                    <input type="date" value={creationForm.date} onChange={e => setCreationForm({ ...creationForm, date: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Tipo de Movimiento</label>
-                                    <select value={creationForm.type} onChange={e => setCreationForm({ ...creationForm, type: e.target.value as any })} className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm">
-                                        <option value="DEBIT">Egreso (Cargo/Gasto)</option>
-                                        <option value="CREDIT">Ingreso (Abono/Depósito)</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1">Descripción</label>
-                                <input type="text" value={creationForm.description} onChange={e => setCreationForm({ ...creationForm, description: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1">Monto ($)</label>
-                                <input type="number" value={creationForm.amount} onChange={e => setCreationForm({ ...creationForm, amount: parseInt(e.target.value, 10) || 0 })} className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" />
-                            </div>
-                            <button 
-                                onClick={handleCreateAndLink} 
-                                disabled={manualMatchLoading} 
-                                className="w-full mt-4 bg-emerald-600 text-white rounded-lg px-4 py-2 font-semibold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-md disabled:opacity-50"
-                            >
-                                {manualMatchLoading ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <CheckCircleIcon className="h-4 w-4" />}
-                                Crear y Vincular Pago
-                            </button>
-                        </div>
-                    ) : (
-                        <>
-                        <div className="p-4 border-b border-slate-100 bg-white">
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">Buscar Transacción en Cartolas (Pendientes)</label>
-                            <div className="flex gap-2">
-                                <input 
-                                    type="text"
-                                    value={manualMatchSearch}
-                                    onChange={e => setManualMatchSearch(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && searchManualMatchTransactions()}
-                                    placeholder="Monto o palabra clave..."
-                                    className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"
-                                />
-                                <button 
-                                    onClick={searchManualMatchTransactions}
-                                    className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 flex items-center"
-                                >
-                                    {manualMatchTxLoading ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : 'Buscar'}
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50">
-                            {manualMatchTxList.length === 0 ? (
-                                <p className="text-center text-sm text-slate-400 py-8">Busca para ver transacciones pendientes en cartola...</p>
-                            ) : (
-                                manualMatchTxList.map((tx: any) => (
-                                    <div key={tx.id} className="bg-white border border-slate-200 rounded-lg p-3 hover:border-indigo-300 transition-all flex items-center justify-between">
-                                        <div className="min-w-0 flex-1">
-                                            <div className="text-xs font-bold text-slate-800 truncate" title={tx.description}>{tx.description}</div>
-                                            <div className="text-[10px] text-slate-400">{formatDate(tx.date)} &bull; {tx.bankAccount?.bankName}</div>
-                                        </div>
-                                        <div className="text-right ml-4 shrink-0">
-                                            <div className={`font-bold text-sm ${tx.type === 'CREDIT' ? 'text-green-600' : 'text-red-600'}`}>
-                                                {formatCurrency(tx.amount)}
-                                            </div>
-                                            <button 
-                                                onClick={() => handleSaveManualMatch(tx.id)}
-                                                disabled={manualMatchLoading}
-                                                className="mt-1 px-2 py-1 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 text-emerald-700 rounded text-[10px] font-bold transition-all flex items-center gap-1 ml-auto"
-                                            >
-                                                {manualMatchLoading ? <ArrowPathIcon className="h-3 w-3 animate-spin" /> : <CheckCircleIcon className="h-3 w-3" />}
-                                                Vincular
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                        </>
-                    )}
-                </div>
-            </div>
+        {isUniversalModalOpen && (
+            <UniversalMatchModal
+                isOpen={isUniversalModalOpen}
+                onClose={() => {
+                    setIsUniversalModalOpen(false);
+                    setSelectedUniversalDtes([]);
+                }}
+                API_URL={getApiUrl()}
+                onRefresh={loadProviderDetail}
+                initialDtes={selectedUniversalDtes}
+                initialTransactions={selectedUniversalTxs}
+                mode={universalModalMode}
+                reviewMatchId={universalReviewMatchId}
+            />
         )}
-            {reviewModal && (reviewModal.match.transaction || (reviewModal.match as any).payment) && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center overflow-hidden p-3" onClick={() => setReviewModal(null)} style={{ touchAction: 'none' }}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden relative" onClick={e => e.stopPropagation()}>
-                        <div className={`shrink-0 px-5 py-3 border-b border-slate-100 flex justify-between items-center ${reviewModal.match.status === 'CONFIRMED' ? 'bg-gradient-to-r from-emerald-50 to-green-50' : 'bg-gradient-to-r from-blue-50 to-indigo-50'}`}>
-                            <div>
-                                <h2 className="text-base font-bold text-slate-800">
-                                    {reviewModal.match.status === 'CONFIRMED' ? 'Match Confirmado' : 'Revisar Sugerencia de Match'}
-                                </h2>
-                                <p className="text-xs text-slate-500">
-                                    Confianza: <span className={`font-bold ${reviewModal.match.confidence >= 0.80 ? 'text-emerald-600' : reviewModal.match.confidence >= 0.60 ? 'text-blue-600' : 'text-amber-600'}`}>{(reviewModal.match.confidence * 100).toFixed(0)}%</span>
-                                    {reviewModal.match.ruleApplied && <span className="ml-2 text-slate-400">| {reviewModal.match.ruleApplied}</span>}
-                                    {reviewModal.match.origin && <span className="ml-2 text-slate-400">| {reviewModal.match.origin === 'AUTOMATIC' ? 'Automático' : 'Manual'}</span>}
-                                </p>
-                            </div>
-                            <button onClick={() => setReviewModal(null)} className="text-slate-400 hover:text-slate-600 transition-colors shrink-0">
-                                <XMarkIcon className="h-6 w-6" />
-                            </button>
-                        </div>
-                        <div className="flex-1 min-h-0 overflow-auto p-4">
-                            {(() => {
-                                const tx = reviewModal.match.transaction;
-                                const pm = (reviewModal.match as any).payment;
-                                const isTx = !!tx;
-                                const mDate = tx ? tx.date : pm?.date;
-                                const mAmount = tx ? Math.abs(tx.amount) : pm?.amount;
-                                const mDesc = tx ? tx.description : (pm?.notes || 'Carga Manual / Registro de Pago');
-                                const mBank = tx?.bankAccount?.bankName;
 
-                                return (
-                                    <>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="rounded-lg border border-slate-200 p-4 bg-slate-50/50">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center shrink-0"><BanknotesIcon className="h-3.5 w-3.5 text-red-600" /></div>
-                                                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">{isTx ? 'Movimiento Bancario' : 'Carga Manual'}</h3>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                                                <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{mDate ? formatDate(mDate) : '—'}</p></div>
-                                                <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-red-700">{formatCurrency(mAmount || 0)}</p></div>
-                                                <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Descripción</span><p className="text-slate-800 truncate" title={mDesc}>{mDesc}</p></div>
-                                                {mBank && (
-                                                    <div className="col-span-2 text-xs text-slate-500">{mBank} — {tx?.bankAccount?.accountNumber}</div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="rounded-lg border border-indigo-200 p-4 bg-indigo-50/30">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center shrink-0"><DocumentTextIcon className="h-3.5 w-3.5 text-indigo-600" /></div>
-                                                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Factura (DTE)</h3>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                                                <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{formatDate(reviewModal.dte.issuedDate)}</p></div>
-                                                <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-indigo-700">{formatCurrency(reviewModal.dte.totalAmount)}</p></div>
-                                                <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Proveedor</span><p className="text-slate-800 truncate" title={provider?.name}>{provider?.name || '—'}</p></div>
-                                                <div>Folio <span className="font-bold text-indigo-600">{reviewModal.dte.folio}</span></div>
-                                                <div>T{reviewModal.dte.type}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-4 mt-3">
-                                        <div className="flex items-center gap-4 text-xs text-slate-500 bg-slate-50 rounded-lg py-1.5 px-3">
-                                            <span>Monto: <strong className={Math.abs(reviewModal.dte.totalAmount - (mAmount || 0)) === 0 ? 'text-emerald-600' : 'text-amber-600'}>{formatCurrency(Math.abs(reviewModal.dte.totalAmount - (mAmount || 0)))}</strong></span>
-                                            {mDate && <span>Fecha: <strong className="text-slate-700">{Math.abs(Math.round((new Date(mDate).getTime() - new Date(reviewModal.dte.issuedDate).getTime()) / 86400000))} días</strong></span>}
-                                        </div>
-                                        <div className="flex-1 min-w-[200px]">
-                                            <input
-                                                value={reviewComment}
-                                                onChange={e => setReviewComment(e.target.value)}
-                                                placeholder="Comentario (opcional)"
-                                                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-purple-500"
-                                            />
-                                        </div>
-                                    </div>
-                                    </>
-                                );
-                            })()}
-                        </div>
-                        <div className="shrink-0 p-4 border-t border-slate-100 bg-slate-50/50 flex flex-wrap gap-3">
-                            {reviewModal.match.status !== 'CONFIRMED' ? (
-                                <>
-                                    <button onClick={() => handleMatchAction('CONFIRMED')} disabled={reviewLoading}
-                                        className="flex-1 min-w-[120px] bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50">
-                                        <CheckCircleIcon className="h-5 w-5" /> Confirmar Match
-                                    </button>
-                                    <button onClick={() => handleMatchAction('REJECTED')} disabled={reviewLoading}
-                                        className="flex-1 min-w-[120px] bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50">
-                                        <XCircleIcon className="h-5 w-5" /> Rechazar
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => {
-                                            if (!reviewModal) return;
-                                            setManualMatchDte(reviewModal.dte);
-                                            setManualMatchSearch(provider?.name || '');
-                                            setReviewModal(null);
-                                        }} 
-                                        className="flex-1 min-w-[120px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-2 border-indigo-200 px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-1 disabled:opacity-50"
-                                    >
-                                        <MagnifyingGlassIcon className="h-4 w-4" /> Buscar en Cartola
-                                    </button>
-                                </>
-                            ) : (
-                                <button onClick={() => { handleDiscardMatch(reviewModal.match.id); setReviewModal(null); }} disabled={reviewLoading}
-                                    className="flex-1 min-w-[120px] bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50">
-                                    <XCircleIcon className="h-5 w-5" /> Desvincular match
-                                </button>
-                            )}
-                            <button onClick={() => setReviewModal(null)} disabled={reviewLoading}
-                                className="px-4 py-2.5 border border-slate-200 rounded-xl text-slate-600 font-medium text-sm hover:bg-slate-100 disabled:opacity-50">
-                                Cerrar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+
 
             {printModalOpen && provider && (
                 <PrintStatementModal 
@@ -1135,6 +835,103 @@ function TransferBankCard({ provider, onSaved, formatCurrency }: {
                         No hay datos bancarios configurados. Haz clic en "Editar" para agregar.
                     </div>
                 )}
+            </div>
+        </div>
+    );
+}
+
+// ── ProviderCrmCard: tarjeta de gestión CRM y comercial ──
+function ProviderCrmCard({ provider, onSaved, formatCurrency }: {
+    provider: ProviderDetail;
+    onSaved: () => void;
+    formatCurrency: (n: number) => string;
+}) {
+    const [editing, setEditing] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [form, setForm] = useState({
+        contactName: provider.contactName || '',
+        logisticsContact: provider.logisticsContact || '',
+        creditLine: provider.creditLine || 0,
+        comments: provider.comments || '',
+        deliveryTime: provider.deliveryTime || '',
+        differential: provider.differential || '',
+        boardReview: provider.boardReview || false,
+        favorableBalance: provider.favorableBalance || 0,
+    });
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            const res = await authFetch(`${getApiUrl()}/proveedores/${provider.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form)
+            });
+            if (!res.ok) throw new Error('Error al guardar datos CRM');
+            setEditing(false);
+            onSaved();
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="card-glass p-5 flex flex-col h-full border border-slate-200 shadow-sm relative">
+            <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center space-x-2">
+                    <div className="bg-indigo-50 p-2 rounded-lg"><DocumentTextIcon className="h-5 w-5 text-indigo-600" /></div>
+                    <h3 className="font-bold text-slate-800 text-lg tracking-tight">Ficha Comercial (CRM)</h3>
+                </div>
+                {!editing ? (
+                    <button onClick={() => setEditing(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition">Editar Detalles</button>
+                ) : (
+                    <div className="flex space-x-2">
+                        <button onClick={() => setEditing(false)} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition">Cancelar</button>
+                        <button onClick={handleSave} disabled={saving} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition">{saving ? 'Guardando...' : 'Guardar CRM'}</button>
+                    </div>
+                )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 text-sm bg-white p-4 rounded-xl border border-slate-100">
+                {(['contactName', 'logisticsContact', 'creditLine', 'comments', 'deliveryTime', 'differential', 'favorableBalance'] as const).map(field => {
+                    const labels: Record<string, string> = {
+                        contactName: 'Contacto Contable',
+                        logisticsContact: 'Contacto Logística',
+                        creditLine: 'Línea de Crédito ($)',
+                        comments: 'Comentarios Internos',
+                        deliveryTime: 'Tiempo de Entrega',
+                        differential: 'Diferencial Comercial',
+                        favorableBalance: 'Saldos a Favor / NC ($)'
+                    };
+                    const type = (field === 'creditLine' || field === 'favorableBalance') ? 'number' : 'text';
+                    const isTextArea = field === 'comments' || field === 'differential';
+                    const val = form[field];
+
+                    return (
+                        <div key={field} className={isTextArea ? 'col-span-full' : ''}>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{labels[field]}</label>
+                            {editing ? (
+                                isTextArea ? (
+                                    <textarea value={val as string} onChange={e => setForm({ ...form, [field]: e.target.value })} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 bg-slate-50 h-20 outline-none" placeholder="Ingresar detalles..." />
+                                ) : (
+                                    <input type={type} value={val} onChange={e => setForm({ ...form, [field]: type === 'number' ? Number(e.target.value) : e.target.value })} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 bg-slate-50 outline-none" placeholder={`Ingresar ${labels[field].toLowerCase()}`} />
+                                )
+                            ) : (
+                                <div className="text-slate-800 font-medium py-1">
+                                    {val ? (type === 'number' ? formatCurrency(Number(val)) : val) : <span className="text-slate-400 italic text-[11px] font-normal">Sin asignar</span>}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+                <div className="col-span-full mt-2 flex items-center bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    <input type="checkbox" disabled={!editing} checked={form.boardReview} onChange={e => setForm({...form, boardReview: e.target.checked})} className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    <label className="ml-3 block text-sm font-semibold text-slate-800">
+                        Requiere revisión de directorio
+                    </label>
+                </div>
             </div>
         </div>
     );

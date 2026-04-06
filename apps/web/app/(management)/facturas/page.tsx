@@ -16,6 +16,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { getApiUrl, authFetch } from '@/lib/api';
 import { Pagination } from '@/components/ui/Pagination';
+import { UniversalMatchModal } from '@/components/conciliacion/UniversalMatchModal';
 
 const MONTHS = [
     { value: 'ALL', label: 'Todo el año' },
@@ -87,6 +88,7 @@ interface DTESummary {
 }
 
 export default function FacturasPage() {
+    const USE_NEW_MODAL = true; // Universal modal siempre activo
     const API_URL = getApiUrl();
     const searchParams = useSearchParams();
     const { mutate: globalMutate } = useSWRConfig();
@@ -112,7 +114,7 @@ export default function FacturasPage() {
     const [manualMatchDte, setManualMatchDte] = useState<DTE | null>(null);
     const [manualMatchSearch, setManualMatchSearch] = useState('');
     const [manualMatchTxResults, setManualMatchTxResults] = useState<any[]>([]);
-    const [manualMatchSelectedTxId, setManualMatchSelectedTxId] = useState<string | null>(null);
+    const [manualMatchSelectedTxIds, setManualMatchSelectedTxIds] = useState<string[]>([]);
     const [manualMatchLoading, setManualMatchLoading] = useState(false);
     const [manualMatchSaving, setManualMatchSaving] = useState(false);
     const [manualMatchError, setManualMatchError] = useState<string | null>(null);
@@ -741,7 +743,7 @@ export default function FacturasPage() {
             </div>
 
             {/* Modal Revisar / Confirmar Match (mismo flujo que Cartolas) */}
-            {reviewModal && (reviewModal.match.transaction || (reviewModal.match as any).payment) && (
+            {(!USE_NEW_MODAL && reviewModal) && (reviewModal.match.transaction || (reviewModal.match as any).payment) && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center overflow-hidden p-3" onClick={() => setReviewModal(null)} style={{ touchAction: 'none' }}>
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden relative" onClick={e => e.stopPropagation()}>
                         <div className={`shrink-0 px-5 py-3 border-b border-slate-100 flex justify-between items-center ${reviewModal.match.status === 'CONFIRMED' ? 'bg-gradient-to-r from-emerald-50 to-green-50' : 'bg-gradient-to-r from-blue-50 to-indigo-50'}`}>
@@ -880,7 +882,7 @@ export default function FacturasPage() {
                 </div>
             )}
 
-            {manualMatchDte && (
+            {(!USE_NEW_MODAL && manualMatchDte) && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center overflow-hidden p-3">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden relative">
                         {/* Header */}
@@ -889,7 +891,7 @@ export default function FacturasPage() {
                                 <h2 className="text-base font-bold text-slate-800">Anotar Movimiento de Factura</h2>
                                 <p className="text-xs text-slate-500">Vincula esta factura a un movimiento bancario existente o crea uno nuevo.</p>
                             </div>
-                            <button onClick={() => { setManualMatchDte(null); setManualMatchTxResults([]); setManualMatchSelectedTxId(null); setManualMatchError(null); }} className="text-slate-400 hover:text-slate-600 transition-colors">
+                            <button onClick={() => { setManualMatchDte(null); setManualMatchTxResults([]); setManualMatchSelectedTxIds([]); setManualMatchError(null); }} className="text-slate-400 hover:text-slate-600 transition-colors">
                                 <XCircleIcon className="h-6 w-6" />
                             </button>
                         </div>
@@ -985,12 +987,21 @@ export default function FacturasPage() {
                                         {manualMatchTxResults.map(tx => (
                                             <div 
                                                 key={tx.id} 
-                                                onClick={() => setManualMatchSelectedTxId(manualMatchSelectedTxId === tx.id ? null : tx.id)}
-                                                className={`p-3 border rounded-xl cursor-pointer transition-all flex justify-between items-center ${manualMatchSelectedTxId === tx.id ? 'border-indigo-600 bg-indigo-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'}`}
+                                                onClick={() => {
+                                                    setManualMatchSelectedTxIds(prev => 
+                                                        prev.includes(tx.id) ? prev.filter(id => id !== tx.id) : [...prev, tx.id]
+                                                    );
+                                                }}
+                                                className={`p-3 border rounded-xl cursor-pointer transition-all flex justify-between items-center ${manualMatchSelectedTxIds.includes(tx.id) ? 'border-indigo-600 bg-indigo-50 shadow-sm' : 'border-slate-200 hover:border-slate-300 bg-white'}`}
                                             >
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-xs font-bold text-slate-800 truncate" title={tx.description}>{tx.description}</p>
-                                                    <p className="text-[10px] text-slate-500">{new Date(tx.date).toLocaleDateString('es-CL')}</p>
+                                                <div className="min-w-0 flex-1 flex items-center gap-2">
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${manualMatchSelectedTxIds.includes(tx.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'}`}>
+                                                        {manualMatchSelectedTxIds.includes(tx.id) && <CheckCircleIcon className="h-4 w-4 text-white" />}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs font-bold text-slate-800 truncate" title={tx.description}>{tx.description}</p>
+                                                        <p className="text-[10px] text-slate-500">{new Date(tx.date).toLocaleDateString('es-CL')}</p>
+                                                    </div>
                                                 </div>
                                                 <div className="text-right">
                                                     <p className="text-sm font-bold text-red-700">{formatCurrency(tx.amount)}</p>
@@ -1035,7 +1046,7 @@ export default function FacturasPage() {
                         <div className="shrink-0 p-4 border-t border-slate-100 bg-slate-50 flex gap-3 justify-end">
                             <button 
                                 type="button" 
-                                onClick={() => { setManualMatchDte(null); setManualMatchTxResults([]); setManualMatchSelectedTxId(null); setManualMatchError(null); }} 
+                                onClick={() => { setManualMatchDte(null); setManualMatchTxResults([]); setManualMatchSelectedTxIds([]); setManualMatchError(null); }} 
                                 disabled={manualMatchSaving}
                                 className="px-5 py-2.5 border border-slate-200 rounded-xl text-slate-600 font-medium text-sm hover:bg-slate-100 transition-colors disabled:opacity-50"
                             >
@@ -1044,7 +1055,7 @@ export default function FacturasPage() {
                             <button 
                                 type="button" 
                                 onClick={async () => {
-                                    if (!manualMatchSelectedTxId) return;
+                                    if (manualMatchSelectedTxIds.length === 0) return;
                                     setManualMatchSaving(true);
                                     setManualMatchError(null);
                                     try {
@@ -1052,7 +1063,7 @@ export default function FacturasPage() {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ 
-                                                transactionId: manualMatchSelectedTxId, 
+                                                transactionIds: manualMatchSelectedTxIds, 
                                                 dteId: manualMatchDte.id,
                                                 notes: reviewComment.trim() || undefined
                                             }),
@@ -1061,7 +1072,7 @@ export default function FacturasPage() {
                                         if (!res.ok) throw new Error(data?.message || 'Error al conectar');
                                         setManualMatchDte(null);
                                         setManualMatchTxResults([]);
-                                        setManualMatchSelectedTxId(null);
+                                        setManualMatchSelectedTxIds([]);
                                         setReviewComment('');
                                         // Refrescar SWR Cache
                                         if (typeof mutateDtes === 'function') mutateDtes();
@@ -1071,7 +1082,7 @@ export default function FacturasPage() {
                                         setManualMatchError(e?.message || 'Ocurrió un error');
                                     } finally { setManualMatchSaving(false); }
                                 }} 
-                                disabled={manualMatchSaving || !manualMatchSelectedTxId}
+                                disabled={manualMatchSaving || manualMatchSelectedTxIds.length === 0}
                                 className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-lg shadow-indigo-600/20"
                             >
                                 {manualMatchSaving ? <ArrowPathIcon className="h-5 w-5 animate-spin"/> : <CheckCircleIcon className="h-5 w-5"/>}
@@ -1080,6 +1091,35 @@ export default function FacturasPage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {USE_NEW_MODAL && (
+                <UniversalMatchModal
+                    isOpen={!!manualMatchDte || !!reviewModal}
+                    onClose={() => {
+                        setManualMatchDte(null);
+                        setReviewModal(null);
+                    }}
+                    API_URL={API_URL}
+                    onRefresh={() => { 
+                        refreshData(); 
+                        if (typeof globalMutate === 'function') {
+                            globalMutate((k: string) => typeof k === 'string' && (k.includes('/dtes') || k.includes('/conciliacion') || k.includes('/transactions'))); 
+                        }
+                    }}
+                    suggestionId={reviewModal && reviewModal.match.status === 'DRAFT' ? reviewModal.match.id : undefined}
+                    mode={
+                        (reviewModal && reviewModal.match.status === 'DRAFT') ? 'SUGGESTION' :
+                        (reviewModal && reviewModal.match.status === 'CONFIRMED') ? 'REVIEW' : 'MANUAL'
+                    }
+                    initialDtes={
+                        manualMatchDte ? [manualMatchDte] :
+                        reviewModal ? [reviewModal.dte] : []
+                    }
+                    initialTransactions={
+                        reviewModal && reviewModal.match.transaction ? [reviewModal.match.transaction] : undefined
+                    }
+                />
             )}
         </div>
     );

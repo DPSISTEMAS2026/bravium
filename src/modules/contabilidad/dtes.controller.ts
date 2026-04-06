@@ -26,6 +26,7 @@ export class DtesController {
         @Query('sortOrder') sortOrder?: 'asc' | 'desc',
         @Query('hasPdf') hasPdf?: string,
         @Query('includeMatched') includeMatched?: string,
+        @Query('type') type?: string,
     ) {
         const filters: DteFilters = {
             fromDate,
@@ -41,6 +42,7 @@ export class DtesController {
             sortOrder,
             hasPdf,
             includeMatched: includeMatched === 'true',
+            type: type ? parseInt(type, 10) : undefined,
         };
 
         this.logger.log(`Fetching DTEs with filters: ${JSON.stringify(filters)}`);

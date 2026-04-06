@@ -30,6 +30,7 @@ import {
     PencilSquareIcon,
     EyeIcon,
     ArrowsRightLeftIcon,
+    PlusIcon,
 } from '@heroicons/react/24/outline';
 import { getApiUrl, authFetch } from '../../../lib/api';
 import { Pagination } from '@/components/ui/Pagination';
@@ -37,6 +38,7 @@ import { useCartolaIngestion } from '../../../contexts/CartolaIngestionContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { CartolasManualMatchSection } from './CartolasConciliacionSections';
 import { ManualMatchForm } from './ManualMatchForm';
+import { UniversalMatchModal } from '../../../components/conciliacion/UniversalMatchModal';
 
 const MONTHS = [
     { value: 'ALL', label: 'Todo el año' },
@@ -169,6 +171,7 @@ export default function CartolasPage() {
     const { user } = useAuth();
     const [page, setPage] = useState(1);
     const limit = 15;
+    const USE_NEW_MODAL = true; // Universal modal siempre activo
 
     // Filters
     const [search, setSearch] = useState(() => searchParams.get('search') || '');
@@ -231,13 +234,15 @@ export default function CartolasPage() {
     const [suggestionActionLoading, setSuggestionActionLoading] = useState(false);
     // Editar sugerencia SUM: quitar movimientos y/o elegir otro DTE del mismo proveedor
     const [suggestionRemovedTxIds, setSuggestionRemovedTxIds] = useState<string[]>([]);
+    const [suggestionAddedTxIds, setSuggestionAddedTxIds] = useState<string[]>([]);
+    const [suggestionRemovedDteIds, setSuggestionRemovedDteIds] = useState<string[]>([]);
+    const [suggestionAddedDteIds, setSuggestionAddedDteIds] = useState<string[]>([]);
     const [suggestionOverrideDteId, setSuggestionOverrideDteId] = useState<string | null>(null);
     const [suggestionProviderUnpaidDtes, setSuggestionProviderUnpaidDtes] = useState<any[]>([]);
     const [suggestionProviderUnpaidDtesLoading, setSuggestionProviderUnpaidDtesLoading] = useState(false);
     // Movimientos a este RUT (para SUM): otros movimientos PENDING/UNMATCHED a mismo proveedor, para añadir a la sugerencia
     const [suggestionOtherMovementsRut, setSuggestionOtherMovementsRut] = useState<any[]>([]);
     const [suggestionOtherMovementsRutLoading, setSuggestionOtherMovementsRutLoading] = useState(false);
-    const [suggestionAddedTxIds, setSuggestionAddedTxIds] = useState<string[]>([]);
 
     // Annotation modal (mark pending as reviewed) + matchear con factura dentro del modal
     const [annotateTx, setAnnotateTx] = useState<Transaction | null>(null);
@@ -677,8 +682,10 @@ export default function CartolasPage() {
         if (!suggestionModalId) {
             setSuggestionDetail(null);
             setSuggestionRemovedTxIds([]);
-            setSuggestionOverrideDteId(null);
             setSuggestionAddedTxIds([]);
+            setSuggestionRemovedDteIds([]);
+            setSuggestionAddedDteIds([]);
+            setSuggestionOverrideDteId(null);
             setSuggestionProviderUnpaidDtes([]);
             setSuggestionOtherMovementsRut([]);
             return;
@@ -703,7 +710,7 @@ export default function CartolasPage() {
     // Cargar DTEs sin pagar del proveedor cuando la sugerencia SUM tiene proveedor
     useEffect(() => {
         const providerId = suggestionDetail?.dte?.provider?.id ?? suggestionDetail?.dte?.providerId;
-        if (!suggestionModalId || !suggestionDetail || suggestionDetail.type !== 'SUM' || !providerId) {
+        if (!suggestionModalId || !suggestionDetail || !providerId) {
             setSuggestionProviderUnpaidDtes([]);
             return;
         }
@@ -725,7 +732,7 @@ export default function CartolasPage() {
     useEffect(() => {
         const providerRut = suggestionDetail?.dte?.provider?.rut;
         const suggestionTxIds = new Set((suggestionDetail?.transactions || []).map((t: any) => t.id));
-        if (!suggestionModalId || !suggestionDetail || suggestionDetail.type !== 'SUM' || !providerRut) {
+        if (!suggestionModalId || !suggestionDetail || !providerRut) {
             setSuggestionOtherMovementsRut([]);
             return;
         }
@@ -748,21 +755,49 @@ export default function CartolasPage() {
     const handleAcceptSuggestion = async () => {
         if (!suggestionModalId || !suggestionDetail) return;
         const curSuggestionId = suggestionModalId;
+
+        // Transacciones efectivas
         const transactions = (suggestionDetail.transactions || []) as any[];
         const baseTxIds = transactions
             .filter((tx: any) => !suggestionRemovedTxIds.includes(tx.id))
             .map((tx: any) => tx.id);
         const effectiveTxIds = [...baseTxIds, ...suggestionAddedTxIds];
         if (effectiveTxIds.length === 0) return;
-        const effectiveDteId = suggestionOverrideDteId || suggestionDetail.dte?.id;
-        const hasOverrides = suggestionRemovedTxIds.length > 0 || suggestionOverrideDteId != null || suggestionAddedTxIds.length > 0;
+
+        // DTEs efectivos
+        const suggestionDtes = suggestionDetail.type === 'SPLIT' 
+            ? (suggestionDetail.relatedDtes || []) 
+            : (suggestionDetail.dte ? [suggestionDetail.dte] : []);
+            
+        const baseDteIds = suggestionDtes
+            .filter((dte: any) => !suggestionRemovedDteIds.includes(dte.id))
+            .map((dte: any) => dte.id);
+            
+        const effectiveDteIds = [...baseDteIds, ...suggestionAddedDteIds];
+        
+        // Mantener compatibilidad con override individual heredado if any
+        if (suggestionOverrideDteId && !effectiveDteIds.includes(suggestionOverrideDteId)) {
+            effectiveDteIds.push(suggestionOverrideDteId);
+        }
+
+        if (effectiveDteIds.length === 0) return;
+
+        const hasOverrides = suggestionRemovedTxIds.length > 0 || 
+                             suggestionAddedTxIds.length > 0 || 
+                             suggestionRemovedDteIds.length > 0 || 
+                             suggestionAddedDteIds.length > 0 || 
+                             suggestionOverrideDteId != null;
+
         setSuggestionActionLoading(true);
         try {
-            const opts: RequestInit = { method: 'POST' };
-            if (hasOverrides && suggestionDetail.type === 'SUM') {
-                opts.headers = { 'Content-Type': 'application/json' };
-                opts.body = JSON.stringify({ transactionIds: effectiveTxIds, dteId: effectiveDteId });
-            }
+            const opts: RequestInit = { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    transactionIds: effectiveTxIds, 
+                    dteIds: effectiveDteIds 
+                })
+            };
             const res = await authFetch(`${API_URL}/conciliacion/suggestions/${curSuggestionId}/accept`, opts);
             if (res.ok) {
                 setSuggestionModalId(null);
@@ -1180,17 +1215,74 @@ export default function CartolasPage() {
                 </div>
                 <p className="text-sm text-slate-600 mb-4">Los matches se comparten con Conciliación (KPIs), Facturas (DTEs conciliados) y Proveedores (estado de cuenta). Usa el filtro <strong>&quot;Sugerencias&quot;</strong> en la tabla para ver y gestionar todas las sugerencias del motor. Para ver movimientos de todas las cuentas (incl. tarjeta de cr&#233;dito), usa <strong>&quot;Todas las cuentas&quot;</strong> y <strong>&quot;Todas las cartolas del periodo&quot;</strong>.</p>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                     <button
-                        onClick={() => setShowManualMatch(!showManualMatch)}
-                        className="w-full flex items-center justify-between px-4 py-2 bg-white rounded-lg border border-slate-200 hover:bg-slate-50 text-left"
+                        onClick={() => setShowManualMatch(true)}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl shadow-md font-bold hover:bg-indigo-700 transition-colors"
                     >
-                        <span className="font-medium text-slate-700">Match manual</span>
-                        {showManualMatch ? <ChevronUpIcon className="h-5 w-5 text-slate-400" /> : <ChevronDownIcon className="h-5 w-5 text-slate-400" />}
+                        <SparklesIcon className="h-5 w-5" />
+                        Hacer Match Multidocumento (Universal)
                     </button>
-                    {showManualMatch && (
-                        <div className="pl-2">
-                            <ManualMatchForm API_URL={API_URL} onRefresh={() => { refreshData(); invalidateDtesAndProveedores(); }} formatCurrency={formatCurrency} />
+                    <UniversalMatchModal
+                        isOpen={showManualMatch || (USE_NEW_MODAL && !!suggestionModalId && !!suggestionDetail) || (USE_NEW_MODAL && !!reviewMatch) || (USE_NEW_MODAL && !!annotateTx)}
+                        onClose={() => {
+                            setShowManualMatch(false);
+                            if (USE_NEW_MODAL) {
+                                setSuggestionModalId(null);
+                                setSuggestionDetail(null);
+                                closeReviewModal();
+                                setAnnotateTx(null);
+                            }
+                        }}
+                        API_URL={API_URL}
+                        onRefresh={() => { refreshData(); invalidateDtesAndProveedores(); }}
+                        suggestionId={(USE_NEW_MODAL && suggestionModalId) ? suggestionModalId : undefined}
+                        reviewMatchId={(USE_NEW_MODAL && reviewMatch?.id) ? reviewMatch.id : undefined}
+                        matchStatus={(USE_NEW_MODAL && reviewMatch?.status) ? reviewMatch.status : undefined}
+                        mode={
+                            (USE_NEW_MODAL && annotateTx) ? 'ANNOTATE' :
+                            (USE_NEW_MODAL && suggestionModalId) ? 'SUGGESTION' :
+                            (USE_NEW_MODAL && reviewMatch) ? 'REVIEW' : 'MANUAL'
+                        }
+                        onAnnotateSave={
+                            (USE_NEW_MODAL && annotateTx) ? async (note, providerId) => {
+                                const res = await fetch(`${API_URL}/transactions/${annotateTx.id}/review`, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ note, providerId })
+                                });
+                                if (!res.ok) throw new Error('Error al guardar');
+                                
+                                optimisticUpdate((list) =>
+                                    list.map((tx) => (tx.id !== annotateTx.id ? tx : {
+                                        ...tx,
+                                        status: 'UNMATCHED',
+                                        metadata: { 
+                                            ...(tx.metadata as any || {}), 
+                                            reviewNote: note, 
+                                            providerId: providerId,
+                                            reviewedAt: new Date().toISOString()
+                                        },
+                                    })),
+                                );
+                            } : undefined
+                        }
+                        initialTransactions={
+                            USE_NEW_MODAL && suggestionDetail 
+                                ? (suggestionDetail.transactions || [suggestionDetail.transaction].filter(Boolean)) 
+                                : (USE_NEW_MODAL && reviewTx ? [reviewTx] : 
+                                   USE_NEW_MODAL && annotateTx ? [annotateTx] : undefined)
+                        }
+                        initialDtes={
+                            USE_NEW_MODAL && suggestionDetail 
+                                ? (suggestionDetail.type === 'SPLIT' ? (suggestionDetail.relatedDtes || []) : (suggestionDetail.dte ? [suggestionDetail.dte] : [])) 
+                                : (USE_NEW_MODAL && reviewMatch && reviewMatch.dte ? [reviewMatch.dte] : undefined)
+                        }
+                    />
+                    
+                    {USE_NEW_MODAL && suggestionModalId && suggestionDetailLoading && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+                            <ArrowPathIcon className="h-10 w-10 text-white animate-spin" />
                         </div>
                     )}
                 </div>
@@ -1581,7 +1673,7 @@ export default function CartolasPage() {
             </div>
 
             {/* Modal único Cartola: mismo diseño; contenido y acciones según el caso (Anotar | Match | Sugerencia) */}
-            {(annotateTx || (reviewTx && reviewMatch) || suggestionModalId) && (
+            {(!USE_NEW_MODAL && (annotateTx || (reviewTx && reviewMatch) || suggestionModalId)) && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center overflow-hidden p-3" onClick={closeCartolaModal} style={{ touchAction: 'none' }}>
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden relative" onClick={e => e.stopPropagation()}>
                         {/* Header único: título y subtítulo según caso */}
@@ -2012,171 +2104,276 @@ export default function CartolasPage() {
                                 </div>
                             ) : suggestionDetail ? (
                                 <>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="rounded-lg border border-slate-200 p-4 bg-slate-50/50">
-                                            <div className="flex items-center gap-2 mb-2">
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                        {/* Panel Izquierdo: Movimientos Bancarios */}
+                                        <div className="rounded-lg border border-slate-200 p-4 bg-slate-50/50 flex flex-col">
+                                            <div className="flex items-center gap-2 mb-3">
                                                 <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center shrink-0"><BanknotesIcon className="h-3.5 w-3.5 text-red-600" /></div>
                                                 <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Movimiento(s) Bancario(s)</h3>
                                             </div>
-                                            {(suggestionDetail.transactions || []).length === 0 ? (
-                                                <p className="text-sm text-slate-500 italic">Sin movimientos</p>
-                                            ) : (
-                                                <>
+                                            
+                                            <div className="flex-1 overflow-auto min-h-0">
+                                                {(suggestionDetail.transactions || []).length === 0 ? (
+                                                    <p className="text-sm text-slate-500 italic">Sin movimientos</p>
+                                                ) : (
                                                     <ul className="space-y-2">
                                                         {(suggestionDetail.transactions || []).map((tx: any) => {
-                                                            const removed = suggestionDetail.type === 'SUM' && suggestionRemovedTxIds.includes(tx.id);
+                                                            const isRemoved = suggestionRemovedTxIds.includes(tx.id);
                                                             return (
-                                                                <li key={tx.id} className={`text-sm border-b border-slate-100 pb-2 last:border-0 last:pb-0 ${removed ? 'opacity-60 bg-slate-100/80 rounded px-2 -mx-2' : ''}`}>
+                                                                <li key={tx.id} className={`text-sm border-b border-slate-100 pb-2 last:border-0 last:pb-0 ${isRemoved ? 'opacity-40 line-through bg-slate-100' : ''}`}>
                                                                     <div className="flex items-start justify-between gap-2">
-                                                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 min-w-0 flex-1">
+                                                                        <div className="grid grid-cols-2 gap-x-2 gap-y-1 flex-1 min-w-0">
                                                                             <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{formatDate(tx.date)}</p></div>
                                                                             <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-red-700">{formatCurrency(tx.amount)}</p></div>
-                                                                            <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Descripción</span><p className="text-slate-800 truncate" title={tx.description}>{tx.description}</p></div>
+                                                                            <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Descripción</span><p className="text-slate-800 truncate text-[11px]" title={tx.description}>{tx.description}</p></div>
                                                                         </div>
-                                                                        {suggestionDetail.type === 'SUM' && (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => setSuggestionRemovedTxIds((prev) => removed ? prev.filter((id) => id !== tx.id) : [...prev, tx.id])}
-                                                                                className="shrink-0 text-xs font-medium py-1 px-2 rounded border border-slate-200 hover:bg-slate-100 text-slate-600"
-                                                                            >
-                                                                                {removed ? 'Incluir' : 'Quitar'}
-                                                                            </button>
-                                                                        )}
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setSuggestionRemovedTxIds((prev) => isRemoved ? prev.filter((id) => id !== tx.id) : [...prev, tx.id])}
+                                                                            className="shrink-0 text-[10px] font-bold uppercase py-1 px-1.5 rounded border border-slate-200 hover:bg-slate-100 text-slate-600"
+                                                                        >
+                                                                            {isRemoved ? 'Vincular' : 'Quitar'}
+                                                                        </button>
                                                                     </div>
                                                                 </li>
                                                             );
                                                         })}
+                                                        {/* Movimientos Añadidos */}
+                                                        {suggestionOtherMovementsRut.filter(tx => suggestionAddedTxIds.includes(tx.id)).map((tx: any) => (
+                                                            <li key={tx.id} className="text-sm border-b border-slate-100 pb-2 last:border-0 last:pb-0 bg-emerald-50/50 rounded px-1">
+                                                                <div className="flex items-start justify-between gap-2">
+                                                                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 flex-1 min-w-0">
+                                                                        <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-emerald-800">{formatDate(tx.date)}</p></div>
+                                                                        <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-emerald-700">{formatCurrency(tx.amount)}</p></div>
+                                                                        <div className="col-span-2"><p className="text-emerald-700 text-[10px] italic">Añadido manualmente</p></div>
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setSuggestionAddedTxIds(prev => prev.filter(id => id !== tx.id))}
+                                                                        className="shrink-0 text-[10px] font-bold uppercase py-1 px-1.5 rounded border border-emerald-200 hover:bg-emerald-100 text-emerald-600"
+                                                                    >
+                                                                        Quitar
+                                                                    </button>
+                                                                </div>
+                                                            </li>
+                                                        ))}
                                                     </ul>
-                                                    {suggestionDetail.type === 'SUM' && (suggestionDetail.transactions || []).length > 0 && (() => {
-                                                        const effectiveTxs = (suggestionDetail.transactions as any[]).filter((tx: any) => !suggestionRemovedTxIds.includes(tx.id));
+                                                )}
+                                            </div>
+
+                                            <div className="mt-3 pt-3 border-t-2 border-slate-200 bg-white/50 p-2 rounded-lg">
+                                                <p className="text-xs text-slate-500 uppercase tracking-wide">Total Movimientos</p>
+                                                <p className="text-xl font-bold text-slate-800">
+                                                    {(() => {
+                                                        const effectiveTxs = (suggestionDetail.transactions || []).filter((tx: any) => !suggestionRemovedTxIds.includes(tx.id));
                                                         const addedTxs = suggestionOtherMovementsRut.filter((tx: any) => suggestionAddedTxIds.includes(tx.id));
-                                                        const total = effectiveTxs.reduce((s: number, tx: any) => s + Math.abs(Number(tx.amount)), 0)
-                                                            + addedTxs.reduce((s: number, tx: any) => s + Math.abs(Number(tx.amount)), 0);
-                                                        return (
-                                                            <div className="mt-3 pt-3 border-t border-slate-200">
-                                                                <p className="text-xs text-slate-500 uppercase tracking-wide">Total movimientos {effectiveTxs.length + addedTxs.length > 0 ? `(${effectiveTxs.length + addedTxs.length})` : ''}</p>
-                                                                <p className="text-lg font-bold text-slate-800">{formatCurrency(total)}</p>
-                                                            </div>
-                                                        );
+                                                        return formatCurrency(effectiveTxs.reduce((s: number, tx: any) => s + Math.abs(Number(tx.amount)), 0)
+                                                                            + addedTxs.reduce((s: number, tx: any) => s + Math.abs(Number(tx.amount)), 0));
                                                     })()}
-                                                    {suggestionDetail.type === 'SUM' && (suggestionDetail.dte?.provider?.rut) && (
-                                                        <div className="mt-3 pt-3 border-t border-slate-200">
-                                                            <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Otros movimientos a este RUT</p>
-                                                            {suggestionOtherMovementsRutLoading ? (
-                                                                <p className="text-sm text-slate-500">Cargando…</p>
-                                                            ) : suggestionOtherMovementsRut.length === 0 ? (
-                                                                <p className="text-sm text-slate-500 italic">No hay otros movimientos pendientes a este RUT</p>
+                                                </p>
+                                            </div>
+
+                                            {/* Buscador de otros movimientos del mismo RUT */}
+                                            {suggestionDetail.dte?.provider?.rut && (
+                                                <div className="mt-4 pt-4 border-t border-slate-200">
+                                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+                                                        <PlusIcon className="h-3 w-3" /> Otros movimientos a este RUT
+                                                    </p>
+                                                    {suggestionOtherMovementsRutLoading ? (
+                                                        <p className="text-[10px] text-slate-400">Cargando movimientos...</p>
+                                                    ) : suggestionOtherMovementsRut.filter(tx => !suggestionAddedTxIds.includes(tx.id)).length === 0 ? (
+                                                        <p className="text-[10px] text-slate-400 italic">No hay más movimientos pendientes</p>
+                                                    ) : (
+                                                        <div className="max-h-32 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                                                            {suggestionOtherMovementsRut.filter(tx => !suggestionAddedTxIds.includes(tx.id)).map((tx: any) => (
+                                                                <button
+                                                                    key={tx.id}
+                                                                    onClick={() => setSuggestionAddedTxIds(prev => [...prev, tx.id])}
+                                                                    className="w-full text-left text-[10px] p-1.5 hover:bg-slate-100 rounded border border-transparent hover:border-slate-200 transition-all flex justify-between items-center group"
+                                                                >
+                                                                    <div className="truncate flex-1">
+                                                                        <span className="font-bold text-slate-700">{formatDate(tx.date)}</span>
+                                                                        <span className="mx-1 text-slate-300">|</span>
+                                                                        <span className="text-slate-600">{tx.description}</span>
+                                                                    </div>
+                                                                    <span className="font-bold text-red-600 group-hover:text-red-700 ml-2">{formatCurrency(tx.amount)}</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Panel Derecho: Facturas DTE */}
+                                        <div className="rounded-lg border border-indigo-200 p-4 bg-indigo-50/30 flex flex-col">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center shrink-0"><DocumentChartBarIcon className="h-3.5 w-3.5 text-indigo-600" /></div>
+                                                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Factura(s) (DTE)</h3>
+                                            </div>
+                                            
+                                            <div className="flex-1 overflow-auto min-h-0">
+                                                {(() => {
+                                                    const initialDtes = suggestionDetail.type === 'SPLIT' 
+                                                        ? (suggestionDetail.relatedDtes || []) 
+                                                        : (suggestionDetail.dte ? [suggestionDetail.dte] : []);
+                                                    
+                                                    const effectiveDtes = initialDtes.filter((d: any) => !suggestionRemovedDteIds.includes(d.id));
+                                                    const addedDtes = suggestionProviderUnpaidDtes.filter((d: any) => suggestionAddedDteIds.includes(d.id));
+                                                    const allSelectedDtes = [...effectiveDtes, ...addedDtes];
+
+                                                    return (
+                                                        <>
+                                                            {allSelectedDtes.length === 0 ? (
+                                                                <p className="text-sm text-slate-500 italic mb-4">No hay facturas seleccionadas</p>
                                                             ) : (
                                                                 <ul className="space-y-2">
-                                                                    {suggestionOtherMovementsRut.map((tx: any) => {
-                                                                        const added = suggestionAddedTxIds.includes(tx.id);
+                                                                    {initialDtes.map((dte: any) => {
+                                                                        const isRemoved = suggestionRemovedDteIds.includes(dte.id);
                                                                         return (
-                                                                            <li key={tx.id} className={`text-sm border-b border-slate-100 pb-2 last:border-0 ${added ? 'bg-emerald-50/80 rounded px-2 -mx-2' : ''}`}>
-                                                                                <div className="flex items-start justify-between gap-2">
-                                                                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 min-w-0 flex-1">
-                                                                                        <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{formatDate(tx.date)}</p></div>
-                                                                                        <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-red-700">{formatCurrency(tx.amount)}</p></div>
-                                                                                        <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Descripción</span><p className="text-slate-800 truncate" title={tx.description}>{tx.description}</p></div>
+                                                                            <li key={dte.id} className={`text-sm border-b border-indigo-100 pb-2 last:border-0 last:pb-0 ${isRemoved ? 'opacity-40 line-through bg-slate-50' : ''}`}>
+                                                                                <div className="flex justify-between items-start gap-2">
+                                                                                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 flex-1 min-w-0">
+                                                                                        <div><span className="text-[10px] text-slate-400 uppercase">Folio</span><p className="font-bold text-indigo-700">{dte.folio} T{dte.type}</p></div>
+                                                                                        <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-indigo-700">{formatCurrency(dte.totalAmount)}</p></div>
+                                                                                        <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase font-medium">Fecha Emisión</span><p className="text-slate-600 truncate text-[11px]">{formatDate(dte.issuedDate)}</p></div>
                                                                                     </div>
-                                                                                    <button
+                                                                                    <button 
                                                                                         type="button"
-                                                                                        onClick={() => setSuggestionAddedTxIds((prev) => added ? prev.filter((id) => id !== tx.id) : [...prev, tx.id])}
-                                                                                        className="shrink-0 text-xs font-medium py-1 px-2 rounded border border-slate-200 hover:bg-slate-100 text-slate-600"
+                                                                                        onClick={() => setSuggestionRemovedDteIds(prev => isRemoved ? prev.filter(id => id !== dte.id) : [...prev, dte.id])}
+                                                                                        className="shrink-0 text-[10px] font-bold uppercase py-1 px-1.5 rounded border border-indigo-200 hover:bg-indigo-100 text-indigo-600"
                                                                                     >
-                                                                                        {added ? 'Quitar' : 'Añadir'}
+                                                                                        {isRemoved ? 'Vincular' : 'Quitar'}
                                                                                     </button>
                                                                                 </div>
                                                                             </li>
                                                                         );
                                                                     })}
+                                                                    {addedDtes.map((dte: any) => (
+                                                                        <li key={dte.id} className="text-sm border-b border-indigo-100 pb-2 last:border-0 last:pb-0 bg-emerald-50/50 rounded px-1">
+                                                                            <div className="flex justify-between items-start gap-2">
+                                                                                <div className="grid grid-cols-2 gap-x-2 gap-y-1 flex-1 min-w-0">
+                                                                                    <div><span className="text-[10px] text-slate-400 uppercase">Folio</span><p className="font-bold text-emerald-700">{dte.folio} T{dte.type}</p></div>
+                                                                                    <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-emerald-700">{formatCurrency(dte.totalAmount)}</p></div>
+                                                                                    <div className="col-span-2"><p className="text-emerald-700 text-[10px] italic">Añadida manualmente</p></div>
+                                                                                </div>
+                                                                                <button 
+                                                                                    type="button"
+                                                                                    onClick={() => setSuggestionAddedDteIds(prev => prev.filter(id => id !== dte.id))}
+                                                                                    className="shrink-0 text-[10px] font-bold uppercase py-1 px-1.5 rounded border border-emerald-200 hover:bg-emerald-100 text-emerald-600"
+                                                                                >
+                                                                                    Quitar
+                                                                                </button>
+                                                                            </div>
+                                                                        </li>
+                                                                    ))}
                                                                 </ul>
                                                             )}
-                                                        </div>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                        <div className="rounded-lg border border-indigo-200 p-4 bg-indigo-50/30">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center shrink-0"><DocumentChartBarIcon className="h-3.5 w-3.5 text-indigo-600" /></div>
-                                                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">Factura(s) (DTE)</h3>
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
-                                            {suggestionDetail.type === 'SPLIT' && (suggestionDetail.relatedDtes || []).length > 0 ? (
-                                                <>
-                                                    <ul className="space-y-2">
-                                                        {(suggestionDetail.relatedDtes || []).map((dte: any) => (
-                                                            <li key={dte.id} className="text-sm border-b border-indigo-100 pb-2 last:border-0 last:pb-0">
-                                                                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                                                                    <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{formatDate(dte.issuedDate)}</p></div>
-                                                                    <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-indigo-700">{formatCurrency(dte.totalAmount)}</p></div>
-                                                                    <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Proveedor</span><p className="text-slate-800 truncate" title={dte.provider?.name}>{dte.provider?.name || '—'}</p></div>
-                                                                    <div>Folio <span className="font-bold text-indigo-600">{dte.folio}</span> T{dte.type}</div>
-                                                                </div>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                    <div className="mt-3 pt-3 border-t border-indigo-200">
-                                                        <p className="text-xs text-slate-500 uppercase tracking-wide">Total Facturas ({(suggestionDetail.relatedDtes || []).length})</p>
-                                                        <p className="text-lg font-bold text-indigo-700">{formatCurrency((suggestionDetail.relatedDtes || []).reduce((s: number, dte: any) => s + Number(dte.totalAmount || 0), 0))}</p>
-                                                    </div>
-                                                </>
-                                            ) : (() => {
-                                                const displayDte = suggestionDetail.type === 'SUM' && suggestionOverrideDteId
-                                                    ? (suggestionProviderUnpaidDtes.find((d: any) => d.id === suggestionOverrideDteId) || suggestionDetail.dte)
-                                                    : suggestionDetail.dte;
-                                                return displayDte ? (
-                                                    <div className="space-y-2">
-                                                        {suggestionDetail.type === 'SUM' && (suggestionProviderUnpaidDtes.length > 0 || suggestionProviderUnpaidDtesLoading) && (
-                                                            <div className="mb-2">
-                                                                <label className="text-[10px] text-slate-500 uppercase tracking-wide block mb-1">Usar DTE de este proveedor</label>
-                                                                <select
-                                                                    value={suggestionOverrideDteId || ''}
-                                                                    onChange={(e) => setSuggestionOverrideDteId(e.target.value || null)}
-                                                                    className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
-                                                                >
-                                                                    <option value="">Sugerido: Folio {suggestionDetail.dte?.folio} (T{suggestionDetail.dte?.type})</option>
-                                                                    {suggestionProviderUnpaidDtesLoading ? (
-                                                                        <option disabled>Cargando…</option>
-                                                                    ) : (
-                                                                        suggestionProviderUnpaidDtes.filter((d: any) => d.id !== suggestionDetail.dte?.id).map((d: any) => (
-                                                                            <option key={d.id} value={d.id}>Folio {d.folio} T{d.type} — {formatCurrency(d.totalAmount)} — {formatDate(d.issuedDate)}</option>
-                                                                        ))
-                                                                    )}
-                                                                </select>
-                                                            </div>
-                                                        )}
-                                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                                                            <div><span className="text-[10px] text-slate-400 uppercase">Fecha</span><p className="font-semibold text-slate-800">{formatDate(displayDte.issuedDate)}</p></div>
-                                                            <div><span className="text-[10px] text-slate-400 uppercase">Monto</span><p className="font-bold text-indigo-700">{formatCurrency(displayDte.totalAmount)}</p></div>
-                                                            <div className="col-span-2"><span className="text-[10px] text-slate-400 uppercase">Proveedor</span><p className="text-slate-800 truncate" title={displayDte.provider?.name}>{displayDte.provider?.name || '—'}</p></div>
-                                                            <div>Folio <span className="font-bold text-indigo-600">{displayDte.folio}</span></div>
-                                                            <div>T{displayDte.type}</div>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-sm text-slate-500 italic">Sin DTE</p>
-                                                );
-                                            })()}
+
+                                            <div className="mt-3 pt-3 border-t-2 border-indigo-200 bg-white/50 p-2 rounded-lg">
+                                                <p className="text-xs text-slate-500 uppercase tracking-wide">Total Facturas</p>
+                                                <p className="text-xl font-black text-indigo-800">
+                                                    {(() => {
+                                                        const initialDtes = suggestionDetail.type === 'SPLIT' 
+                                                            ? (suggestionDetail.relatedDtes || []) 
+                                                            : (suggestionDetail.dte ? [suggestionDetail.dte] : []);
+                                                        const effectiveDtes = initialDtes.filter((d: any) => !suggestionRemovedDteIds.includes(d.id));
+                                                        const addedDtes = suggestionProviderUnpaidDtes.filter((d: any) => suggestionAddedDteIds.includes(d.id));
+                                                        return formatCurrency([...effectiveDtes, ...addedDtes].reduce((s: number, dte: any) => s + Number(dte.totalAmount || 0), 0));
+                                                    })()}
+                                                </p>
+                                            </div>
+
+                                            {/* Selector de otros DTEs del mismo proveedor */}
+                                            <div className="mt-4 pt-4 border-t border-slate-200">
+                                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+                                                    <MagnifyingGlassIcon className="h-3 w-3" /> Añadir otra factura del proveedor
+                                                </p>
+                                                <select
+                                                    value=""
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        if (val && !suggestionAddedDteIds.includes(val)) {
+                                                            setSuggestionAddedDteIds(prev => [...prev, val]);
+                                                        }
+                                                    }}
+                                                    className="w-full text-[10px] border border-slate-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-1 focus:ring-indigo-500"
+                                                >
+                                                    <option value="" disabled>Seleccionar factura...</option>
+                                                    {suggestionProviderUnpaidDtesLoading ? (
+                                                        <option disabled>Cargando facturas...</option>
+                                                    ) : (
+                                                        suggestionProviderUnpaidDtes
+                                                            .filter(d => !suggestionAddedDteIds.includes(d.id) && !((suggestionDetail.relatedDtes || []).some((r: any) => r.id === d.id) || suggestionDetail.dte?.id === d.id))
+                                                            .map((d: any) => (
+                                                                <option key={d.id} value={d.id}>
+                                                                    Folio {d.folio} (T{d.type}) — {formatCurrency(d.totalAmount)}
+                                                                </option>
+                                                            ))
+                                                    )}
+                                                </select>
+                                                {suggestionProviderUnpaidDtes.length === 0 && !suggestionProviderUnpaidDtesLoading && (
+                                                    <p className="text-[9px] text-slate-400 mt-1 italic italic">No hay más facturas pendientes para este proveedor</p>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                    {suggestionDetail.type === 'SUM' && suggestionDetail.dte && (() => {
-                                        const effectiveTxsSum = (suggestionDetail.transactions as any[]).filter((tx: any) => !suggestionRemovedTxIds.includes(tx.id));
+
+                                    {/* Comparativa Final (Cuadratura) */}
+                                    {(() => {
+                                        const effectiveTxsSum = (suggestionDetail.transactions || []).filter((tx: any) => !suggestionRemovedTxIds.includes(tx.id));
                                         const addedTxsSum = suggestionOtherMovementsRut.filter((tx: any) => suggestionAddedTxIds.includes(tx.id));
                                         const totalMov = effectiveTxsSum.reduce((s: number, tx: any) => s + Math.abs(Number(tx.amount)), 0)
                                             + addedTxsSum.reduce((s: number, tx: any) => s + Math.abs(Number(tx.amount)), 0);
-                                        const displayDteSum = suggestionOverrideDteId ? (suggestionProviderUnpaidDtes.find((d: any) => d.id === suggestionOverrideDteId) || suggestionDetail.dte) : suggestionDetail.dte;
-                                        const montoDte = Number(displayDteSum?.totalAmount ?? 0);
-                                        const diff = Math.abs(totalMov - montoDte);
+
+                                        const initialDtesS = suggestionDetail.type === 'SPLIT' ? (suggestionDetail.relatedDtes || []) : (suggestionDetail.dte ? [suggestionDetail.dte] : []);
+                                        const effectiveDteS = initialDtesS.filter((d: any) => !suggestionRemovedDteIds.includes(d.id));
+                                        const addedDteS = suggestionProviderUnpaidDtes.filter((d: any) => suggestionAddedDteIds.includes(d.id));
+                                        const totalFacturas = [...effectiveDteS, ...addedDteS].reduce((s: number, dte: any) => s + Number(dte.totalAmount || 0), 0);
+
+                                        const diff = totalMov - totalFacturas;
+                                        const hasDiff = Math.abs(diff) > 2;
+
                                         return (
-                                            <div className="mt-4 p-3 rounded-lg bg-slate-100 border border-slate-200 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                                                <span className="text-slate-600">Total movimientos:</span>
-                                                <span className="font-bold text-slate-800">{formatCurrency(totalMov)}</span>
-                                                <span className="text-slate-400">|</span>
-                                                <span className="text-slate-600">Monto DTE:</span>
-                                                <span className="font-bold text-indigo-700">{formatCurrency(montoDte)}</span>
-                                                <span className="text-slate-400">|</span>
-                                                <span className="text-slate-600">Diferencia:</span>
-                                                <span className={`font-bold ${diff <= 1 ? 'text-emerald-600' : 'text-amber-700'}`}>{formatCurrency(diff)}</span>
+                                            <div className={`mt-6 p-4 rounded-xl border-2 transition-all ${hasDiff ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200 shadow-xl shadow-emerald-600/10'}`}>
+                                                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                                                    <div>
+                                                        <h4 className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-2">Cuadratura Final</h4>
+                                                        <div className="flex items-center gap-4 md:gap-8">
+                                                            <div>
+                                                                <span className="text-[9px] text-slate-400 block uppercase font-bold">Banco</span>
+                                                                <p className="text-xl font-bold text-slate-800 tracking-tight">{formatCurrency(totalMov)}</p>
+                                                            </div>
+                                                            <div className="text-slate-300 font-light text-3xl">−</div>
+                                                            <div>
+                                                                <span className="text-[9px] text-slate-400 block uppercase font-bold">Facturas</span>
+                                                                <p className="text-xl font-bold text-indigo-700 tracking-tight">{formatCurrency(totalFacturas)}</p>
+                                                            </div>
+                                                            <div className="text-slate-300 font-light text-3xl">=</div>
+                                                            <div>
+                                                                <span className="text-[9px] text-slate-400 block uppercase font-bold">Diferencia</span>
+                                                                <p className={`text-xl font-black tracking-tight ${hasDiff ? 'text-amber-600' : 'text-emerald-600'}`}>{formatCurrency(diff)}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-center md:text-right">
+                                                        {hasDiff ? (
+                                                            <>
+                                                                <div className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1 rounded-full inline-block mb-1">Monto no coincide ⚠️</div>
+                                                                <p className="text-[10px] text-amber-600 font-medium">Asegúrate de que la suma sea correcta <br/>antes de aceptar.</p>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <div className="bg-emerald-600 text-white text-[10px] font-bold px-3 py-1 rounded-full inline-block mb-1 animate-pulse">Match Perfecto ✨</div>
+                                                                <p className="text-[10px] text-emerald-600 font-medium">La conciliación está perfectamente <br/>cuadrada.</p>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
                                         );
                                     })()}
