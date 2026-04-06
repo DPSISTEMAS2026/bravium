@@ -106,14 +106,23 @@ export function UniversalMatchModal({
             setUnpaidDtes([]);
             setTxSearch('');
             setDteSearch('');
-            setNote('');
-            setProviderSearch('');
             setProviderResults([]);
             setProviderInfo(null);
             
-            // Auto-detect provider if we have initial DTEs
+            // Pre-populate existing annotation if opening in ANNOTATE mode
+            const firstTx = txs[0];
+            if (mode === 'ANNOTATE' && firstTx?.metadata?.reviewNote) {
+                setNote(firstTx.metadata.reviewNote);
+            } else {
+                setNote('');
+            }
+            
+            // Auto-detect provider: from initial DTEs or from existing annotation
             if (initialDtes && initialDtes.length > 0 && initialDtes[0].provider) {
                 setSelectedProvider(initialDtes[0].provider);
+            } else if (mode === 'ANNOTATE' && firstTx?.metadata?.providerName) {
+                setSelectedProvider({ name: firstTx.metadata.providerName, id: firstTx.metadata.providerId });
+                setProviderSearch(firstTx.metadata.providerName);
             } else {
                 setSelectedProvider(null);
             }
@@ -542,6 +551,18 @@ export function UniversalMatchModal({
                                             <div className="flex-1 min-w-0">
                                                 <div className="text-sm font-semibold text-slate-800 truncate">{tx.description}</div>
                                                 <div className="text-xs text-slate-500">{formatDate(tx.date)}</div>
+                                                {tx.metadata?.reviewNote && (
+                                                    <div className="mt-1 flex items-center gap-1">
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 max-w-[220px] truncate" title={tx.metadata.reviewNote}>
+                                                            💬 {tx.metadata.reviewNote}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                {tx.metadata?.providerName && (
+                                                    <span className="inline-flex items-center text-[10px] font-medium text-slate-500 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 mt-0.5">
+                                                        🏢 {tx.metadata.providerName}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="flex items-center gap-3">
                                                 <span className="font-bold text-indigo-700">{formatCurrency(tx.amount)}</span>
