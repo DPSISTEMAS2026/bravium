@@ -6,7 +6,7 @@ services:
     name: bravium-api
     env: node
     plan: starter # Se recomienda starter para que no se duerma (tareas de match en segundo plano)
-    buildCommand: "npm ci && npx prisma generate && npm run build"
+    buildCommand: "npm ci && npx prisma generate && npx prisma db push --accept-data-loss && npm run build"
     startCommand: "npm run start:prod"
     envVars:
       - key: DATABASE_URL
