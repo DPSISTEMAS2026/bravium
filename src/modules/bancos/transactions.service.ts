@@ -355,24 +355,27 @@ export class TransactionsService {
      * Lista TODAS las cartolas (sourceFile) en la base de datos, con cuenta bancaria y conteo.
      * Sirve para decidir qué 6 archivos mantener (3 CC + 3 TC) antes de la limpieza.
      */
-    async getAllSourceFiles(): Promise<{
+    async getAllSourceFiles(organizationId?: string): Promise<{
         filename: string;
         bankAccountId: string;
         bankName: string;
         accountNumber: string;
         count: number;
     }[]> {
-        const rows = await this.prisma.$queryRaw<
-            { filename: string; bankAccountId: string; bankName: string; accountNumber: string; count: bigint }[]
-        >`
+        const query = `
             SELECT metadata->>'sourceFile' AS filename, bt."bankAccountId", ba."bankName", ba."accountNumber", COUNT(*)::bigint AS count
             FROM bank_transactions bt
             JOIN bank_accounts ba ON ba.id = bt."bankAccountId"
             WHERE metadata->>'sourceFile' IS NOT NULL AND metadata->>'sourceFile' != ''
+            ${organizationId ? 'AND ba."organizationId" = $1' : ''}
             GROUP BY metadata->>'sourceFile', bt."bankAccountId", ba."bankName", ba."accountNumber"
             ORDER BY ba."bankName", filename
         `;
-        return rows.map((r) => ({
+        const rows = organizationId 
+            ? await this.prisma.$queryRawUnsafe<any>(query, organizationId)
+            : await this.prisma.$queryRawUnsafe<any>(query);
+
+        return rows.map((r: any) => ({
             filename: r.filename,
             bankAccountId: r.bankAccountId,
             bankName: r.bankName,

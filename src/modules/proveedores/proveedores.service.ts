@@ -25,78 +25,77 @@ export class ProveedoresService {
      * Obtener proveedores con información de deuda (paginado)
      */
     async getAllProviders(search?: string, page: number = 1, limit: number = ProveedoresService.DEFAULT_PAGE_SIZE, organizationId?: string, year?: string, statusFilter?: string, month?: string) {
-        const where: any = search
-            ? {
-                OR: [
-                    { name: { contains: search, mode: 'insensitive' as const } },
-                    { rut: { contains: search, mode: 'insensitive' as const } },
-                ],
+        try {
+            const where: any = search
+                ? {
+                    OR: [
+                        { name: { contains: search, mode: 'insensitive' as const } },
+                        { rut: { contains: search, mode: 'insensitive' as const } },
+                    ],
+                }
+                : {};
+            if (organizationId) {
+                where.organizationId = organizationId;
             }
-            : {};
-        if (organizationId) {
-            where.organizationId = organizationId;
-        }
- 
-        let minDate = this.getMinDate();
-        let maxDate: Date | undefined = undefined;
- 
-        if (year && month && month !== 'ALL') {
-            const m = parseInt(month, 10);
-            minDate = new Date(parseInt(year, 10), m - 1, 1);
-            maxDate = new Date(parseInt(year, 10), m, 0, 23, 59, 59, 999);
-        } else if (year) {
-            minDate = new Date(`${year}-01-01`);
-            maxDate = new Date(`${year}-12-31T23:59:59.999Z`);
-        }
-
-        const skip = Math.max(0, (page - 1) * limit);
-        const take = Math.min(100, Math.max(1, limit));
-
-        const dteFilter: any = {};
-        if (minDate) dteFilter.gte = minDate;
-        if (maxDate) dteFilter.lte = maxDate;
-
-        // Si hay un filtro de estado, debemos traer todos para calcular las métricas antes de paginar en memoria
-        const applyTakeSkip = !statusFilter || statusFilter === 'ALL';
-
-        const [providers, dbTotal] = await Promise.all([
-            this.prisma.provider.findMany({
-                where,
-                skip: applyTakeSkip ? skip : undefined,
-                take: applyTakeSkip ? take : undefined,
-                include: {
-                    dtes: {
-                        where: Object.keys(dteFilter).length > 0 ? { issuedDate: dteFilter } : undefined,
-                        select: {
-                            id: true,
-                            folio: true,
-                            totalAmount: true,
-                            outstandingAmount: true,
-                            paymentStatus: true,
-                            issuedDate: true,
-                            dueDate: true,
+     
+            let minDate = this.getMinDate();
+            let maxDate: Date | undefined = undefined;
+     
+            if (year && month && month !== 'ALL') {
+                const m = parseInt(month, 10);
+                minDate = new Date(parseInt(year, 10), m - 1, 1);
+                maxDate = new Date(parseInt(year, 10), m, 0, 23, 59, 59, 999);
+            } else if (year) {
+                minDate = new Date(`${year}-01-01`);
+                maxDate = new Date(`${year}-12-31T23:59:59.999Z`);
+            }
+    
+            const skip = Math.max(0, (page - 1) * limit);
+            const take = Math.min(100, Math.max(1, limit));
+    
+            const dteFilter: any = {};
+            if (minDate) dteFilter.gte = minDate;
+            if (maxDate) dteFilter.lte = maxDate;
+    
+            const applyTakeSkip = !statusFilter || statusFilter === 'ALL';
+    
+            const [providers, dbTotal] = await Promise.all([
+                this.prisma.provider.findMany({
+                    where,
+                    skip: applyTakeSkip ? skip : undefined,
+                    take: applyTakeSkip ? take : undefined,
+                    include: {
+                        dtes: {
+                            where: Object.keys(dteFilter).length > 0 ? { issuedDate: dteFilter } : undefined,
+                            select: {
+                                id: true,
+                                folio: true,
+                                totalAmount: true,
+                                outstandingAmount: true,
+                                paymentStatus: true,
+                                issuedDate: true,
+                                dueDate: true,
+                            },
+                        },
+                        _count: {
+                            select: {
+                                dtes: Object.keys(dteFilter).length > 0 ? { where: { issuedDate: dteFilter } } : true,
+                                payments: true,
+                            },
                         },
                     },
-                    _count: {
-                        select: {
-                            dtes: Object.keys(dteFilter).length > 0 ? { where: { issuedDate: dteFilter } } : true,
-                            payments: true,
-                        },
+                    orderBy: {
+                        name: 'asc',
                     },
-                },
-                orderBy: {
-                    name: 'asc',
-                },
-            }),
-            this.prisma.provider.count({ where }),
-        ]);
-
-        // Calcular métricas por proveedor
-        let data = providers.map((provider) => {
-            const totalDebt = provider.dtes.reduce(
-                (sum, dte) => sum + dte.outstandingAmount,
-                0
-            );
+                }),
+                this.prisma.provider.count({ where }),
+            ]);
+    
+            let data = providers.map((provider) => {
+                const totalDebt = provider.dtes.reduce(
+                    (sum, dte) => sum + dte.outstandingAmount,
+                    0
+                );
             const totalInvoiced = provider.dtes.reduce(
                 (sum, dte) => sum + dte.totalAmount,
                 0
@@ -162,14 +161,18 @@ export class ProveedoresService {
             data = data.slice(skip, skip + take);
         }
 
-        const totalPages = Math.ceil(total / take);
-        return {
-            data,
-            total,
-            page,
-            limit: take,
-            totalPages,
-        };
+            const totalPages = Math.ceil(total / take);
+            return {
+                data,
+                total,
+                page,
+                limit: take,
+                totalPages,
+            };
+        } catch (error: any) {
+            this.logger.error(`Error in getAllProviders: ${error.message}`, error.stack);
+            throw error;
+        }
     }
 
     /**

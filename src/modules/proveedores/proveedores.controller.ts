@@ -1,8 +1,12 @@
-import { Controller, Get, Patch, Param, Query, Body, Logger, Res, Req, HttpStatus, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Patch, Param, Query, Body, Logger, Res, Req, HttpStatus, NotFoundException, UseGuards } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { ProveedoresService } from './proveedores.service';
 import { PagoMasivoExportService } from './services/pago-masivo-export.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { OrganizationGuard } from '../../common/guards/organization.guard';
 
+@UseGuards(JwtAuthGuard, RolesGuard, OrganizationGuard)
 @Controller('proveedores')
 export class ProveedoresController {
     private readonly logger = new Logger(ProveedoresController.name);

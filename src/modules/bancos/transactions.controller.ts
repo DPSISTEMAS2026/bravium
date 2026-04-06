@@ -1,6 +1,11 @@
-import { Controller, Get, Post, Patch, Query, Param, Body, Req, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Query, Param, Body, Req, Logger, BadRequestException, InternalServerErrorException, UseGuards } from '@nestjs/common';
 import { TransactionsService, TransactionFilters } from './transactions.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { OrganizationGuard } from '../../common/guards/organization.guard';
+import { Request } from 'express';
 
+@UseGuards(JwtAuthGuard, RolesGuard, OrganizationGuard)
 @Controller('transactions')
 export class TransactionsController {
     private readonly logger = new Logger(TransactionsController.name);
@@ -13,8 +18,9 @@ export class TransactionsController {
      * Para elegir qué 6 mantener (3 CC + 3 TC) antes de la limpieza.
      */
     @Get('source-files-all')
-    async getAllSourceFiles() {
-        return this.transactionsService.getAllSourceFiles();
+    async getAllSourceFiles(@Req() req: Request) {
+        const organizationId = (req as any).user?.organizationId;
+        return this.transactionsService.getAllSourceFiles(organizationId);
     }
 
     /**
