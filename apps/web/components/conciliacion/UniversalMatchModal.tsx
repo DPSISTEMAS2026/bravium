@@ -630,7 +630,7 @@ export function UniversalMatchModal({
                                                         {dte.provider?.name || 'Sin Proveedor'}
                                                     </div>
                                                     <div className="text-xs text-slate-500 flex items-center gap-2">
-                                                        Folio: {dte.folio}
+                                                        Folio: {dte.folio} · {formatDate(dte.issuedDate)}
                                                         {isMatched && <span className="text-amber-600 font-bold">⚠️ Reasignará vínculo</span>}
                                                     </div>
                                                 </div>
