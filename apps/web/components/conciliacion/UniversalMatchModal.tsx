@@ -299,6 +299,8 @@ export function UniversalMatchModal({
             }
 
             let res;
+            let isManualFallback = false;
+
             if (suggestionId) {
                 res = await authFetch(`${API_URL}/conciliacion/suggestions/${suggestionId}/accept`, {
                     method: 'POST',
@@ -310,13 +312,27 @@ export function UniversalMatchModal({
                         }
                     }),
                 });
+
+                // Si la sugerencia ya fue eliminada o borrada, hacemos un fallback silencioso a conciliación manual
+                if (res.status === 404 || res.status === 400) {
+                    const errorText = await res.text().catch(() => '');
+                    if (errorText.includes('no encontrada') || errorText.includes('procesada') || res.status === 404) {
+                        isManualFallback = true;
+                    }
+                }
             } else if (reviewMatchId) {
                 res = await authFetch(`${API_URL}/conciliacion/matches/${reviewMatchId}/status`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: 'CONFIRMED' }),
                 });
-            } else {
+            } 
+            
+            // Si no habia sugerencia, o la sugerencia original ya no existía (fallback manual)
+            if (!suggestionId || isManualFallback) {
+                if (isManualFallback) {
+                    console.log('Haciendo fallback a match manual porque la sugerencia ya no existe');
+                }
                 res = await authFetch(`${API_URL}/conciliacion/matches/manual`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
