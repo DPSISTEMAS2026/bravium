@@ -1,0 +1,543 @@
+﻿--- Matches created today ---
+[
+  {
+    "id": "c3b19ee4-7b99-4c65-8e69-df59d394aedd",
+    "transactionId": "461d2c70-2aa7-4281-8b6d-3baabdad8763",
+    "paymentId": null,
+    "dteId": "ab26deb5-e49d-4338-9b4e-1eadc8926a5a",
+    "origin": "AUTOMATIC",
+    "status": "DRAFT",
+    "confidence": 0.55,
+    "ruleApplied": "AmountMatch - Monto ┬▒$10 (exacto) | 49d diferencia",
+    "notes": null,
+    "confirmedAt": null,
+    "confirmedBy": null,
+    "createdAt": "2026-04-02T20:53:01.866Z",
+    "createdBy": null,
+    "transaction": {
+      "description": "MP *RIDESHOP",
+      "amount": -199990,
+      "date": "2026-01-15T12:00:00.000Z"
+    },
+    "dte": {
+      "folio": 778,
+      "totalAmount": 200000
+    }
+  },
+  {
+    "id": "b062f7ad-810a-4f16-91d1-e5fc47f71026",
+    "transactionId": "b9d2bccd-ca38-4038-8ecc-99a7a8091907",
+    "paymentId": null,
+    "dteId": "6159f80b-55f4-4b2a-9597-08b7f3033ea5",
+    "origin": "AUTOMATIC",
+    "status": "DRAFT",
+    "confidence": 0.56,
+    "ruleApplied": "AmountMatch - Monto ┬▒$47 | 30d diferencia",
+    "notes": null,
+    "confirmedAt": null,
+    "confirmedBy": null,
+    "createdAt": "2026-04-02T20:53:01.843Z",
+    "createdBy": null,
+    "transaction": {
+      "description": "MP *RELANI",
+      "amount": -89990,
+      "date": "2025-12-23T12:00:00.000Z"
+    },
+    "dte": {
+      "folio": 32,
+      "totalAmount": 89943
+    }
+  },
+  {
+    "id": "3837dd6d-8be7-447d-92c6-f14173fbcf8c",
+    "transactionId": "848e3b31-08a5-4fd0-8bb2-f45cc965b5cb",
+    "paymentId": null,
+    "dteId": "5f3b8b39-229f-4408-bbac-71fe8b4531bb",
+    "origin": "AUTOMATIC",
+    "status": "DRAFT",
+    "confidence": 0.83,
+    "ruleApplied": "ExactMatch - Monto exacto + Empresa CERCANO S.A. a 30d",
+    "notes": null,
+    "confirmedAt": null,
+    "confirmedBy": null,
+    "createdAt": "2026-04-02T20:53:01.817Z",
+    "createdBy": null,
+    "transaction": {
+      "description": "Transf.Internet a 76.098.191-5",
+      "amount": -119984,
+      "date": "2026-03-31T12:00:00.000Z"
+    },
+    "dte": {
+      "folio": 10735,
+      "totalAmount": 119984
+    }
+  },
+  {
+    "id": "3ab51ef2-8534-47df-9f77-7fccc713ac71",
+    "transactionId": "3ef5f114-0592-4098-a6b1-40348a022e15",
+    "paymentId": null,
+    "dteId": "f92c1ceb-a693-4d89-b944-7d3873e72649",
+    "origin": "AUTOMATIC",
+    "status": "DRAFT",
+    "confidence": 0.83,
+    "ruleApplied": "ExactMatch - Monto exacto + Empresa COMERCIAL BEST HIKE LIMITADA a 30d",
+    "notes": null,
+    "confirmedAt": null,
+    "confirmedBy": null,
+    "createdAt": "2026-04-02T20:53:01.793Z",
+    "createdBy": null,
+    "transaction": {
+      "description": "Transf.Internet a 76.022.269-0",
+      "amount": -191024,
+      "date": "2026-03-31T12:00:00.000Z"
+    },
+    "dte": {
+      "folio": 18393,
+      "totalAmount": 191024
+    }
+  },
+  {
+    "id": "3d65c804-0c1d-43b2-a317-dab791d283a8",
+    "transactionId": "b537672b-54f5-47b2-a2cd-e4316d335a92",
+    "paymentId": null,
+    "dteId": "c54bc494-c15f-4051-9788-0c879c28dc28",
+    "origin": "AUTOMATIC",
+    "status": "DRAFT",
+    "confidence": 0.83,
+    "ruleApplied": "ExactMatch - Monto exacto + Empresa CERCANO S.A. a 30d",
+    "notes": null,
+    "confirmedAt": null,
+    "confirmedBy": null,
+    "createdAt": "2026-04-02T20:53:01.770Z",
+    "createdBy": null,
+    "transaction": {
+      "description": "Transf.Internet a 76.098.191-5",
+      "amount": -11500,
+      "date": "2026-03-31T12:00:00.000Z"
+    },
+    "dte": {
+      "folio": 10736,
+      "totalAmount": 11500
+    }
+  },
+  {
+    "id": "73b64ccc-c47a-44b5-9d4d-77cd29565d06",
+    "transactionId": "c5cb9538-3316-44d9-8826-2e8f4834f865",
+    "paymentId": null,
+    "dteId": "47040a56-2158-47dd-bc58-d1d40bee2793",
+    "origin": "AUTOMATIC",
+    "status": "DRAFT",
+    "confidence": 0.84,
+    "ruleApplied": "ExactMatch - Monto exacto + Empresa COMERCIAL MABE CHILE LIMITADA a 28d",
+    "notes": null,
+    "confirmedAt": null,
+    "confirmedBy": null,
+    "createdAt": "2026-04-02T20:53:01.746Z",
+    "createdBy": null,
+    "transaction": {
+      "description": "Transf.Internet a 76.014.842-3",
+      "amount": -201980,
+      "date": "2026-03-31T12:00:00.000Z"
+    },
+    "dte": {
+      "folio": 636300,
+      "totalAmount": 201980
+    }
+  },
+  {
+    "id": "32f7400f-167b-4466-a4a0-27bb493e8a3b",
+    "transactionId": "350f1952-0133-4ea1-b9e7-789314e7feb6",
+    "paymentId": null,
+    "dteId": "65b6ac00-d5ca-43f0-832e-80c1cd915bff",
+    "origin": "AUTOMATIC",
+    "status": "DRAFT",
+    "confidence": 0.84,
+    "ruleApplied": "ExactMatch - Monto exacto + Empresa VICTORINOX ANDES S A a 28d",
+    "notes": null,
+    "confirmedAt": null,
+    "confirmedBy": null,
+    "createdAt": "2026-04-02T20:53:01.723Z",
+    "createdBy": null,
+    "transaction": {
+      "description": "Transf.Internet a 96.648.090-4",
+      "amount": -344229,
+      "date": "2026-03-31T12:00:00.000Z"
+    },
+    "dte": {
+      "folio": 52338,
+      "totalAmount": 344229
+    }
+  },
+  {
+    "id": "b6ab43a2-01ae-4410-93e7-79ed683bdfbf",
+    "transactionId": "da1e2992-8e94-43eb-a726-39688a98f7c4",
+    "paymentId": null,
+    "dteId": "40916361-4c9c-4f21-9855-c75dacbe8dab",
+    "origin": "AUTOMATIC",
+    "status": "DRAFT",
+    "confidence": 0.84,
+    "ruleApplied": "ExactMatch - Monto exacto + Empresa ATAKAMA OUTDOOR SPA a 28d",
+    "notes": null,
+    "confirmedAt": null,
+    "confirmedBy": null,
+    "createdAt": "2026-04-02T20:53:01.701Z",
+    "createdBy": null,
+    "transaction": {
+      "description": "Transf.Internet a 76.475.772-6",
+      "amount": -43176,
+      "date": "2026-03-31T12:00:00.000Z"
+    },
+    "dte": {
+      "folio": 6781,
+      "totalAmount": 43176
+    }
+  },
+  {
+    "id": "ec89001c-1722-4429-812b-bd831b94d0d1",
+    "transactionId": "e6a9cc45-e6f7-49ae-acbb-68ea336674af",
+    "paymentId": null,
+    "dteId": "6b94d1cf-0d12-481b-8c27-b8ea1dfea736",
+    "origin": "AUTOMATIC",
+    "status": "DRAFT",
+    "confidence": 0.57,
+    "ruleApplied": "AmountMatch - Monto ┬▒$18 | 27d diferencia",
+    "notes": null,
+    "confirmedAt": null,
+    "confirmedBy": null,
+    "createdAt": "2026-04-02T20:53:01.678Z",
+    "createdBy": null,
+    "transaction": {
+      "description": "COMERCIAL QUITRAL LI",
+      "amount": -297000,
+      "date": "2026-02-03T12:00:00.000Z"
+    },
+    "dte": {
+      "folio": 11886,
+      "totalAmount": 296982
+    }
+  },
+  {
+    "id": "a58b5d99-56e2-4392-8574-dab62988609f",
+    "transactionId": "a4ea4560-2a90-4a9a-bef7-02b580de9b78",
+    "paymentId": null,
+    "dteId": "7dca85c2-753b-402a-8bde-a4958722681e",
+    "origin": "AUTOMATIC",
+    "status": "DRAFT",
+    "confidence": 0.85,
+    "ruleApplied": "ExactMatch - Monto exacto + Empresa OPTICALLERY SPA a 27d",
+    "notes": null,
+    "confirmedAt": null,
+    "confirmedBy": null,
+    "createdAt": "2026-04-02T20:53:01.655Z",
+    "createdBy": null,
+    "transaction": {
+      "description": "Transf.Internet a 77.274.937-6",
+      "amount": -56956,
+      "date": "2026-03-31T12:00:00.000Z"
+    },
+    "dte": {
+      "folio": 27,
+      "totalAmount": 56956
+    }
+  }
+]
+
+--- Sync logs today ---
+[
+  {
+    "id": "b18bc269-558e-4864-a1e6-b74e351ed906",
+    "organizationId": "715545b8-4522-4bb1-be81-3047546c0e8c",
+    "type": "AUTO_MATCH",
+    "status": "SUCCESS",
+    "totalFound": 89,
+    "created": 11,
+    "skipped": 0,
+    "errors": 0,
+    "message": "OK: 11 matches de 89 transacciones procesadas (3682ms)",
+    "durationMs": 3682,
+    "dateRangeFrom": "2026-02-01",
+    "dateRangeTo": "2026-04-02",
+    "startedAt": "2026-04-02T07:00:04.621Z",
+    "finishedAt": "2026-04-02T07:00:08.303Z"
+  },
+  {
+    "id": "8aa034b6-16e5-45da-ac62-161130c6289b",
+    "organizationId": "715545b8-4522-4bb1-be81-3047546c0e8c",
+    "type": "DTE_SYNC",
+    "status": "SUCCESS",
+    "totalFound": 13,
+    "created": 7,
+    "skipped": 6,
+    "errors": 0,
+    "message": "OK: 7 nuevos, 6 existentes, 0 errores de 13 total",
+    "durationMs": 1026,
+    "dateRangeFrom": null,
+    "dateRangeTo": null,
+    "startedAt": "2026-04-02T07:00:03.575Z",
+    "finishedAt": "2026-04-02T07:00:04.601Z"
+  }
+]
+
+--- Bank Transactions ingested today ---
+[
+  {
+    "id": "d5594ac5-8d42-4b64-9caf-e8f89250980f",
+    "bankAccountId": "acc-itau-0215703887",
+    "date": "2026-03-24T12:00:00.000Z",
+    "amount": 57975,
+    "description": "Abono Tbk Tc/td 966893109",
+    "reference": null,
+    "type": "CREDIT",
+    "status": "PENDING",
+    "origin": "N8N_AUTOMATION",
+    "metadata": {
+      "rawRow": {
+        "date": "2026-03-24",
+        "amount": 57975,
+        "reference": "000000000001980",
+        "cuotaTotal": null,
+        "cuotaNumero": null,
+        "description": "Abono Tbk Tc/td 966893109",
+        "montoOrigen": null
+      },
+      "sourceFile": "Cartola Itau Marzo 2026.pdf",
+      "ingestionId": 1775162086439
+    },
+    "createdAt": "2026-04-02T20:34:46.440Z",
+    "updatedAt": "2026-04-02T20:34:46.440Z"
+  },
+  {
+    "id": "10b2cab0-d718-46a1-9315-d2e9916be8c9",
+    "bankAccountId": "acc-itau-0215703887",
+    "date": "2026-03-18T12:00:00.000Z",
+    "amount": 142171,
+    "description": "Abono Tbk Tc/td 966893109",
+    "reference": null,
+    "type": "CREDIT",
+    "status": "PENDING",
+    "origin": "N8N_AUTOMATION",
+    "metadata": {
+      "rawRow": {
+        "date": "2026-03-18",
+        "amount": 142171,
+        "reference": "000000000001980",
+        "cuotaTotal": null,
+        "cuotaNumero": null,
+        "description": "Abono Tbk Tc/td 966893109",
+        "montoOrigen": null
+      },
+      "sourceFile": "Cartola Itau Marzo 2026.pdf",
+      "ingestionId": 1775162086425
+    },
+    "createdAt": "2026-04-02T20:34:46.425Z",
+    "updatedAt": "2026-04-02T20:34:46.425Z"
+  },
+  {
+    "id": "c00d338f-acc3-42b1-80d2-e668bc045e44",
+    "bankAccountId": "acc-itau-0215703887",
+    "date": "2026-03-16T12:00:00.000Z",
+    "amount": -2286,
+    "description": "Impuesto Al Valor Agregado",
+    "reference": null,
+    "type": "DEBIT",
+    "status": "PENDING",
+    "origin": "N8N_AUTOMATION",
+    "metadata": {
+      "rawRow": {
+        "date": "2026-03-16",
+        "amount": -2286,
+        "reference": "000000000000728",
+        "cuotaTotal": null,
+        "cuotaNumero": null,
+        "description": "Impuesto Al Valor Agregado",
+        "montoOrigen": null
+      },
+      "sourceFile": "Cartola Itau Marzo 2026.pdf",
+      "ingestionId": 1775162086409
+    },
+    "createdAt": "2026-04-02T20:34:46.410Z",
+    "updatedAt": "2026-04-02T20:34:46.410Z"
+  },
+  {
+    "id": "65bd98a0-7a46-41ea-b4a8-e1cfcaaef3a5",
+    "bankAccountId": "acc-itau-0215703887",
+    "date": "2026-03-16T12:00:00.000Z",
+    "amount": -12032,
+    "description": "Com Mantencion Plan Cuenta Emp",
+    "reference": null,
+    "type": "DEBIT",
+    "status": "PENDING",
+    "origin": "N8N_AUTOMATION",
+    "metadata": {
+      "rawRow": {
+        "date": "2026-03-16",
+        "amount": -12032,
+        "reference": "000000000000728",
+        "cuotaTotal": null,
+        "cuotaNumero": null,
+        "description": "Com Mantencion Plan Cuenta Emp",
+        "montoOrigen": null
+      },
+      "sourceFile": "Cartola Itau Marzo 2026.pdf",
+      "ingestionId": 1775162086394
+    },
+    "createdAt": "2026-04-02T20:34:46.394Z",
+    "updatedAt": "2026-04-02T20:34:46.394Z"
+  },
+  {
+    "id": "72b19fe7-97e7-47e8-bd50-ec9c4605baba",
+    "bankAccountId": "acc-itau-0215703887",
+    "date": "2026-03-13T12:00:00.000Z",
+    "amount": 11728,
+    "description": "Abono Tbk Tc/td 966893109",
+    "reference": null,
+    "type": "CREDIT",
+    "status": "PENDING",
+    "origin": "N8N_AUTOMATION",
+    "metadata": {
+      "rawRow": {
+        "date": "2026-03-13",
+        "amount": 11728,
+        "reference": "000000000001980",
+        "cuotaTotal": null,
+        "cuotaNumero": null,
+        "description": "Abono Tbk Tc/td 966893109",
+        "montoOrigen": null
+      },
+      "sourceFile": "Cartola Itau Marzo 2026.pdf",
+      "ingestionId": 1775162086378
+    },
+    "createdAt": "2026-04-02T20:34:46.379Z",
+    "updatedAt": "2026-04-02T20:34:46.379Z"
+  },
+  {
+    "id": "83d87241-20b3-4f88-a60b-dcba05df2f41",
+    "bankAccountId": "acc-itau-0215703887",
+    "date": "2026-03-11T12:00:00.000Z",
+    "amount": -205354,
+    "description": "Pago Automat. Tarjeta Credito",
+    "reference": null,
+    "type": "DEBIT",
+    "status": "PENDING",
+    "origin": "N8N_AUTOMATION",
+    "metadata": {
+      "rawRow": {
+        "date": "2026-03-11",
+        "amount": -205354,
+        "reference": "000000000000728",
+        "cuotaTotal": null,
+        "cuotaNumero": null,
+        "description": "Pago Automat. Tarjeta Credito",
+        "montoOrigen": null
+      },
+      "sourceFile": "Cartola Itau Marzo 2026.pdf",
+      "ingestionId": 1775162086361
+    },
+    "createdAt": "2026-04-02T20:34:46.362Z",
+    "updatedAt": "2026-04-02T20:34:46.362Z"
+  },
+  {
+    "id": "b537672b-54f5-47b2-a2cd-e4316d335a92",
+    "bankAccountId": "acc-santander-9219882-0",
+    "date": "2026-03-31T12:00:00.000Z",
+    "amount": -11500,
+    "description": "Transf.Internet a 76.098.191-5",
+    "reference": null,
+    "type": "DEBIT",
+    "status": "PARTIALLY_MATCHED",
+    "origin": "N8N_AUTOMATION",
+    "metadata": {
+      "rawRow": {
+        "date": "2026-03-31",
+        "amount": -11500,
+        "reference": null,
+        "cuotaTotal": null,
+        "cuotaNumero": null,
+        "description": "Transf.Internet a 76.098.191-5",
+        "montoOrigen": null
+      },
+      "sourceFile": "Cartola Santander Marzo 2026.pdf",
+      "ingestionId": 1775161859066
+    },
+    "createdAt": "2026-04-02T20:30:59.067Z",
+    "updatedAt": "2026-04-02T20:53:01.775Z"
+  },
+  {
+    "id": "791cb3b7-dea5-4746-aa41-a912fb6ce67d",
+    "bankAccountId": "acc-santander-9219882-0",
+    "date": "2026-03-31T12:00:00.000Z",
+    "amount": -19999,
+    "description": "Transf.Internet a 77.275.732-8",
+    "reference": null,
+    "type": "DEBIT",
+    "status": "PARTIALLY_MATCHED",
+    "origin": "N8N_AUTOMATION",
+    "metadata": {
+      "rawRow": {
+        "date": "2026-03-31",
+        "amount": -19999,
+        "reference": null,
+        "cuotaTotal": null,
+        "cuotaNumero": null,
+        "description": "Transf.Internet a 77.275.732-8",
+        "montoOrigen": null
+      },
+      "sourceFile": "Cartola Santander Marzo 2026.pdf",
+      "ingestionId": 1775161859050
+    },
+    "createdAt": "2026-04-02T20:30:59.050Z",
+    "updatedAt": "2026-04-02T20:53:01.562Z"
+  },
+  {
+    "id": "da1e2992-8e94-43eb-a726-39688a98f7c4",
+    "bankAccountId": "acc-santander-9219882-0",
+    "date": "2026-03-31T12:00:00.000Z",
+    "amount": -43176,
+    "description": "Transf.Internet a 76.475.772-6",
+    "reference": null,
+    "type": "DEBIT",
+    "status": "PARTIALLY_MATCHED",
+    "origin": "N8N_AUTOMATION",
+    "metadata": {
+      "rawRow": {
+        "date": "2026-03-31",
+        "amount": -43176,
+        "reference": null,
+        "cuotaTotal": null,
+        "cuotaNumero": null,
+        "description": "Transf.Internet a 76.475.772-6",
+        "montoOrigen": null
+      },
+      "sourceFile": "Cartola Santander Marzo 2026.pdf",
+      "ingestionId": 1775161859034
+    },
+    "createdAt": "2026-04-02T20:30:59.034Z",
+    "updatedAt": "2026-04-02T20:53:01.705Z"
+  },
+  {
+    "id": "daed8f56-b8a4-4ab1-996b-0cc4da0c0cd1",
+    "bankAccountId": "acc-santander-9219882-0",
+    "date": "2026-03-31T12:00:00.000Z",
+    "amount": -50331,
+    "description": "Transf.Internet a 77.144.339-7",
+    "reference": null,
+    "type": "DEBIT",
+    "status": "PENDING",
+    "origin": "N8N_AUTOMATION",
+    "metadata": {
+      "rawRow": {
+        "date": "2026-03-31",
+        "amount": -50331,
+        "reference": null,
+        "cuotaTotal": null,
+        "cuotaNumero": null,
+        "description": "Transf.Internet a 77.144.339-7",
+        "montoOrigen": null
+      },
+      "sourceFile": "Cartola Santander Marzo 2026.pdf",
+      "ingestionId": 1775161859017
+    },
+    "createdAt": "2026-04-02T20:30:59.018Z",
+    "updatedAt": "2026-04-02T20:30:59.018Z"
+  }
+]

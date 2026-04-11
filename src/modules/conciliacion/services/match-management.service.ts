@@ -201,6 +201,17 @@ export class MatchManagementService {
                     data: { status: TransactionStatus.MATCHED },
                 });
             }
+            // Clean up any pending suggestions that involve these transactions or DTEs
+            const pendingSuggestions = await prisma.matchSuggestion.findMany({ where: { status: 'PENDING' } });
+            const sIdsToDelete = pendingSuggestions.filter(s => {
+                if (dteIds.includes(s.dteId)) return true;
+                const sTxIds = (s.transactionIds as string[]) || [];
+                return sTxIds.some(tid => txIds.includes(tid));
+            }).map(s => s.id);
+            if (sIdsToDelete.length > 0) {
+                await prisma.matchSuggestion.deleteMany({ where: { id: { in: sIdsToDelete } } });
+                this.logger.log(`Limpiadas ${sIdsToDelete.length} sugerencias pendientes para los Tx/DTEs recién conciliados`);
+            }
 
             return createdMatches[0];
         });
@@ -351,6 +362,18 @@ export class MatchManagementService {
                 where: { id: body.transactionId },
                 data: { status: TransactionStatus.MATCHED },
             });
+
+            // 6. Clean up any pending suggestions that involve these transactions or DTEs
+            const pendingSuggestions = await tx.matchSuggestion.findMany({ where: { status: 'PENDING' } });
+            const sIdsToDelete = pendingSuggestions.filter(s => {
+                if (body.dteId === s.dteId) return true;
+                const sTxIds = (s.transactionIds as string[]) || [];
+                return sTxIds.includes(body.transactionId);
+            }).map(s => s.id);
+            if (sIdsToDelete.length > 0) {
+                await tx.matchSuggestion.deleteMany({ where: { id: { in: sIdsToDelete } } });
+                this.logger.log(`Limpiadas ${sIdsToDelete.length} sugerencias pendientes para el reassign de Tx/DTEs`);
+            }
 
             return newMatch;
         });

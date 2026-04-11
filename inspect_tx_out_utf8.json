@@ -1,0 +1,27 @@
+﻿{
+  "id": "82aa5678-efb1-4293-b91d-e47e17d43d53",
+  "bankAccountId": "acc-santander-9219882-0",
+  "date": "2026-03-20T12:00:00.000Z",
+  "amount": -232972,
+  "description": "COMPRA NACIONAL POR INTERNET",
+  "reference": null,
+  "type": "DEBIT",
+  "status": "PENDING",
+  "origin": "N8N_AUTOMATION",
+  "metadata": {
+    "rawRow": {
+      "date": "2026-03-20",
+      "amount": -232972,
+      "reference": null,
+      "cuotaTotal": null,
+      "cuotaNumero": null,
+      "description": "COMPRA NACIONAL POR INTERNET",
+      "montoOrigen": null
+    },
+    "esCuota": true,
+    "sourceFile": "Ultimos movimientos_nac24_03_2026.xlsx",
+    "ingestionId": 1774365467438
+  },
+  "createdAt": "2026-03-24T15:17:47.439Z",
+  "updatedAt": "2026-03-27T18:27:24.755Z"
+}

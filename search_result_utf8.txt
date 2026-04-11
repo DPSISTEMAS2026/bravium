@@ -1,0 +1,35 @@
+﻿
+--- B├║squeda Exhaustiva de Folios 10155 y 1049 ---
+Checking dte_emitidos for period 2026-01-01 to 2026-03-31...
+ÔØî No encontrado en dte_emitidos (2026-01-01)
+Checking dte_emitidos for period 2025-01-01 to 2025-12-31...
+ÔØî No encontrado en dte_emitidos (2025-01-01)
+Checking dte_recibidos for period 2026-01-01 to 2026-03-31...
+Ô£à ENCONTRADO en dte_recibidos (2026-01-01): [
+  {
+    emisor: 76714223,
+    razon_social: 'LE BISTROT DU VIET NAM LIMITADA',
+    dte: 33,
+    tipo: 'Factura electr├│nica',
+    folio: 1049,
+    fecha: '2026-03-10',
+    total: 196500,
+    intercambio: 5282,
+    usuario: 'rlopez@bmlconsultores.cl',
+    mipyme: null
+  },
+  {
+    emisor: 78911500,
+    razon_social: 'SERVICIOS FELLAY Y AMENABAR LTDA',
+    dte: 33,
+    tipo: 'Factura electr├│nica',
+    folio: 10155,
+    fecha: '2026-03-10',
+    total: 116620,
+    intercambio: null,
+    usuario: 'rlopez@bmlconsultores.cl',
+    mipyme: null
+  }
+]
+Checking dte_recibidos for period 2025-01-01 to 2025-12-31...
+ÔØî No encontrado en dte_recibidos (2025-01-01)

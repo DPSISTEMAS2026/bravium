@@ -1,0 +1,46 @@
+﻿[
+  {
+    "id": "acc-itau-0215703887",
+    "bankName": "Ita├║ CC",
+    "accountNumber": "0215703887",
+    "currency": "CLP",
+    "rutHolder": "77154188-4",
+    "isActive": true,
+    "organizationId": "715545b8-4522-4bb1-be81-3047546c0e8c",
+    "createdAt": "2026-03-27T18:17:13.482Z",
+    "updatedAt": "2026-03-27T18:17:13.482Z"
+  },
+  {
+    "id": "acc-santander-9219882-0",
+    "bankName": "Santander CC",
+    "accountNumber": "0-000-9219882-0",
+    "currency": "CLP",
+    "rutHolder": "77154188-4",
+    "isActive": true,
+    "organizationId": "715545b8-4522-4bb1-be81-3047546c0e8c",
+    "createdAt": "2026-03-27T18:17:14.567Z",
+    "updatedAt": "2026-03-27T18:17:14.567Z"
+  },
+  {
+    "id": "acc-scotia-000981521803",
+    "bankName": "Scotiabank CC",
+    "accountNumber": "000981521803",
+    "currency": "CLP",
+    "rutHolder": "77154188-4",
+    "isActive": true,
+    "organizationId": "715545b8-4522-4bb1-be81-3047546c0e8c",
+    "createdAt": "2026-03-27T18:17:15.616Z",
+    "updatedAt": "2026-03-27T18:17:15.616Z"
+  },
+  {
+    "id": "acc-santander-5239",
+    "bankName": "Santander TC",
+    "accountNumber": "XXXX-5239",
+    "currency": "CLP",
+    "rutHolder": "77154188-4",
+    "isActive": true,
+    "organizationId": "715545b8-4522-4bb1-be81-3047546c0e8c",
+    "createdAt": "2026-03-27T18:17:16.651Z",
+    "updatedAt": "2026-03-27T18:17:16.651Z"
+  }
+]

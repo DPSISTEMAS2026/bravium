@@ -1,0 +1,10 @@
+﻿--- Checking File: CartolaProvisoria-000092198820-0066-20260324.xlsx ---
+Total transactions from this file: 124
+Date range: 2026-03-02T12:00:00.000Z to 2026-03-24T12:00:00.000Z
+
+Sample transations:
+[2026-03-02T12:00:00.000Z] $393109 | Transf de DANIELA ALEJA
+[2026-03-02T12:00:00.000Z] $-259984 | Transf a Cercano sa
+[2026-03-02T12:00:00.000Z] $-489579 | Transf a Jara M├®ndez Li
+[2026-03-02T12:00:00.000Z] $-86746 | Transf a VETO Y CIA. LT
+[2026-03-02T12:00:00.000Z] $88988 | Transf de DANIELA ALEJA

@@ -1,0 +1,63 @@
+VERIFICACION FEBRERO 2026
+Total folios: 134
+========================================
+DTEs en febrero: 50
+CONFIRMED: 45
+DRAFT: 0
+SIN MATCH: 5
+No en febrero: 84
+========================================
+
+--- SIN MATCH (5) ---
+  Folio 46611 | Tipo 33 | $1060530 | UNPAID | SOCIEDAD COMERCIAL INFOSTORE LIMITADA
+  Folio 2014812 | Tipo 33 | $1399960 | PAID | SAMSUNG ELECTRONICS CHILE LIMITADA
+  Folio 5549267 | Tipo 33 | $1003980 | PAID | FALABELLA RETAIL SA
+  Folio 5554611 | Tipo 33 | $219980 | UNPAID | FALABELLA RETAIL SA
+  Folio 13078811 | Tipo 33 | $19890 | UNPAID | CHILEXPRESS S.A.
+
+--- CONFIRMED (45) ---
+  Folio 741 | Tipo 33 | $403970 | AUTOMATIC | AmountMatch - Monto exacto $403.970 | 1d diferencia | XIAOMI TECHNOLOGY CHILE SPA
+  Folio 2895 | Tipo 34 | $1243506 | AUTOMATIC | ExactMatch - Monto exacto + Empresa BML AUDITORES LIMITADA a 14d | BML AUDITORES LIMITADA
+  Folio 3213 | Tipo 33 | $149990 | AUTOMATIC | AmountMatch - Monto exacto $149.990 | 1d diferencia | KALEUCHE SPA
+  Folio 4644 | Tipo 33 | $108661 | AUTOMATIC | ExactMatch - Monto exacto + Empresa BANDA ANCHA INTERNET SPA a 3d | BANDA ANCHA INTERNET SPA
+  Folio 7900 | Tipo 33 | $1690000 | MANUAL | SplitPayment (sugerencia 4f260fc7-d1e8-4225-804c-1baf8dbe6cee) | JONATHAN FERNANDO ACEVEDO ROJAS
+  Folio 7901 | Tipo 33 | $1690000 | MANUAL | SplitPayment (sugerencia 4f260fc7-d1e8-4225-804c-1baf8dbe6cee) | JONATHAN FERNANDO ACEVEDO ROJAS
+  Folio 7902 | Tipo 33 | $919000 | MANUAL | SplitPayment (sugerencia 4f260fc7-d1e8-4225-804c-1baf8dbe6cee) | JONATHAN FERNANDO ACEVEDO ROJAS
+  Folio 12117 | Tipo 33 | $405435 | AUTOMATIC | AmountMatch - Monto exacto $405.435 | 1d diferencia | REPRESENTACIONES VAL SPA
+  Folio 18357 | Tipo 33 | $128890 | AUTOMATIC | AmountMatch - Monto exacto $128.890 | 1d diferencia | IMPORTADORA SENDAI SPA
+  Folio 18452 | Tipo 33 | $1114900 | AUTOMATIC | AmountMatch - Monto ±$10 (exacto) | 2d diferencia | PUNTA RANCO SPA
+  Folio 44125 | Tipo 33 | $47600 | AUTOMATIC | ExactMatch - Monto exacto + Empresa SASCO SpA a 1d | SASCO SpA
+  Folio 63662 | Tipo 33 | $162890 | AUTOMATIC | AmountMatch - Monto exacto $162.890 | 1d diferencia | ADVANTAGE COMPUTACION SPA
+  Folio 70077 | Tipo 33 | $142410 | AUTOMATIC | AmountMatch - Monto exacto $142.410 | 1d diferencia | WORLDQUERY SPA
+  Folio 70294 | Tipo 33 | $455838 | MANUAL | MANUAL_USER | WORLDQUERY SPA
+  Folio 70628 | Tipo 33 | $98941 | AUTOMATIC | AmountMatch - Monto ±$1 (exacto) | 1d diferencia | WORLDQUERY SPA
+  Folio 77533 | Tipo 33 | $178500 | AUTOMATIC | ExactMatch - Monto exacto + Empresa CABANAS DEL LAGO LTDA a 19d | CABANAS DEL LAGO LTDA
+  Folio 101875 | Tipo 33 | $2164991 | AUTOMATIC | ExactMatch - Monto exacto + Empresa LENOVO AGENCIA EN CHILE a 1d | LENOVO AGENCIA EN CHILE
+  Folio 103942 | Tipo 33 | $124852 | AUTOMATIC | ExactMatch - Monto ±$2 + Empresa AGQ CHILE S.A. a 3d | AGQ CHILE S.A.
+  Folio 419013 | Tipo 33 | $64980 | AUTOMATIC | ExactMatch - Monto exacto + Empresa Falabella.com SpA a 2d | Falabella.com SpA
+  Folio 420334 | Tipo 33 | $56987 | MANUAL | MANUAL_USER | Falabella.com SpA
+  Folio 420335 | Tipo 33 | $56989 | MANUAL | MANUAL_USER | Falabella.com SpA
+  Folio 420336 | Tipo 33 | $56987 | MANUAL | MANUAL_USER | Falabella.com SpA
+  Folio 420337 | Tipo 33 | $56987 | MANUAL | MANUAL_USER | Falabella.com SpA
+  Folio 421261 | Tipo 33 | $266980 | AUTOMATIC | ExactMatch - Monto exacto + Empresa Falabella.com SpA a 1d | Falabella.com SpA
+  Folio 421900 | Tipo 33 | $563970 | AUTOMATIC | AmountMatch - Monto exacto $563.970 | 0d diferencia | Falabella.com SpA
+  Folio 494756 | Tipo 33 | $689900 | AUTOMATIC | AmountMatch - Monto exacto $689.900 | 6d diferencia | INGENIERIA E INFORMATICA ASOCIADA LIMITADA
+  Folio 495232 | Tipo 33 | $374945 | AUTOMATIC | AmountMatch - Monto ±$5 (exacto) | 1d diferencia | INGENIERIA E INFORMATICA ASOCIADA LIMITADA
+  Folio 988557 | Tipo 33 | $140979 | AUTOMATIC | AmountMatch - Monto ±$1 (exacto) | 1d diferencia | MAIGAS COMERCIAL S.A
+  Folio 1167905 | Tipo 33 | $32944 | AUTOMATIC | AmountMatch - Monto exacto $32.944 | 1d diferencia | ARTEL S.A.
+  Folio 2010502 | Tipo 33 | $1499950 | AUTOMATIC | ExactMatch - Monto exacto + Empresa SAMSUNG ELECTRONICS CHILE LIMITADA a 1d | SAMSUNG ELECTRONICS CHILE LIMITADA
+  Folio 2013984 | Tipo 33 | $1359961 | AUTOMATIC | ExactMatch - Monto ±$1 + Empresa SAMSUNG ELECTRONICS CHILE LIMITADA a 2d | SAMSUNG ELECTRONICS CHILE LIMITADA
+  Folio 2272705 | Tipo 33 | $273431 | AUTOMATIC | AmountMatch - Monto ±$1 (exacto) | 0d diferencia | JOSE ZAPATA E HIJOS S A
+  Folio 2494151 | Tipo 33 | $41364 | MANUAL | MANUAL_USER | LATAM AIRLINES GROUP S.A.
+  Folio 3573121 | Tipo 33 | $294980 | AUTOMATIC | AmountMatch - Monto exacto $294.980 | 1d diferencia | AUSIN HNOS S A
+  Folio 5171298 | Tipo 34 | $500020 | MANUAL | MANUAL_USER | LATAM AIRLINES GROUP S.A.
+  Folio 5516267 | Tipo 33 | $556690 | AUTOMATIC | AmountMatch - Monto exacto $556.690 | 1d diferencia | PERSONAL COMPUTER FACTORY S.A.
+  Folio 5548699 | Tipo 33 | $1403970 | AUTOMATIC | ExactMatch - Monto exacto + Empresa FALABELLA RETAIL SA a 1d | FALABELLA RETAIL SA
+  Folio 5550408 | Tipo 33 | $427960 | AUTOMATIC | ExactMatch - Monto exacto + Empresa FALABELLA RETAIL SA a 1d | FALABELLA RETAIL SA
+  Folio 5552764 | Tipo 33 | $1403980 | AUTOMATIC | ExactMatch - Monto exacto + Empresa FALABELLA RETAIL SA a 1d | FALABELLA RETAIL SA
+  Folio 5552902 | Tipo 33 | $1153980 | AUTOMATIC | ExactMatch - Monto exacto + Empresa FALABELLA RETAIL SA a 1d | FALABELLA RETAIL SA
+  Folio 5554099 | Tipo 33 | $253940 | AUTOMATIC | AmountMatch - Monto exacto $253.940 | 1d diferencia | FALABELLA RETAIL SA
+  Folio 5821903 | Tipo 33 | $295980 | AUTOMATIC | AmountMatch - Monto exacto $295.980 | 1d diferencia | ROSEN S.A.
+  Folio 25980524 | Tipo 33 | $754980 | AUTOMATIC | AmountMatch - Monto exacto $754.980 | 1d diferencia | CENCOSUD RETAIL S.A.
+  Folio 37195250 | Tipo 33 | $1386961 | AUTOMATIC | ExactMatch - Monto exacto + Empresa EASY RETAIL S.A. a 1d | EASY RETAIL S.A.
+  Folio 145272170 | Tipo 33 | $175980 | AUTOMATIC | AmountMatch - Monto exacto $175.980 | 1d diferencia | SODIMAC S.A.

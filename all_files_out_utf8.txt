@@ -1,0 +1,12 @@
+﻿--- ALL Processed Bank Files ---
+[
+  'Cartola Itau Enero 2026.pdf',
+  'Cartola Santander Enero 2026.pdf',
+  'Cartola Santander Febrero 2026.pdf',
+  'CartolaProvisoria-000092198820-0066-20260324.xlsx',
+  'CartolaProvisoria-000092198820-0066-20260326.xlsx',
+  'Estado Cuenta TC Santander Enero 2026.pdf',
+  'Estado Cuenta TC Santander Febrero 2026.pdf',
+  'EstadoCuentaTC-XXXXXXXXXXXX1288-20260309.pdf',
+  'Ultimos movimientos_nac24_03_2026.xlsx'
+]

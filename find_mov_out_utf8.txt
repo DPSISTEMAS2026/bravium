@@ -1,0 +1,16 @@
+﻿--- Buscando Movimiento Bancario ---
+Monto: 419940
+Fecha aprox: 20/03/2026
+
+ÔØî No se encontr├│ ning├║n movimiento exacto por 419,940.
+
+--- Movimientos el 20/03/2026 ---
+[2026-03-20T12:00:00.000Z] Santander CC | COMPRA NACIONAL POR INTERNET | $-232972 | Status: PENDING
+[2026-03-20T12:00:00.000Z] Santander CC | COMPRA NACIONAL POR INTERNET | $-1564730 | Status: PENDING
+[2026-03-20T12:00:00.000Z] Santander CC | COMPRA NACIONAL POR INTERNET | $-240960 | Status: PENDING
+[2026-03-20T12:00:00.000Z] Santander CC | COMPRA NACIONAL POR INTERNET | $-291982 | Status: MATCHED
+[2026-03-20T12:00:00.000Z] Santander CC | Transf. MONSALVE MAULEN | $119040 | Status: PENDING
+
+--- Buscando DTEs con monto 419940 ---
+Encontrados 1 DTEs:
+- Folio 52178 | API: 96648090 | Emisor: VICTORINOX ANDES S A | Fecha: 2026-02-25T00:00:00.000Z | Status: UNPAID

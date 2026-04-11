@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const folios = [10155, 1049];
+  const folios = [636322];
   
   console.log('=== Buscando folios en la base de datos ===\n');
   
