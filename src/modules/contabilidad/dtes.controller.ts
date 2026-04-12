@@ -1,6 +1,11 @@
-import { Controller, Get, Query, Logger } from '@nestjs/common';
+import { Controller, Get, Query, Logger, UseGuards, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { DtesService, DteFilters } from './dtes.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { OrganizationGuard } from '../../common/guards/organization.guard';
 
+@UseGuards(JwtAuthGuard, RolesGuard, OrganizationGuard)
 @Controller('dtes')
 export class DtesController {
     private readonly logger = new Logger(DtesController.name);
@@ -27,8 +32,11 @@ export class DtesController {
         @Query('hasPdf') hasPdf?: string,
         @Query('includeMatched') includeMatched?: string,
         @Query('type') type?: string,
+        @Req() req?: Request
     ) {
+        const organizationId = (req as any)?.organizationId;
         const filters: DteFilters = {
+            organizationId,
             fromDate,
             toDate,
             providerId,
@@ -58,9 +66,12 @@ export class DtesController {
         @Query('fromDate') fromDate?: string,
         @Query('toDate') toDate?: string,
         @Query('page') page?: string,
-        @Query('limit') limit?: string
+        @Query('limit') limit?: string,
+        @Req() req?: Request
     ) {
+        const organizationId = (req as any)?.organizationId;
         const filters: DteFilters = {
+            organizationId,
             fromDate,
             toDate,
             page: page ? parseInt(page, 10) : undefined,
@@ -78,9 +89,12 @@ export class DtesController {
     async getDtesSummary(
         @Query('fromDate') fromDate?: string,
         @Query('toDate') toDate?: string,
-        @Query('providerId') providerId?: string
+        @Query('providerId') providerId?: string,
+        @Req() req?: Request
     ) {
+        const organizationId = (req as any)?.organizationId;
         const filters: DteFilters = {
+            organizationId,
             fromDate,
             toDate,
             providerId,
@@ -95,10 +109,11 @@ export class DtesController {
      * DTEs pendientes de pago
      */
     @Get('unpaid')
-    async getUnpaidDtes(@Query('limit') limit?: string) {
+    async getUnpaidDtes(@Query('limit') limit?: string, @Req() req?: Request) {
+        const organizationId = (req as any)?.organizationId;
         const limitNum = limit ? parseInt(limit, 10) : 50;
         this.logger.log(`Fetching unpaid DTEs (limit: ${limitNum})`);
-        return this.dtesService.getUnpaidDtes(limitNum);
+        return this.dtesService.getUnpaidDtes(organizationId, limitNum);
     }
 
     /**
@@ -106,8 +121,9 @@ export class DtesController {
      * DTEs vencidos
      */
     @Get('overdue')
-    async getOverdueDtes() {
+    async getOverdueDtes(@Req() req?: Request) {
+        const organizationId = (req as any)?.organizationId;
         this.logger.log('Fetching overdue DTEs');
-        return this.dtesService.getOverdueDtes();
+        return this.dtesService.getOverdueDtes(organizationId);
     }
 }

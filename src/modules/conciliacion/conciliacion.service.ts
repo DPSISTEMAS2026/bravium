@@ -87,7 +87,7 @@ export class ConciliacionService {
                 this.prisma.bankTransaction.findMany({
                     where: whereClause,
                     orderBy: { date: 'asc' },
-                    include: { bankAccount: { select: { bankName: true, accountNumber: true } } },
+                    include: { bankAccount: { select: { bankName: true, accountNumber: true, organizationId: true } } },
                 }),
                 this.prisma.dTE.findMany({
                     where: {
@@ -262,7 +262,7 @@ export class ConciliacionService {
                     include: { provider: { select: { name: true } } },
                 });
                 const suggestions = await this.sumMatchStrategy.findSumSuggestions(remainingTx, remainingDtes);
-                const sumResult = await this.sumMatchStrategy.persistSuggestions(suggestions);
+                const sumResult = await this.sumMatchStrategy.persistSuggestions(suggestions, organizationId);
                 suggestionsCount = sumResult.suggestions;
                 sumAutoConfirmed = sumResult.autoConfirmed;
                 this.fileLog(`SUM MATCH: ${sumAutoConfirmed} auto-confirmed, ${suggestionsCount} suggestions created.`);
@@ -295,7 +295,7 @@ export class ConciliacionService {
                     include: { provider: { select: { name: true } } },
                 });
                 const splits = await this.splitPaymentStrategy.findSplitPaymentSuggestions(remainingTx2, remainingDtes2);
-                const splitResult = await this.splitPaymentStrategy.persistSuggestions(splits);
+                const splitResult = await this.splitPaymentStrategy.persistSuggestions(splits, organizationId);
                 splitSuggestions = splitResult.suggestions;
                 splitAutoConfirmed = splitResult.autoConfirmed;
                 this.fileLog(`SPLIT PAYMENT: ${splitAutoConfirmed} auto-confirmed, ${splitSuggestions} suggestions created.`);
@@ -413,7 +413,7 @@ export class ConciliacionService {
 
                 // If there are alternatives, save them as suggestions too
                 if (result.candidates.length > 1) {
-                    await this.createSuggestionFromCandidates(tx, result.candidates.slice(1), strategy.name);
+                    await this.createSuggestionFromCandidates(tx, result.candidates.slice(1), strategy.name, tx.bankAccount.organizationId);
                 }
                 return {
                     dteId: best.dte?.id,
@@ -447,7 +447,8 @@ export class ConciliacionService {
     private async createSuggestionFromCandidates(
         tx: BankTransaction,
         candidates: { payment?: any; dte?: any; score: number; reason: string }[],
-        strategyName: string
+        strategyName: string,
+        organizationId?: string,
     ) {
         for (const candidate of candidates.slice(0, 5)) {
             if (!candidate.dte) continue;
@@ -471,6 +472,7 @@ export class ConciliacionService {
                         confidence: candidate.score,
                         status: 'PENDING',
                         reason: `${strategyName}: ${candidate.reason}`,
+                        organizationId,
                     }
                 });
             } catch (err) {
@@ -501,6 +503,7 @@ export class ConciliacionService {
                     status,
                     confidence: candidate.score,
                     ruleApplied: strategyName + ` - ${candidate.reason}`,
+                    organizationId: tx.bankAccount.organizationId,
                 },
             });
 

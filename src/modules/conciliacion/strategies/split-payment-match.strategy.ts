@@ -109,6 +109,7 @@ export class SplitPaymentMatchStrategy {
 
     async persistSuggestions(
         suggestions: SplitPaymentSuggestion[],
+        organizationId?: string,
     ): Promise<{ suggestions: number; autoConfirmed: number }> {
         let suggestionCount = 0;
         let autoConfirmed = 0;
@@ -135,6 +136,7 @@ export class SplitPaymentMatchStrategy {
                     confidence: s.confidence,
                     reason: s.reason,
                     status: 'PENDING',
+                    organizationId: (organizationId || (s.transaction as any).bankAccount?.organizationId) as string,
                 },
             });
             suggestionCount++;
@@ -142,7 +144,7 @@ export class SplitPaymentMatchStrategy {
         return { suggestions: suggestionCount, autoConfirmed };
     }
 
-    private async autoConfirmSplitPayment(s: SplitPaymentSuggestion): Promise<void> {
+    private async autoConfirmSplitPayment(s: SplitPaymentSuggestion, organizationId?: string): Promise<void> {
         await this.prisma.$transaction(async (prisma) => {
             const freshTx = await prisma.bankTransaction.findUnique({
                 where: { id: s.transaction.id },
@@ -159,6 +161,7 @@ export class SplitPaymentMatchStrategy {
                         status: 'CONFIRMED',
                         confidence: s.confidence,
                         ruleApplied: `SplitPayment (auto) - ${s.reason}`,
+                        organizationId: (organizationId || (s.transaction as any).bankAccount?.organizationId) as string,
                     },
                 });
 

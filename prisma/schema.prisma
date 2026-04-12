@@ -80,7 +80,7 @@ enum TransactionStatus {
 
 model Provider {
   id        String    @id @default(uuid())
-  rut       String    @unique
+  rut       String
   name      String
   category  String?
   currentBalance Int @default(0)
@@ -116,6 +116,7 @@ model Provider {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  @@unique([rut, organizationId])
   @@map("providers")
 }
 
@@ -136,7 +137,7 @@ model ProviderAlias {
 
 model Product {
   id            String            @id @default(uuid())
-  sku           String            @unique // Internal SKU
+  sku           String
   name          String
   description   String?
   category      String?
@@ -163,6 +164,7 @@ model Product {
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
+  @@unique([sku, organizationId])
   @@map("products")
 }
 
@@ -292,7 +294,7 @@ model ProductAlias {
   productId     String
   product       Product   @relation(fields: [productId], references: [id])
   
-  aliasName     String    @unique // "COCA COLA 1.5", "BEBIDA COCA COLA", etc.
+  aliasName     String
   source        String?   // "DTE_PROVIDER_A"
   
   confidence    Float     @default(1.0) // 1.0 = Manual/Confirmed, <1.0 = Auto/Fuzzy
@@ -303,6 +305,7 @@ model ProductAlias {
   organizationId String?
   organization   Organization?    @relation(fields: [organizationId], references: [id])
 
+  @@unique([aliasName, organizationId])
   @@map("product_aliases")
 }
 
@@ -358,6 +361,10 @@ model Payment {
   origin            DataOrigin            @default(MANUAL_UPLOAD)
   metadata          Json?
 
+  // Multi-tenancy
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -406,10 +413,14 @@ model DTE {
   origin          DataOrigin            @default(API_INTEGRATION)
   metadata        Json?
 
+  // Multi-tenancy
+  organizationId  String?
+  organization    Organization?         @relation(fields: [organizationId], references: [id])
+
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
-  @@unique([rutIssuer, type, folio])
+  @@unique([rutIssuer, type, folio, organizationId])
   @@index([issuedDate])
   @@index([paymentStatus])
   @@index([providerId])
@@ -457,6 +468,10 @@ model ReconciliationMatch {
   // Financial Impact
   adjustments   BalanceAdjustment[] // Diferencias de monto (Write-offs, small diffs)
 
+  // Multi-tenancy
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+
   createdAt     DateTime        @default(now())
   createdBy     String?         // User ID (if manual)
 
@@ -484,10 +499,13 @@ model AccountingPeriod {
   alerts      FinancialAlert[]
   ledgerEntries FinancialLedgerEntry[]
 
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
-  @@unique([year, month])
+  @@unique([year, month, organizationId])
   @@map("accounting_periods")
 }
 
@@ -712,6 +730,9 @@ model Organization {
   libreDteRut       String?   // RUT configured in LibreDTE
   googleDriveFolderId   String?   // Google Drive folder to watch
   googleDriveCredentials String?  // Service account JSON (stored encrypted)
+  fintocApiKey      String?   // Fintoc Secret Key
+  fintocPublicKey   String?   // Fintoc Public Key
+  fintocLinkToken   String?   // Fintoc Link Token (for account identification)
 
   // Data visibility
   dataVisibleFrom   DateTime? // Minimum date for data queries
@@ -723,7 +744,11 @@ model Organization {
   bankAccounts  BankAccount[]
   providers     Provider[]
   ledgerEntries FinancialLedgerEntry[]
+  periods       AccountingPeriod[]
   auditLogs     AuditLog[]
+  dtes          DTE[]
+  payments      Payment[]
+  matches       ReconciliationMatch[]
   
   // Purchase Intelligence
   products      Product[]
@@ -733,6 +758,8 @@ model Organization {
   recommendations PurchaseRecommendation[]
   aliases       ProductAlias[]
   costAlerts    CostAlert[]
+  suggestions   MatchSuggestion[]
+  paymentRecords PaymentRecord[]
   
   @@map("organizations")
 }
@@ -818,6 +845,8 @@ model PaymentRecord {
   dteId           String?
   dte             DTE?     @relation(fields: [dteId], references: [id])
 
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   createdBy       String?
@@ -844,6 +873,8 @@ model MatchSuggestion {
   confidence      Float
   status          String   @default("PENDING") // PENDING, ACCEPTED, REJECTED
   reason          String?
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

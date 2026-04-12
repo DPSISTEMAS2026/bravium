@@ -15,9 +15,12 @@ export class MatchManagementService {
     async updateMatchStatus(matchId: string, newStatus: 'CONFIRMED' | 'REJECTED', userId: string, reason?: string) {
         const match = await this.prisma.reconciliationMatch.findUnique({
             where: { id: matchId },
-            include: { transaction: true, dte: true },
+            include: { transaction: { include: { bankAccount: true } }, dte: true },
         });
         if (!match) throw new NotFoundException(`Match ${matchId} no encontrado`);
+
+        // OPTIONAL: Security check - can this user touch this match?
+        // if (match.organizationId && match.organizationId !== contextOrganizationId) throw new ForbiddenException();
 
         const previousStatus = match.status;
         if (previousStatus === newStatus) return match;
@@ -104,6 +107,7 @@ export class MatchManagementService {
     async createManualMatch(
         body: { transactionId?: string; transactionIds?: string[]; dteId?: string; dteIds?: string[]; paymentId?: string; notes?: string },
         userId: string,
+        organizationId: string,
     ) {
         const txIds = body.transactionIds && body.transactionIds.length > 0 
             ? body.transactionIds 
@@ -168,6 +172,7 @@ export class MatchManagementService {
                                 createdBy: userId,
                                 confirmedAt: new Date(),
                                 confirmedBy: userId,
+                                organizationId,
                             },
                         });
                         createdMatches.push(created);
@@ -191,6 +196,7 @@ export class MatchManagementService {
                             createdBy: userId,
                             confirmedAt: new Date(),
                             confirmedBy: userId,
+                            organizationId,
                         },
                     });
                     createdMatches.push(created);

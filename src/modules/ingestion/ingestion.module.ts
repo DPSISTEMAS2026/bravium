@@ -9,11 +9,12 @@ import { ContabilidadModule } from '../../modules/contabilidad/contabilidad.modu
 import { BancosModule } from '../bancos/bancos.module';
 import { OpenAiService } from './services/openai.service';
 import { GoogleDriveService } from './services/google-drive.service';
+import { FintocService } from './services/fintoc.service';
 
 @Module({
     imports: [PrismaModule, ContabilidadModule, BancosModule],
     controllers: [AutomatedIngestController, IngestionController],
-    providers: [ExcelLegacyService, LibreDteService, DriveIngestService, OpenAiService, GoogleDriveService],
-    exports: [ExcelLegacyService, LibreDteService, DriveIngestService, OpenAiService, GoogleDriveService],
+    providers: [ExcelLegacyService, LibreDteService, DriveIngestService, OpenAiService, GoogleDriveService, FintocService],
+    exports: [ExcelLegacyService, LibreDteService, DriveIngestService, OpenAiService, GoogleDriveService, FintocService],
 })
 export class IngestionModule { }

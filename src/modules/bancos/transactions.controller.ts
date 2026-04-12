@@ -35,17 +35,19 @@ export class TransactionsController {
      * Body: { deleteBankAccounts?: boolean } — si true, también borra cuentas bancarias.
      */
     @Post('cleanup-all')
-    async cleanupAll(@Body() body: { deleteBankAccounts?: boolean } = {}) {
-        this.logger.warn('Ejecutando limpieza total (mantiene proveedores).');
-        return this.transactionsService.cleanupAllExceptProviders(!!body.deleteBankAccounts);
+    async cleanupAll(@Req() req: Request, @Body() body: { deleteBankAccounts?: boolean } = {}) {
+        const organizationId = (req as any).organizationId;
+        this.logger.warn(`Ejecutando limpieza total para org ${organizationId} (mantiene proveedores).`);
+        return this.transactionsService.cleanupAllExceptProviders(organizationId, !!body.deleteBankAccounts);
     }
 
     @Post('cleanup-cartolas')
-    async cleanupCartolas(@Body() body: { keepSourceFiles: string[] }) {
+    async cleanupCartolas(@Req() req: Request, @Body() body: { keepSourceFiles: string[] }) {
         if (!body.keepSourceFiles || !Array.isArray(body.keepSourceFiles)) {
             throw new BadRequestException('Se requiere body.keepSourceFiles (array de nombres de archivo a mantener).');
         }
-        return this.transactionsService.cleanupCartolasExcept(body.keepSourceFiles);
+        const organizationId = (req as any).organizationId;
+        return this.transactionsService.cleanupCartolasExcept(organizationId, body.keepSourceFiles);
     }
 
     /**
@@ -55,12 +57,13 @@ export class TransactionsController {
      * Body: { sourceFile: string } (ej. "Cartola Santander Enero 2026.pdf")
      */
     @Post('delete-cartola')
-    async deleteCartola(@Body() body: { sourceFile: string }) {
+    async deleteCartola(@Req() req: Request, @Body() body: { sourceFile: string }) {
         if (!body?.sourceFile || typeof body.sourceFile !== 'string') {
             throw new BadRequestException('Se requiere body.sourceFile (nombre exacto del archivo, ej. "Cartola Santander Enero 2026.pdf").');
         }
+        const organizationId = (req as any).organizationId;
         try {
-            return await this.transactionsService.deleteTransactionsBySourceFile(body.sourceFile);
+            return await this.transactionsService.deleteTransactionsBySourceFile(organizationId, body.sourceFile);
         } catch (err: any) {
             this.logger.error(`delete-cartola failed: ${err?.message}`, err?.stack);
             throw new InternalServerErrorException(
@@ -87,9 +90,12 @@ export class TransactionsController {
         @Query('search') search?: string,
         @Query('filename') filename?: string,
         @Query('sortBy') sortBy?: string,
-        @Query('order') order?: 'asc' | 'desc'
+        @Query('order') order?: 'asc' | 'desc',
+        @Req() req?: Request
     ) {
+        const organizationId = (req as any)?.organizationId;
         const filters: TransactionFilters = {
+            organizationId,
             fromDate,
             toDate,
             bankAccountId,
@@ -119,9 +125,12 @@ export class TransactionsController {
     async getTransactionsSummary(
         @Query('fromDate') fromDate?: string,
         @Query('toDate') toDate?: string,
-        @Query('bankAccountId') bankAccountId?: string
+        @Query('bankAccountId') bankAccountId?: string,
+        @Req() req?: Request
     ) {
+        const organizationId = (req as any)?.organizationId;
         const filters: TransactionFilters = {
+            organizationId,
             fromDate,
             toDate,
             bankAccountId,
@@ -139,9 +148,11 @@ export class TransactionsController {
      */
     @Post()
     async createTransaction(
+        @Req() req: Request,
         @Body() body: { bankAccountId: string; date: string; description: string; amount: number; type: 'CREDIT' | 'DEBIT'; sourceFile?: string }
     ) {
-        return this.transactionsService.createTransaction(body);
+        const organizationId = (req as any).organizationId;
+        return this.transactionsService.createTransaction(organizationId, body);
     }
 
     /**
@@ -149,10 +160,11 @@ export class TransactionsController {
      * Transacciones sin conciliar
      */
     @Get('unmatched')
-    async getUnmatchedTransactions(@Query('limit') limit?: string) {
+    async getUnmatchedTransactions(@Query('limit') limit?: string, @Req() req?: Request) {
         const limitNum = limit ? parseInt(limit, 10) : 50;
+        const organizationId = (req as any)?.organizationId;
         this.logger.log(`Fetching unmatched transactions (limit: ${limitNum})`);
-        return this.transactionsService.getUnmatchedTransactions(limitNum);
+        return this.transactionsService.getUnmatchedTransactions(organizationId, limitNum);
     }
 
     /**
@@ -160,9 +172,10 @@ export class TransactionsController {
      * Obtener cuentas bancarias
      */
     @Get('bank-accounts')
-    async getBankAccounts() {
-        this.logger.log('Fetching bank accounts');
-        return this.transactionsService.getBankAccounts();
+    async getBankAccounts(@Req() req: Request) {
+        const organizationId = (req as any).organizationId;
+        this.logger.log(`Fetching bank accounts for org ${organizationId}`);
+        return this.transactionsService.getBankAccounts(organizationId);
     }
 
     /**
@@ -171,10 +184,12 @@ export class TransactionsController {
      */
     @Get('files-in-period')
     async getFilesInPeriod(
+        @Req() req: Request,
         @Query('fromDate') fromDate?: string,
         @Query('toDate') toDate?: string,
     ) {
-        return this.transactionsService.getFilesInPeriod(fromDate, toDate);
+        const organizationId = (req as any).organizationId;
+        return this.transactionsService.getFilesInPeriod(organizationId, fromDate, toDate);
     }
 
     /**
@@ -183,10 +198,12 @@ export class TransactionsController {
      */
     @Patch(':id/annotate')
     async annotateTransaction(
+        @Req() req: Request,
         @Param('id') id: string,
         @Body() body: { empresa?: string; detalle?: string; comentario?: string; folio?: string },
     ) {
-        return this.transactionsService.annotateTransaction(id, body);
+        const organizationId = (req as any).organizationId;
+        return this.transactionsService.annotateTransaction(organizationId, id, body);
     }
 
     /**
@@ -195,11 +212,13 @@ export class TransactionsController {
      */
     @Patch(':id/review')
     async reviewTransaction(
+        @Req() req: Request,
         @Param('id') id: string,
         @Body() body: { note: string; providerId?: string; newProviderName?: string },
     ) {
+        const organizationId = (req as any).organizationId;
         this.logger.log(`Marking transaction ${id} as reviewed. Note: ${body.note}, Prov: ${body.providerId}, NewProv: ${body.newProviderName}`);
-        return this.transactionsService.markAsReviewed(id, body.note, body.providerId, body.newProviderName);
+        return this.transactionsService.markAsReviewed(organizationId, id, body.note, body.providerId, body.newProviderName);
     }
 
     /**
@@ -208,13 +227,15 @@ export class TransactionsController {
      */
     @Patch(':id/type')
     async updateTransactionType(
+        @Req() req: Request,
         @Param('id') id: string,
         @Body() body: { type: 'CREDIT' | 'DEBIT' },
     ) {
         if (!body?.type || !['CREDIT', 'DEBIT'].includes(body.type)) {
             throw new BadRequestException('Se requiere body.type: "CREDIT" o "DEBIT".');
         }
-        return this.transactionsService.updateTransactionType(id, body.type);
+        const organizationId = (req as any).organizationId;
+        return this.transactionsService.updateTransactionType(organizationId, id, body.type);
     }
 
     /**
@@ -223,12 +244,14 @@ export class TransactionsController {
      */
     @Patch(':id/amount')
     async updateTransactionAmount(
+        @Req() req: Request,
         @Param('id') id: string,
         @Body() body: { amount: number },
     ) {
         if (body?.amount === undefined || isNaN(Number(body.amount))) {
             throw new BadRequestException('Se requiere body.amount válido.');
         }
-        return this.transactionsService.updateTransactionAmount(id, Number(body.amount));
+        const organizationId = (req as any).organizationId;
+        return this.transactionsService.updateTransactionAmount(organizationId, id, Number(body.amount));
     }
 }

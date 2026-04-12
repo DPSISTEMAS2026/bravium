@@ -115,7 +115,7 @@ export class SumMatchStrategy {
         return search(0, [], 0);
     }
 
-    async persistSuggestions(suggestions: SumSuggestion[]): Promise<{ suggestions: number; autoConfirmed: number }> {
+    async persistSuggestions(suggestions: SumSuggestion[], organizationId?: string): Promise<{ suggestions: number; autoConfirmed: number }> {
         let suggestionCount = 0;
         let autoConfirmed = 0;
 
@@ -135,6 +135,7 @@ export class SumMatchStrategy {
                     confidence: s.confidence,
                     reason: s.reason,
                     status: 'PENDING',
+                    organizationId: organizationId || s.dte.organizationId,
                 },
             });
             suggestionCount++;
@@ -142,7 +143,7 @@ export class SumMatchStrategy {
         return { suggestions: suggestionCount, autoConfirmed };
     }
 
-    private async autoConfirmSumMatch(s: SumSuggestion): Promise<void> {
+    private async autoConfirmSumMatch(s: SumSuggestion, organizationId?: string): Promise<void> {
         await this.prisma.$transaction(async (prisma) => {
             for (const tx of s.transactions) {
                 const freshTx = await prisma.bankTransaction.findUnique({
@@ -159,6 +160,7 @@ export class SumMatchStrategy {
                         status: 'CONFIRMED',
                         confidence: s.confidence,
                         ruleApplied: `SumMatch (auto) - ${s.reason}`,
+                        organizationId: organizationId || s.dte.organizationId,
                     },
                 });
 

@@ -4,6 +4,7 @@ import { CacheService } from '../../common/services/cache.service';
 import { DataVisibilityService } from '../../common/services/data-visibility.service';
 
 export interface TransactionFilters {
+    organizationId?: string;
     fromDate?: string;
     toDate?: string;
     bankAccountId?: string;
@@ -33,6 +34,10 @@ export class TransactionsService {
 
     private buildWhere(filters: TransactionFilters) {
         const where: any = {};
+
+        if (filters.organizationId) {
+            where.bankAccount = { organizationId: filters.organizationId };
+        }
 
         const minDate = this.visibility.applyMinDate(
             filters.fromDate ? new Date(filters.fromDate) : undefined,
@@ -126,7 +131,7 @@ export class TransactionsService {
         let where = this.buildWhere(filters);
         if (filters.status === 'PARTIALLY_MATCHED') {
             const rows = await this.prisma.matchSuggestion.findMany({
-                where: { status: 'PENDING' },
+                where: { status: 'PENDING', organizationId: filters.organizationId },
                 select: { transactionIds: true },
             });
             const suggestionTxIds = [...new Set(rows.flatMap((r) => (r.transactionIds as string[]) || []))];
@@ -177,7 +182,7 @@ export class TransactionsService {
         const pendingSuggestions =
             txIds.size > 0
                 ? await this.prisma.matchSuggestion.findMany({
-                      where: { status: 'PENDING' },
+                      where: { status: 'PENDING', organizationId: filters.organizationId },
                       include: {
                           dte: {
                               select: {
@@ -195,7 +200,7 @@ export class TransactionsService {
         for (const s of pendingSuggestions) {
             const ids = (s.transactionIds as string[]) || [];
             for (const id of ids) {
-                if (txIds.has(id)) txIdToSuggestion.set(id, { id: s.id, type: s.type, confidence: s.confidence, dte: s.dte, transactionIds: ids, relatedDteIds: (s.relatedDteIds as string[]) || undefined });
+                if (txIds.has(id)) txIdToSuggestion.set(id, { id: s.id, type: s.type, confidence: s.confidence, dte: (s as any).dte, transactionIds: ids, relatedDteIds: (s.relatedDteIds as any) || undefined });
             }
         }
 
@@ -233,7 +238,15 @@ export class TransactionsService {
         return data;
     }
 
-    async createTransaction(data: { bankAccountId: string; date: string; description: string; amount: number; type: 'CREDIT' | 'DEBIT', sourceFile?: string }) {
+    async createTransaction(organizationId: string, data: { bankAccountId: string; date: string; description: string; amount: number; type: 'CREDIT' | 'DEBIT', sourceFile?: string }) {
+        const account = await this.prisma.bankAccount.findUnique({
+            where: { id: data.bankAccountId },
+            select: { organizationId: true }
+        });
+        if (!account || account.organizationId !== organizationId) {
+            throw new Error('Cuenta bancaria no encontrada o no pertenece a su organización.');
+        }
+
         return this.prisma.bankTransaction.create({
             data: {
                 bankAccountId: data.bankAccountId,
@@ -296,13 +309,14 @@ export class TransactionsService {
     /**
      * Obtener transacciones sin conciliar
      */
-    async getUnmatchedTransactions(limit: number = 50) {
+    async getUnmatchedTransactions(organizationId?: string, limit: number = 50) {
         const minDate = this.visibility.getVisibleFromDate();
         const transactions = await this.prisma.bankTransaction.findMany({
             where: {
                 status: {
                     in: ['PENDING', 'UNMATCHED'],
                 },
+                ...(organizationId && { bankAccount: { organizationId } }),
                 ...(minDate && { date: { gte: minDate } }),
             },
             include: {
@@ -321,27 +335,32 @@ export class TransactionsService {
      * Mantiene proveedores (y sus RUTs). Desvincula PaymentRecord de transacciones.
      * Opcional: borrar cuentas bancarias para que al subir cartolas se creen de nuevo.
      */
-    async cleanupAllExceptProviders(deleteBankAccounts = false) {
+    async cleanupAllExceptProviders(organizationId: string, deleteBankAccounts = false) {
+        if (!organizationId) throw new Error('organizationId es requerido para limpieza.');
+
         const [delMatches, delSuggestions] = await Promise.all([
-            this.prisma.reconciliationMatch.deleteMany({}),
-            this.prisma.matchSuggestion.deleteMany({}),
+            this.prisma.reconciliationMatch.deleteMany({ where: { organizationId } }),
+            this.prisma.matchSuggestion.deleteMany({ where: { organizationId } }),
         ]);
         await this.prisma.paymentRecord.updateMany({
-            where: { transactionId: { not: null } },
+            where: { organizationId, transactionId: { not: null } },
             data: { transactionId: null },
         });
-        const delTx = await this.prisma.bankTransaction.deleteMany({});
+        const delTx = await this.prisma.bankTransaction.deleteMany({
+            where: { bankAccount: { organizationId } }
+        });
         let delAccounts = 0;
         if (deleteBankAccounts) {
-            delAccounts = (await this.prisma.bankAccount.deleteMany({})).count;
+            delAccounts = (await this.prisma.bankAccount.deleteMany({ where: { organizationId } })).count;
         }
         // Dejar todos los DTEs como no pagados para volver a conciliar movimiento por movimiento
-        const updated = await this.prisma.$executeRaw`
-            UPDATE dtes SET "paymentStatus" = 'UNPAID', "outstandingAmount" = "totalAmount"
-        `;
+        const updated = await this.prisma.$executeRawUnsafe(
+            `UPDATE dtes SET "paymentStatus" = 'UNPAID', "outstandingAmount" = "totalAmount" WHERE "organizationId" = $1`,
+            organizationId
+        );
         this.cache.invalidate('tx-summary');
         this.cache.invalidate('bank-accounts');
-        this.logger.log(`Cleanup total: ${delTx.count} tx, ${delMatches.count} matches, ${delSuggestions.count} suggestions, DTEs reset to UNPAID: ${updated}${deleteBankAccounts ? `, ${delAccounts} accounts` : ''}`);
+        this.logger.log(`Cleanup total for org ${organizationId}: ${delTx.count} tx, ${delMatches.count} matches, ${delSuggestions.count} suggestions, DTEs reset: ${updated}`);
         return {
             deletedTransactions: delTx.count,
             deletedMatches: delMatches.count,
@@ -388,16 +407,21 @@ export class TransactionsService {
      * Limpieza de cartolas: elimina todas las transacciones cuyo sourceFile NO está en keepSourceFiles.
      * Mantiene proveedores y DTEs; revierte estado de pago de DTEs que solo tenían match con tx eliminadas.
      */
-    async cleanupCartolasExcept(keepSourceFiles: string[]) {
+    async cleanupCartolasExcept(organizationId: string, keepSourceFiles: string[]) {
+        if (!organizationId) throw new Error('organizationId es requerido para limpieza.');
         const keep = keepSourceFiles.map((f) => f.trim()).filter(Boolean);
         if (keep.length === 0) {
             throw new Error('keepSourceFiles no puede estar vacío. Indica al menos un archivo a mantener.');
         }
 
         // sourceFile NULL, vacío o que no esté en la lista a mantener
-        const placeholders = keep.map((_, i) => `$${i + 1}`).join(', ');
+        const placeholders = keep.map((_, i) => `$${i + 2}`).join(', ');
         const idsResult = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
-            `SELECT id FROM bank_transactions WHERE (metadata->>'sourceFile' IS NULL OR metadata->>'sourceFile' = '' OR metadata->>'sourceFile' NOT IN (${placeholders}))`,
+            `SELECT bt.id FROM bank_transactions bt 
+             JOIN bank_accounts ba ON ba.id = bt."bankAccountId" 
+             WHERE ba."organizationId" = $1 
+             AND (bt.metadata->>'sourceFile' IS NULL OR bt.metadata->>'sourceFile' = '' OR bt.metadata->>'sourceFile' NOT IN (${placeholders}))`,
+            organizationId,
             ...keep,
         );
         const idsToDelete = idsResult.map((r) => r.id);
@@ -485,12 +509,13 @@ export class TransactionsService {
      * Útil cuando la carga falló a medias (ej. 0 movimientos insertados) y se quiere forzar una nueva carga desde cero.
      * Elimina matches y sugerencias asociadas; revierte estado de pago de DTEs que solo tenían match con esas tx.
      */
-    async deleteTransactionsBySourceFile(sourceFile: string): Promise<{
+    async deleteTransactionsBySourceFile(organizationId: string, sourceFile: string): Promise<{
         deletedTransactions: number;
         deletedMatches: number;
         deletedSuggestions: number;
         resetDtes: number;
     }> {
+        if (!organizationId) throw new Error('organizationId es requerido.');
         const filename = sourceFile?.trim();
         if (!filename) {
             throw new Error('sourceFile es requerido (ej. "Cartola Santander Enero 2026.pdf").');
@@ -499,7 +524,10 @@ export class TransactionsService {
         let idsToDelete: string[];
         try {
             const idsResult = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
-                `SELECT id FROM bank_transactions WHERE metadata->>'sourceFile' = $1`,
+                `SELECT bt.id FROM bank_transactions bt 
+                 JOIN bank_accounts ba ON ba.id = bt."bankAccountId" 
+                 WHERE ba."organizationId" = $1 AND bt.metadata->>'sourceFile' = $2`,
+                organizationId,
                 filename,
             );
             idsToDelete = idsResult.map((r) => r.id);
@@ -603,28 +631,32 @@ export class TransactionsService {
      * Obtener nombres de cartolas (archivos) que tienen movimientos en el periodo.
      * Incluye también __NO_SOURCE_FILE__ si hay movimientos en el periodo sin sourceFile (ej. otra fuente).
      */
-    async getFilesInPeriod(fromDate?: string, toDate?: string): Promise<{ filename: string }[]> {
+    async getFilesInPeriod(organizationId: string, fromDate?: string, toDate?: string): Promise<{ filename: string }[]> {
         const minDate = this.visibility.applyMinDate(
             fromDate ? new Date(fromDate) : undefined,
         );
         const from = minDate ?? (fromDate ? new Date(fromDate) : undefined);
         const to = toDate ? new Date(toDate) : undefined;
-        if (!from && !to) return [];
+        // if (!from && !to) return []; // Removed to allow listing all for org
 
-        const where: string[] = [];
-        const params: (string | Date)[] = [];
+        const where: string[] = [`ba."organizationId" = $1`];
+        const params: (string | Date)[] = [organizationId];
+        
         if (from) {
             params.push(from);
-            where.push(`date >= $${params.length}`);
+            where.push(`bt.date >= $${params.length}`);
         }
         if (to) {
             params.push(to);
-            where.push(`date <= $${params.length}`);
+            where.push(`bt.date <= $${params.length}`);
         }
-        where.push("(metadata->>'sourceFile' IS NOT NULL AND metadata->>'sourceFile' != '')");
+        where.push("(bt.metadata->>'sourceFile' IS NOT NULL AND bt.metadata->>'sourceFile' != '')");
 
         const result = await this.prisma.$queryRawUnsafe<{ filename: string }[]>(
-            `SELECT DISTINCT metadata->>'sourceFile' AS filename FROM bank_transactions WHERE ${where.join(' AND ')} ORDER BY filename`,
+            `SELECT DISTINCT bt.metadata->>'sourceFile' AS filename 
+             FROM bank_transactions bt 
+             JOIN bank_accounts ba ON ba.id = bt."bankAccountId" 
+             WHERE ${where.join(' AND ')} ORDER BY filename`,
             ...params,
         );
 
@@ -654,24 +686,25 @@ export class TransactionsService {
     /**
      * Obtener cuentas bancarias
      */
-    async getBankAccounts() {
-        return this.cache.getOrFetch('bank-accounts', 60_000, () =>
+    async getBankAccounts(organizationId: string) {
+        return this.cache.getOrFetch(`bank-accounts:${organizationId}`, 60_000, () =>
             this.prisma.bankAccount.findMany({
-                where: { isActive: true },
+                where: { organizationId, isActive: true },
                 include: { _count: { select: { transactions: true } } },
             }),
         );
     }
 
     async annotateTransaction(
+        organizationId: string,
         id: string,
         annotation: { empresa?: string; detalle?: string; comentario?: string; folio?: string },
     ) {
         const tx = await this.prisma.bankTransaction.findUnique({
             where: { id },
-            select: { metadata: true },
+            include: { bankAccount: true },
         });
-        if (!tx) throw new Error('Transaccion no encontrada');
+        if (!tx || tx.bankAccount.organizationId !== organizationId) throw new Error('Transaccion no encontrada');
 
         const meta = (tx.metadata as Record<string, any>) || {};
         if (annotation.empresa !== undefined) meta.empresaExcel = annotation.empresa;
@@ -686,12 +719,12 @@ export class TransactionsService {
         });
     }
 
-    async markAsReviewed(id: string, note: string, providerId?: string, newProviderName?: string) {
+    async markAsReviewed(organizationId: string, id: string, note: string, providerId?: string, newProviderName?: string) {
         const tx = await this.prisma.bankTransaction.findUnique({
             where: { id },
              include: { bankAccount: true },
         });
-        if (!tx) throw new Error('Transacción no encontrada');
+        if (!tx || tx.bankAccount.organizationId !== organizationId) throw new Error('Transacción no encontrada');
 
         const meta = (tx.metadata as Record<string, any>) || {};
         meta.reviewNote = note;
@@ -761,12 +794,12 @@ export class TransactionsService {
     /**
      * Corregir tipo de movimiento (Cargo ↔ Abono). Invierte el signo del monto para que coincida.
      */
-    async updateTransactionType(id: string, type: 'CREDIT' | 'DEBIT') {
+    async updateTransactionType(organizationId: string, id: string, type: 'CREDIT' | 'DEBIT') {
         const tx = await this.prisma.bankTransaction.findUnique({
             where: { id },
-            select: { id: true, type: true, amount: true },
+            include: { bankAccount: true },
         });
-        if (!tx) throw new Error('Transacción no encontrada');
+        if (!tx || tx.bankAccount.organizationId !== organizationId) throw new Error('Transacción no encontrada');
 
         const newAmount = type === tx.type ? tx.amount : -tx.amount;
         const result = await this.prisma.bankTransaction.update({
@@ -780,7 +813,13 @@ export class TransactionsService {
     /**
      * Corregir el monto de una transacción (debido a errores de OCR).
      */
-    async updateTransactionAmount(id: string, amount: number) {
+    async updateTransactionAmount(organizationId: string, id: string, amount: number) {
+        const tx = await this.prisma.bankTransaction.findUnique({
+            where: { id },
+            include: { bankAccount: true },
+        });
+        if (!tx || tx.bankAccount.organizationId !== organizationId) throw new Error('Transacción no encontrada');
+
         const result = await this.prisma.bankTransaction.update({
              where: { id },
              data: { amount }

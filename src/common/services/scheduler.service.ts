@@ -6,6 +6,7 @@ import { LibreDteService } from '../../modules/ingestion/services/libredte.servi
 import { ConciliacionService } from '../../modules/conciliacion/conciliacion.service';
 import { GoogleDriveService } from '../../modules/ingestion/services/google-drive.service';
 import { DriveIngestService } from '../../modules/ingestion/services/drive-ingest.service';
+import { FintocService } from '../../modules/ingestion/services/fintoc.service';
 
 @Injectable()
 export class SchedulerService implements OnModuleInit {
@@ -16,6 +17,7 @@ export class SchedulerService implements OnModuleInit {
         private readonly conciliacionService: ConciliacionService,
         private readonly googleDriveService: GoogleDriveService,
         private readonly driveIngestService: DriveIngestService,
+        private readonly fintocService: FintocService,
         private readonly prisma: PrismaService,
     ) { }
 
@@ -205,6 +207,17 @@ export class SchedulerService implements OnModuleInit {
             }
         } else {
             this.logger.log(`[${org.slug}] No Google Drive folder configured.`);
+        }
+
+        // 0.5. Sync Bank via Fintoc API
+        if (org.fintocApiKey) {
+            this.logger.log(`🔌 [${org.slug}] Syncing via Fintoc API...`);
+            try {
+                const fintocResult = await this.fintocService.syncTransactions(org.id, org.fintocApiKey, org.fintocLinkToken);
+                this.logger.log(`✅ [${org.slug}] Fintoc: ${fintocResult.created} nuevos, ${fintocResult.existing} ya existentes`);
+            } catch (e) {
+                this.logger.error(`[${org.slug}] Error syncing Fintoc API`, e);
+            }
         }
 
         // 1. Sync DTEs via LibreDTE

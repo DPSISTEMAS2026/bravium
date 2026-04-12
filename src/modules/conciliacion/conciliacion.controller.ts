@@ -193,9 +193,10 @@ export class ConciliacionController {
         if (!hasTx || !hasTarget) {
             throw new BadRequestException('Se requiere transactionId(s) y al menos dteId(s) o paymentId');
         }
+        const organizationId = (req as any).organizationId;
         this.logger.log(`User ${userId} creating manual match: tx=${body.transactionId}, dteIds=${body.dteIds?.join(',') || body.dteId}`);
         try {
-            return await this.matchManagement.createManualMatch(body, userId);
+            return await this.matchManagement.createManualMatch(body, userId, organizationId);
         } catch (err: any) {
             this.logger.error(`createManualMatch failed: ${err.message}`, err.stack);
             throw err;

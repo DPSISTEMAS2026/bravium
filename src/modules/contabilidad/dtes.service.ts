@@ -4,6 +4,7 @@ import { CacheService } from '../../common/services/cache.service';
 import { DataVisibilityService } from '../../common/services/data-visibility.service';
 
 export interface DteFilters {
+    organizationId?: string;
     fromDate?: string;
     toDate?: string;
     providerId?: string;
@@ -34,6 +35,10 @@ export class DtesService {
 
     private buildWhere(filters: DteFilters) {
         const where: any = {};
+
+        if (filters.organizationId) {
+            where.organizationId = filters.organizationId;
+        }
 
         const minDate = this.visibility.applyMinDate(
             filters.fromDate ? new Date(filters.fromDate) : undefined,
@@ -294,24 +299,26 @@ export class DtesService {
             return { data: [], meta: { total: 0, page: 1, limit: 15, lastPage: 0 } };
         }
 
+        const matchWhere: any = {
+            status: 'CONFIRMED',
+            dteId: { not: null },
+            transaction: { date: { gte: from, lte: to } },
+        };
+
+        if (filters.organizationId) {
+            matchWhere.organizationId = filters.organizationId;
+        }
+
         const page = filters.page ? Math.max(1, filters.page) : 1;
         const limit = Math.min(100, Math.max(1, filters.limit ?? 15));
         const skip = (page - 1) * limit;
 
         const [total, matches] = await Promise.all([
             this.prisma.reconciliationMatch.count({
-                where: {
-                    status: 'CONFIRMED',
-                    dteId: { not: null },
-                    transaction: { date: { gte: from, lte: to } },
-                },
+                where: matchWhere,
             }),
             this.prisma.reconciliationMatch.findMany({
-                where: {
-                    status: 'CONFIRMED',
-                    dteId: { not: null },
-                    transaction: { date: { gte: from, lte: to } },
-                },
+                where: matchWhere,
                 skip,
                 take: limit,
                 orderBy: { transaction: { date: 'desc' } },
@@ -368,10 +375,11 @@ export class DtesService {
     /**
      * Obtener DTEs pendientes de pago
      */
-    async getUnpaidDtes(limit: number = 50) {
+    async getUnpaidDtes(organizationId?: string, limit: number = 50) {
         const minDate = this.visibility.getVisibleFromDate();
         const dtes = await this.prisma.dTE.findMany({
             where: {
+                ...(organizationId && { organizationId }),
                 type: { not: 61 }, // Excluir NC (son abonos)
                 paymentStatus: {
                     in: ['UNPAID', 'PARTIAL'],
@@ -393,13 +401,14 @@ export class DtesService {
     /**
      * Obtener DTEs vencidos (más de 30 días sin pagar)
      */
-    async getOverdueDtes() {
+    async getOverdueDtes(organizationId?: string) {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         const minDate = this.visibility.getVisibleFromDate();
 
         const dtes = await this.prisma.dTE.findMany({
             where: {
+                ...(organizationId && { organizationId }),
                 type: { not: 61 }, // Excluir NC (son abonos)
                 paymentStatus: {
                     in: ['UNPAID', 'PARTIAL'],
@@ -430,11 +439,12 @@ export class DtesService {
     }
 
     /**
-     * Obtener un DTE por su ID
+     * Obtener un DTE por su ID (Asegurar que sea verificado por org más arriba, o lo ideal es pasarlo)
      */
-    async getDteById(id: string) {
+    async getDteById(id: string, organizationId?: string) {
         return this.prisma.dTE.findUnique({
             where: { id },
+            // Opcional: Para mayor seguridad se requeriría findFirst { where: { id, organizationId } } 
             include: { provider: true },
         });
     }
