@@ -411,9 +411,8 @@ export class ConciliacionService {
                 await this.createMatch(tx, best, strategy.name, MatchStatus.DRAFT);
                 this.fileLog(`DRAFT: ${tx.description} | ${tx.amount} -> ${best.reason} (score: ${best.score})`);
 
-                // If there are alternatives, save them as suggestions too
                 if (result.candidates.length > 1) {
-                    await this.createSuggestionFromCandidates(tx, result.candidates.slice(1), strategy.name, tx.bankAccount.organizationId);
+                    await this.createSuggestionFromCandidates(tx, result.candidates.slice(1), strategy.name, (tx as any).bankAccount?.organizationId);
                 }
                 return {
                     dteId: best.dte?.id,
@@ -503,7 +502,7 @@ export class ConciliacionService {
                     status,
                     confidence: candidate.score,
                     ruleApplied: strategyName + ` - ${candidate.reason}`,
-                    organizationId: tx.bankAccount.organizationId,
+                    organizationId: (tx as any).bankAccount?.organizationId,
                 },
             });
 

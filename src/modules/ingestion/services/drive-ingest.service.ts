@@ -57,7 +57,7 @@ export class DriveIngestService {
 
         if (filename && forceReplace) {
             this.logger.log(`Forzar recarga: eliminando movimientos previos de "${filename}"`);
-            await this.transactionsService.deleteTransactionsBySourceFile(filename);
+            await this.transactionsService.deleteTransactionsBySourceFile(dto.organizationId!, filename);
         }
 
         if (filename) {
@@ -264,7 +264,9 @@ export class DriveIngestService {
 
                 // 1. Resolve Provider
                 const fakeRut = this.generateFakeRut(emisorName);
-                let provider = await this.prisma.provider.findFirst({ where: { rut: fakeRut } });
+                let provider = await this.prisma.provider.findFirst({ 
+                    where: { rut: fakeRut, organizationId: 'FIXME-OR-PASS-ORG-ID' } // This method seems unused/legacy
+                });
 
                 if (!provider) {
                     provider = await this.prisma.provider.create({
@@ -314,10 +316,11 @@ export class DriveIngestService {
 
                 const existing = await this.prisma.dTE.findUnique({
                     where: {
-                        rutIssuer_type_folio: {
+                        rutIssuer_type_folio_organizationId: {
                             rutIssuer: provider.rut,
                             type: typeCode,
-                            folio: folio
+                            folio: folio,
+                            organizationId: 'FIXME-OR-PASS-ORG-ID'
                         }
                     }
                 });

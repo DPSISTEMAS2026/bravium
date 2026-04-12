@@ -223,10 +223,11 @@ export class LibreDteService {
         // 2. Check if DTE already exists
         const existingDTE = await this.prisma.dTE.findUnique({
             where: {
-                rutIssuer_type_folio: {
+                rutIssuer_type_folio_organizationId: {
                     rutIssuer,
                     type: dteType,
-                    folio
+                    folio,
+                    organizationId
                 }
             }
         });
@@ -244,7 +245,6 @@ export class LibreDteService {
         const isNotaDebito = dteType === 56;
         const isAbono = isNotaCredito; // NC = abono a favor
 
-        // 3. Create new DTE
         await this.prisma.dTE.create({
             data: {
                 folio: folio,
@@ -258,6 +258,7 @@ export class LibreDteService {
                 siiStatus: 'RECIBIDO',
                 paymentStatus: isAbono ? DtePaymentStatus.PAID : DtePaymentStatus.UNPAID,
                 providerId: provider.id,
+                organizationId,
                 origin: DataOrigin.API_INTEGRATION,
                 metadata: item // Store raw data for audit
             }

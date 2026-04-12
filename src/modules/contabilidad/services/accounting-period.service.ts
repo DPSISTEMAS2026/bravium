@@ -13,10 +13,10 @@ export class AccountingPeriodService {
      * Opens a new accounting period (e.g., April 2024).
      * Ensures no overlap or duplicates.
      */
-    async openPeriod(dto: CreatePeriodDto) {
+    async openPeriod(organizationId: string, dto: CreatePeriodDto) {
         const existing = await this.prisma.accountingPeriod.findUnique({
             where: {
-                year_month: { year: dto.year, month: dto.month },
+                year_month_organizationId: { year: dto.year, month: dto.month, organizationId },
             },
         });
 
@@ -34,6 +34,7 @@ export class AccountingPeriodService {
                 startDate,
                 endDate,
                 status: PeriodStatus.OPEN,
+                organizationId,
             },
         });
     }
@@ -47,9 +48,9 @@ export class AccountingPeriodService {
      *    Carry-over applies to unpaid invoices/providers.
      * 3. Lock the period.
      */
-    async closePeriod(year: number, month: number): Promise<ClosePeriodResult> {
+    async closePeriod(organizationId: string, year: number, month: number): Promise<ClosePeriodResult> {
         const period = await this.prisma.accountingPeriod.findUnique({
-            where: { year_month: { year, month } },
+            where: { year_month_organizationId: { year, month, organizationId } },
         });
 
         if (!period) throw new BadRequestException('Period not found');
@@ -62,6 +63,7 @@ export class AccountingPeriodService {
         const pendingMatches = await this.prisma.reconciliationMatch.count({
             where: {
                 status: MatchStatus.DRAFT,
+                organizationId,
                 transaction: {
                     date: {
                         gte: period.startDate,
@@ -106,9 +108,9 @@ export class AccountingPeriodService {
         };
     }
 
-    async getPeriod(year: number, month: number) {
+    async getPeriod(organizationId: string, year: number, month: number) {
         return this.prisma.accountingPeriod.findUnique({
-            where: { year_month: { year, month } },
+            where: { year_month_organizationId: { year, month, organizationId } },
             include: { adjustments: true },
         });
     }

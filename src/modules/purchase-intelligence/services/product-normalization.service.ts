@@ -15,30 +15,32 @@ export class ProductNormalizationService {
      * 2. Exact Match via ProductAlias (Learned mappings)
      * 3. Fuzzy Match (Heuristic) -> Returns Candidate or Null
      */
-    async normalize(rawName: string, sku?: string): Promise<Product | null> {
+    async normalize(organizationId: string, rawName: string, sku?: string): Promise<Product | null> {
         const cleanName = rawName.toUpperCase().trim();
 
         // 1. Try SKU Match (High Confidence)
         if (sku) {
-            const bySku = await this.prisma.product.findUnique({ where: { sku } });
+            const bySku = await this.prisma.product.findUnique({ 
+                where: { sku_organizationId: { sku, organizationId } } 
+            });
             if (bySku) return bySku;
         }
 
         // 2. Try Alias Match (High Confidence - Learned)
         const byAlias = await this.prisma.productAlias.findUnique({
-            where: { aliasName: cleanName },
+            where: { aliasName_organizationId: { aliasName: cleanName, organizationId } },
             include: { product: true },
         });
-        if (byAlias) return byAlias.product;
+        if (byAlias) return (byAlias as any).product;
 
         // 3. Fuzzy Match (Lower Confidence)
-        return this.findFuzzyMatch(cleanName);
+        return this.findFuzzyMatch(organizationId, cleanName);
     }
 
     /**
      * Registers a user correction: "This weird name actually means Product X".
      */
-    async learnAlias(rawName: string, productId: string, source?: string) {
+    async learnAlias(organizationId: string, rawName: string, productId: string, source?: string) {
         const cleanName = rawName.toUpperCase().trim();
 
         try {
@@ -46,6 +48,7 @@ export class ProductNormalizationService {
                 data: {
                     aliasName: cleanName,
                     productId,
+                    organizationId,
                     source,
                     confidence: 1.0, // Manual = 100%
                 },
@@ -61,9 +64,12 @@ export class ProductNormalizationService {
      * Simple Token-Based Matching Strategy (In-Memory for Architecture Demo).
      * In Production: Use pg_trgm or ElasticSearch.
      */
-    private async findFuzzyMatch(targetName: string): Promise<Product | null> {
+    private async findFuzzyMatch(organizationId: string, targetName: string): Promise<Product | null> {
         // Optimization: Load only names and IDs (Cache this in real app)
-        const allProducts = await this.prisma.product.findMany({ select: { id: true, name: true } });
+        const allProducts = await this.prisma.product.findMany({ 
+            where: { organizationId },
+            select: { id: true, name: true } 
+        });
 
         let bestMatch: Product | null = null;
         let maxScore = 0;

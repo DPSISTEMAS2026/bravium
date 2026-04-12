@@ -28,16 +28,19 @@ export class FinancialConsolidationService {
         // 1. Determine period based on match/transaction date
         const match = await this.prisma.reconciliationMatch.findUnique({
             where: { id: matchId },
-            include: { transaction: true, dte: true }, // Include dte for ledger entry
+            include: { transaction: { include: { bankAccount: true } }, dte: true }, // Include dte for ledger entry
         });
         if (!match) throw new Error('Match not found');
+
+        const organizationId = match.organizationId || (match as any).transaction?.bankAccount?.organizationId;
+        if (!organizationId) throw new Error('Organization context missing for adjustment');
 
         const date = match.transaction.date;
         const year = date.getFullYear();
         const month = date.getMonth() + 1;
 
         // Ensure period exists or get current open one
-        let period = await this.periodService.getPeriod(year, month);
+        let period = await this.periodService.getPeriod(organizationId, year, month);
         if (!period) {
             // Should we auto-create? For safety, maybe fail or create.
             // Let's assume period must exist.

@@ -14,12 +14,21 @@ export class PurchaseHistoryIngestionService {
      * NO financial transactions are created here.
      */
     async processDteForIntelligence(dteId: string, lineItems: any[]) {
-        const dte = await this.prisma.dTE.findUnique({ where: { id: dteId } });
+        const dte = await this.prisma.dTE.findUnique({ 
+            where: { id: dteId },
+            include: { provider: true }
+        });
         if (!dte) return;
+
+        const organizationId = dte.organizationId;
+        if (!organizationId) {
+            this.logger.warn(`DTE ${dteId} has no organizationId. Skipping intelligence ingestion.`);
+            return;
+        }
 
         for (const item of lineItems) {
             // 1. Resolve or Create Product (The "Standardization" problem)
-            const product = await this.resolveProduct(item.name, item.sku);
+            const product = await this.resolveProduct(organizationId, item.name, item.sku);
 
             // 2. Log Price History
             await this.prisma.productPriceHistory.create({
@@ -44,11 +53,11 @@ export class PurchaseHistoryIngestionService {
         }
     }
 
-    private async resolveProduct(name: string, sku: string): Promise<Product> {
+    private async resolveProduct(organizationId: string, name: string, sku: string): Promise<Product> {
         // Simplified logic: Find by SKU or Name, else create.
         // In real world, this needs fuzzy matching or manual approval queue.
         let product = await this.prisma.product.findFirst({
-            where: { sku: sku || 'UNKNOWN' }
+            where: { sku: sku || 'UNKNOWN', organizationId }
         });
 
         if (!product) {
@@ -57,6 +66,7 @@ export class PurchaseHistoryIngestionService {
                     name: name,
                     sku: sku || `GEN-${Date.now()}`,
                     description: 'Auto-created from DTE',
+                    organizationId,
                 }
             });
         }
