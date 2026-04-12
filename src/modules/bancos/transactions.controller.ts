@@ -6,7 +6,7 @@ import { OrganizationGuard } from '../../common/guards/organization.guard';
 import { Request } from 'express';
 
 @UseGuards(JwtAuthGuard, RolesGuard, OrganizationGuard)
-@Controller('transactions')
+@Controller(['transactions', 'transactions/-'])
 export class TransactionsController {
     private readonly logger = new Logger(TransactionsController.name);
 

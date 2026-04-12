@@ -24,7 +24,7 @@ interface AutoMatchDto {
 import { LibreDteService } from '../ingestion/services/libredte.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard, OrganizationGuard)
-@Controller('conciliacion')
+@Controller(['conciliacion', 'conciliacion/-'])
 export class ConciliacionController {
     private readonly logger = new Logger(ConciliacionController.name);
 

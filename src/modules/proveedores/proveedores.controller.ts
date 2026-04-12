@@ -7,7 +7,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { OrganizationGuard } from '../../common/guards/organization.guard';
 
 @UseGuards(JwtAuthGuard, RolesGuard, OrganizationGuard)
-@Controller('proveedores')
+@Controller(['proveedores', 'proveedores/-'])
 export class ProveedoresController {
     private readonly logger = new Logger(ProveedoresController.name);
 
