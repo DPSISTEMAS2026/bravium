@@ -1120,7 +1120,7 @@ export default function CartolasPage() {
                                     if (!deleteCartolaFilename) return;
                                     setDeletingCartola(true);
                                     try {
-                                        const res = await fetch(`${API_URL}/transactions/delete-cartola`, {
+                                        const res = await authFetch(`${API_URL}/transactions/delete-cartola`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ sourceFile: deleteCartolaFilename }),
