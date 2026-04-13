@@ -40,9 +40,9 @@ export class DtesService {
             where.organizationId = filters.organizationId;
         }
 
-        const minDate = this.visibility.applyMinDate(
-            filters.fromDate ? new Date(filters.fromDate) : undefined,
-        );
+        const minDate = filters.search
+            ? (filters.fromDate ? new Date(filters.fromDate) : undefined)
+            : this.visibility.applyMinDate(filters.fromDate ? new Date(filters.fromDate) : undefined);
 
         if (minDate || filters.toDate) {
             where.issuedDate = {};

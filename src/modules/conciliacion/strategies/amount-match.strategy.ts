@@ -35,7 +35,7 @@ export class AmountMatchStrategy implements MatchingStrategy {
 
         const windowRaw = process.env.MATCH_DATE_WINDOW_DAYS;
         const windowParsed = windowRaw ? Number.parseInt(windowRaw, 10) : NaN;
-        this.dateWindowDays = Number.isFinite(windowParsed) && windowParsed >= 0 ? windowParsed : 60;
+        this.dateWindowDays = Number.isFinite(windowParsed) && windowParsed >= 0 ? windowParsed : 120;
     }
 
     async findMatches(
@@ -105,12 +105,14 @@ export class AmountMatchStrategy implements MatchingStrategy {
 
     private scoreDate(txDate: Date, dteDate: Date): number {
         const daysDiff = Math.abs(txDate.getTime() - new Date(dteDate).getTime()) / 86400000;
-        if (daysDiff <= 1) return 1.0;
-        if (daysDiff <= 3) return 0.95;
-        if (daysDiff <= 7) return 0.85;
-        if (daysDiff <= 15) return 0.70;
-        if (daysDiff <= 30) return 0.30; // Penalización fuerte al mes
-        return Math.max(0, 0.5 - daysDiff / this.dateWindowDays);
+        if (daysDiff <= 3) return 1.0;
+        if (daysDiff <= 10) return 0.90;
+        if (daysDiff <= 20) return 0.80;
+        if (daysDiff <= 35) return 0.70;
+        if (daysDiff <= 60) return 0.50;
+        if (daysDiff <= 90) return 0.30;
+        if (daysDiff <= 120) return 0.10;
+        return 0;
     }
 
     private scoreProvider(txDesc: string, dte: DteWithProvider): number {

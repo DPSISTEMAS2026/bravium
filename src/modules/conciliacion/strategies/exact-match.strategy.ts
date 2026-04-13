@@ -28,7 +28,7 @@ export class ExactMatchStrategy implements MatchingStrategy {
 
         const windowRaw = process.env.MATCH_DATE_WINDOW_DAYS;
         const windowParsed = windowRaw ? Number.parseInt(windowRaw, 10) : NaN;
-        this.dateWindowDays = Number.isFinite(windowParsed) && windowParsed >= 0 ? windowParsed : 60;
+        this.dateWindowDays = Number.isFinite(windowParsed) && windowParsed >= 0 ? windowParsed : 120;
     }
 
     /** @deprecated Use the standalone function from utils/provider-matcher instead */
@@ -85,12 +85,14 @@ export class ExactMatchStrategy implements MatchingStrategy {
 
     private computeScore(amountDiff: number, daysDiff: number, providerMatch: boolean): number {
         let amountScore = amountDiff === 0 ? 1.0 : Math.max(0, 1.0 - amountDiff / this.amountToleranceClp);
-        let dateScore = daysDiff <= 1 ? 1.0
-            : daysDiff <= 3 ? 0.95
-            : daysDiff <= 7 ? 0.90
-            : daysDiff <= 15 ? 0.80
-            : daysDiff <= 30 ? 0.30 // Penalización fuerte al mes
-            : Math.max(0, 0.5 - daysDiff / this.dateWindowDays);
+        let dateScore = daysDiff <= 3 ? 1.0
+            : daysDiff <= 10 ? 0.90
+            : daysDiff <= 20 ? 0.80
+            : daysDiff <= 35 ? 0.70
+            : daysDiff <= 60 ? 0.50
+            : daysDiff <= 90 ? 0.30
+            : daysDiff <= 120 ? 0.10
+            : 0; // Fuera de ventana
         let provScore = providerMatch ? 1.0 : 0.0;
 
         return Math.round((amountScore * 0.30 + dateScore * 0.45 + provScore * 0.25) * 100) / 100;

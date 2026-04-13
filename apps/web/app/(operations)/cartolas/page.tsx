@@ -606,7 +606,7 @@ export default function CartolasPage() {
                 limit: '30',
                 includeMatched: 'true',
             });
-            const res = await fetch(`${API_URL}/dtes?${params}`);
+            const res = await authFetch(`${API_URL}/dtes?${params}`);
             if (res.ok) {
                 const data = await res.json();
                 setAltDtesResults(Array.isArray(data) ? data : data.data || []);
@@ -631,7 +631,7 @@ export default function CartolasPage() {
         }
         let cancelled = false;
         setProviderResultsLoading(true);
-        fetch(`${API_URL}/proveedores?search=${encodeURIComponent(providerSearchDebounced)}`)
+        authFetch(`${API_URL}/proveedores?search=${encodeURIComponent(providerSearchDebounced)}`)
             .then(res => res.ok ? res.json() : [])
             .then(data => { if (!cancelled) setProviderResults(Array.isArray(data) ? data : (data?.data ?? data?.providers ?? [])); })
             .catch(() => { if (!cancelled) setProviderResults([]); })
@@ -645,7 +645,7 @@ export default function CartolasPage() {
             return;
         }
         const t = setTimeout(() => {
-            fetch(`${API_URL}/proveedores?search=${encodeURIComponent(annotateProviderSearch)}`)
+            authFetch(`${API_URL}/proveedores?search=${encodeURIComponent(annotateProviderSearch)}`)
                 .then(res => res.json())
                 .then(j => setAnnotateProviderResults(j.data || j || []))
                 .catch(() => setAnnotateProviderResults([]));
@@ -660,7 +660,7 @@ export default function CartolasPage() {
         }
         let cancelled = false;
         setProviderDtesLoading(true);
-        fetch(`${API_URL}/dtes?providerId=${selectedProvider.id}&paymentStatus=UNPAID&includeMatched=true&limit=50`)
+        authFetch(`${API_URL}/dtes?providerId=${selectedProvider.id}&paymentStatus=UNPAID&includeMatched=true&limit=50`)
             .then(res => res.ok ? res.json() : [])
             .then(data => { const list = Array.isArray(data) ? data : data.data || []; if (!cancelled) setProviderDtes(list); })
             .catch(() => { if (!cancelled) setProviderDtes([]); })
@@ -716,7 +716,7 @@ export default function CartolasPage() {
         }
         let cancelled = false;
         setSuggestionProviderUnpaidDtesLoading(true);
-        fetch(`${API_URL}/dtes?providerId=${encodeURIComponent(providerId)}&paymentStatus=UNPAID&limit=50`)
+        authFetch(`${API_URL}/dtes?providerId=${encodeURIComponent(providerId)}&paymentStatus=UNPAID&limit=50`)
             .then((r) => r.ok ? r.json() : null)
             .then((data) => {
                 if (cancelled) return;
@@ -739,7 +739,7 @@ export default function CartolasPage() {
         let cancelled = false;
         setSuggestionOtherMovementsRutLoading(true);
         const statusParam = 'PENDING,UNMATCHED';
-        fetch(`${API_URL}/transactions?search=${encodeURIComponent(providerRut)}&status=${statusParam}&limit=50`)
+        authFetch(`${API_URL}/transactions?search=${encodeURIComponent(providerRut)}&status=${statusParam}&limit=50`)
             .then((r) => r.ok ? r.json() : null)
             .then((data) => {
                 if (cancelled) return;
@@ -874,7 +874,7 @@ export default function CartolasPage() {
         setAnnotateMatchError(null);
         try {
             const params = new URLSearchParams({ search: annotateDteSearch.trim(), paymentStatus: 'UNPAID', includeMatched: 'true', limit: '15' });
-            const res = await fetch(`${API_URL}/dtes?${params}`);
+            const res = await authFetch(`${API_URL}/dtes?${params}`);
             const data = await res.json().catch(() => ({}));
             setAnnotateDteResults(Array.isArray(data) ? data : data.data || []);
             setAnnotateDteSelected(null);
@@ -921,7 +921,7 @@ export default function CartolasPage() {
         const note = annotateNote.trim();
         setAnnotateLoading(true);
         try {
-            const res = await fetch(`${API_URL}/transactions/${txId}/review`, {
+            const res = await authFetch(`${API_URL}/transactions/${txId}/review`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -954,7 +954,7 @@ export default function CartolasPage() {
 
     const quickAnnotateNote = async (txId: string, note: string) => {
         try {
-            const res = await fetch(`${API_URL}/transactions/${txId}/review`, {
+            const res = await authFetch(`${API_URL}/transactions/${txId}/review`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ note })
@@ -1246,12 +1246,16 @@ export default function CartolasPage() {
                         }
                         onAnnotateSave={
                             (USE_NEW_MODAL && annotateTx) ? async (note, providerId) => {
-                                const res = await fetch(`${API_URL}/transactions/${annotateTx.id}/review`, {
+                                if (!annotateTx?.id || annotateTx.id === '-') {
+                                    console.error('ID de transacción inválido para anotación:', annotateTx);
+                                    return;
+                                }
+                                const res = await authFetch(`${API_URL}/transactions/${annotateTx.id}/review`, {
                                     method: 'PATCH',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ note, providerId })
                                 });
-                                if (!res.ok) throw new Error('Error al guardar');
+                                if (!res.ok) throw new Error('Error al guardar la nota');
                                 
                                 optimisticUpdate((list) =>
                                     list.map((tx) => (tx.id !== annotateTx.id ? tx : {
