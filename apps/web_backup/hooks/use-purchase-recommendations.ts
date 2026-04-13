@@ -22,7 +22,8 @@ export function usePurchaseRecommendations() {
         setIsLoading(true);
         try {
             // In Production: process.env.NEXT_PUBLIC_API_URL + ...
-            const res = await fetch('http://localhost:3000/purchase-intelligence/recommendations?status=PENDING');
+            const apiUrl = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : '';
+            const res = await fetch(`${apiUrl}/purchase-intelligence/recommendations?status=PENDING`);
             if (!res.ok) throw new Error('Error loading recommendations');
             const data = await res.json();
             setRecommendations(data);
@@ -44,7 +45,8 @@ export function usePurchaseRecommendations() {
             // Optimistic Update: Remove from UI immediately
             setRecommendations(prev => prev.filter(r => r.id !== id));
 
-            const res = await fetch(`http://localhost:3000/purchase-intelligence/recommendations/${id}/action`, {
+            const apiUrl = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : '';
+            const res = await fetch(`${apiUrl}/purchase-intelligence/recommendations/${id}/action`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action }),

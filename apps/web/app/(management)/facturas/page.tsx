@@ -355,7 +355,7 @@ export default function FacturasPage() {
                 <div className="text-center max-w-md p-6 bg-red-50 border border-red-200 rounded-xl">
                     <p className="text-red-800 font-medium mb-2">No se pudieron cargar las facturas</p>
                     <p className="text-sm text-red-600 mb-4">
-                        Comprueba que el servidor (API) esté corriendo en <span className="font-mono">http://localhost:3000</span> y vuelve a intentar.
+                        Comprueba tu conexión a internet o que el servicio esté disponible y vuelve a intentarlo.
                     </p>
                     <button
                         type="button"

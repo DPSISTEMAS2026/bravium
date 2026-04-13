@@ -2878,7 +2878,7 @@ export default function CartolasPage() {
                                                 } catch (err: any) {
                                                     const msg = err?.message || 'Error de red';
                                                     const friendly = msg === 'Failed to fetch'
-                                                        ? 'No se pudo conectar con el servidor. Comprueba que el backend (API) esté corriendo y que NEXT_PUBLIC_API_URL apunte a él (ej. http://localhost:3000).'
+                                                        ? 'No se pudo conectar con el servidor. Comprueba tu conexión a internet o que el servicio de API esté disponible.'
                                                         : msg;
                                                     ingestion.setStep('error');
                                                     ingestion.setResult({ errorMessage: friendly });

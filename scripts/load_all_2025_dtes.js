@@ -11,7 +11,7 @@
 const https = require('https');
 require('dotenv').config();
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+const BACKEND_URL = process.env.BACKEND_URL || ''; // Set BACKEND_URL in env for production
 const YEAR = 2025;
 
 // Meses del año

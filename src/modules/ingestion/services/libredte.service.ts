@@ -37,6 +37,80 @@ export class LibreDteService {
     }
 
     /**
+     * Deep scan: Scans ALL months from a start date to today in monthly chunks.
+     * This catches DTEs that were emitted with past issuedDates and missed by
+     * the incremental sync (which only looks forward from the latest DTE).
+     * 
+     * Example: A supplier issues an invoice TODAY with fecha_emision = November 2025.
+     * The incremental sync won't find it because it starts from the latest DTE (April 2026).
+     * This deep scan queries LibreDTE month by month to pick up these late arrivals.
+     */
+    async deepScanMissingDTEs(organizationId: string, startFrom?: string) {
+        const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+        if (!org) throw new Error('Organization not found');
+
+        // Default: scan from dataVisibleFrom or 6 months ago
+        const scanStart = startFrom
+            ? new Date(startFrom)
+            : (org.dataVisibleFrom || new Date(Date.now() - 180 * 24 * 60 * 60 * 1000));
+
+        const today = new Date();
+        const months: { from: string; to: string }[] = [];
+
+        // Build monthly chunks
+        const cursor = new Date(scanStart);
+        cursor.setDate(1); // Start of month
+        while (cursor <= today) {
+            const monthStart = cursor.toISOString().split('T')[0];
+            const nextMonth = new Date(cursor);
+            nextMonth.setMonth(nextMonth.getMonth() + 1);
+            nextMonth.setDate(0); // Last day of current month
+            const monthEnd = nextMonth > today
+                ? today.toISOString().split('T')[0]
+                : nextMonth.toISOString().split('T')[0];
+            months.push({ from: monthStart, to: monthEnd });
+            cursor.setMonth(cursor.getMonth() + 1);
+            cursor.setDate(1);
+        }
+
+        this.logger.log(`🔍 DEEP SCAN: Scanning ${months.length} months from ${months[0]?.from} to ${months[months.length - 1]?.to} for Org ${org.slug || org.name}`);
+
+        let totalCreated = 0;
+        let totalSkipped = 0;
+        let totalErrors = 0;
+        let totalFound = 0;
+
+        for (const { from, to } of months) {
+            try {
+                this.logger.log(`  📅 Scanning ${from} → ${to}...`);
+                const result = await this.fetchReceivedDTEs(from, to, organizationId);
+                totalCreated += result.created;
+                totalSkipped += result.skipped;
+                totalErrors += result.errors;
+                totalFound += result.total;
+
+                if (result.created > 0) {
+                    this.logger.warn(`  🆕 Found ${result.created} NEW DTEs in period ${from} → ${to}!`);
+                }
+            } catch (e) {
+                this.logger.error(`  ❌ Error scanning ${from} → ${to}: ${e.message}`);
+                totalErrors++;
+            }
+        }
+
+        this.logger.log(`🔍 DEEP SCAN COMPLETE: ${totalCreated} new DTEs found, ${totalSkipped} already existed, ${totalErrors} errors (${totalFound} total scanned)`);
+
+        return {
+            success: true,
+            monthsScanned: months.length,
+            total: totalFound,
+            created: totalCreated,
+            skipped: totalSkipped,
+            errors: totalErrors,
+        };
+    }
+
+    /**
      * Fetches received DTEs from LibreDTE API and persists them.
      */
     async fetchReceivedDTEs(fromDate?: string, toDate?: string, organizationId?: string) {

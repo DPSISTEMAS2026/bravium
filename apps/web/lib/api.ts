@@ -1,10 +1,8 @@
-/** Backend API en puerto 3000. Frontend en 3001. No se usa 8000. */
-const API_BASE = 'http://localhost:3000';
+/** Base API logic. Fallback to current host if environment variable is missing. */
+const API_BASE = 'https://bravium-backend.onrender.com'; // Fallback production URL
 
 /**
- * URL base del backend (Nest). Siempre 3000 en este proyecto.
- * - Backend: npm run start:dev → http://localhost:3000
- * - Frontend: npm run dev → http://localhost:3001
+ * URL base del backend (Nest).
  */
 export function getApiUrl() {
   const env = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL;

@@ -265,4 +265,29 @@ export class ConciliacionController {
         const userId = (req as any).user?.id || (req as any).user?.sub || 'unknown';
         return this.matchSuggestions.rejectSuggestion(id, body.reason, userId);
     }
+
+    // ── Deep Scan: Catch missing DTEs from past periods ──
+
+    @Post('deep-scan')
+    async deepScanDTEs(
+        @Body() body: { startFrom?: string },
+        @Req() req: Request,
+    ) {
+        const organizationId = (req as any).organizationId;
+        if (!organizationId) {
+            throw new BadRequestException('organizationId is required');
+        }
+
+        this.logger.log(`Deep scan requested for Org ${organizationId}, startFrom: ${body.startFrom || 'default'}`);
+
+        // Run async so it doesn't timeout
+        this.libreDteService.deepScanMissingDTEs(organizationId, body.startFrom)
+            .then(result => this.logger.log(`Deep scan finished: ${JSON.stringify(result)}`))
+            .catch(err => this.logger.error(`Deep scan failed: ${err.message}`));
+
+        return {
+            status: 'accepted',
+            message: 'Deep scan iniciado en segundo plano. Los DTEs faltantes aparecerán progresivamente.',
+        };
+    }
 }

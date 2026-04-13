@@ -85,6 +85,52 @@ export class SchedulerService implements OnModuleInit {
     }
 
     /**
+     * Deep Scan Semanal: Busca DTEs que no se capturaron en el sync incremental.
+     * Ejemplo: proveedor emite factura hoy con fecha noviembre → el sync diario no la ve.
+     * Se ejecuta los domingos a las 03:00 AM.
+     */
+    @Cron('0 3 * * 0', {
+        name: 'weekly_deep_scan',
+        timeZone: 'America/Santiago'
+    })
+    async handleWeeklyDeepScan() {
+        this.logger.log('🔍 WEEKLY DEEP SCAN: Searching for missed DTEs across all tenants...');
+
+        try {
+            const orgs = await this.prisma.organization.findMany({
+                where: { isActive: true, libreDteApiKey: { not: null } }
+            });
+
+            for (const org of orgs) {
+                try {
+                    this.logger.log(`🔍 [${org.slug || org.name}] Running deep scan...`);
+                    const result = await this.libreDteService.deepScanMissingDTEs(org.id);
+                    this.logger.log(`✅ [${org.slug || org.name}] Deep scan: ${result.created} new DTEs found in ${result.monthsScanned} months`);
+
+                    // If new DTEs were found, run auto-match to try to reconcile them
+                    if (result.created > 0) {
+                        this.logger.log(`🤖 [${org.slug || org.name}] New DTEs found, running auto-match...`);
+                        const today = new Date();
+                        const sixMonthsAgo = new Date(today);
+                        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+                        await this.conciliacionService.runReconciliationCycle(
+                            sixMonthsAgo.toISOString().split('T')[0],
+                            today.toISOString().split('T')[0],
+                            org.id
+                        );
+                    }
+                } catch (e) {
+                    this.logger.error(`❌ [${org.slug || org.name}] Deep scan failed: ${e.message}`);
+                }
+            }
+
+            this.logger.log('🏁 WEEKLY DEEP SCAN completed.');
+        } catch (error) {
+            this.logger.error('❌ WEEKLY DEEP SCAN failed:', error.message);
+        }
+    }
+
+    /**
      * Sincronización Diaria y Conciliación Automática
      * Se ejecuta todos los días a las 04:00 AM hora de Chile
      */
