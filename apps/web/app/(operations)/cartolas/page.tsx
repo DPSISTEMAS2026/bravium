@@ -2836,7 +2836,7 @@ export default function CartolasPage() {
                                                     formData.append('file', uploadFile);
                                                     if (uploadForceReplace) formData.append('replace', '1');
                                                     if (uploadBankAccountId) formData.append('bankAccountId', uploadBankAccountId);
-                                                    const res = await fetch(`${apiUrl}/ingestion/cartolas/upload`, { method: 'POST', body: formData });
+                                                    const res = await authFetch(`${apiUrl}/ingestion/cartolas/upload`, { method: 'POST', body: formData });
                                                     const data = await res.json();
 
                                                     if (data.status === 'ok') {

@@ -89,10 +89,11 @@ export class ExactMatchStrategy implements MatchingStrategy {
             : daysDiff <= 3 ? 0.95
             : daysDiff <= 7 ? 0.90
             : daysDiff <= 15 ? 0.80
-            : Math.max(0.5, 1.0 - daysDiff / this.dateWindowDays);
+            : daysDiff <= 30 ? 0.30 // Penalización fuerte al mes
+            : Math.max(0, 0.5 - daysDiff / this.dateWindowDays);
         let provScore = providerMatch ? 1.0 : 0.0;
 
-        return Math.round((amountScore * 0.35 + dateScore * 0.35 + provScore * 0.30) * 100) / 100;
+        return Math.round((amountScore * 0.30 + dateScore * 0.45 + provScore * 0.25) * 100) / 100;
     }
 
     private isSameAmount(a: number, b: number): boolean {

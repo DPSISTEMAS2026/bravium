@@ -60,11 +60,10 @@ export class DriveIngestService {
             await this.transactionsService.deleteTransactionsBySourceFile(dto.organizationId!, filename);
         }
 
-        if (filename) {
+        if (filename && !forceReplace) {
             const alreadyProcessed = await this.isFileAlreadyProcessed(filename);
             if (alreadyProcessed) {
-                this.logger.log(`SKIP: "${filename}" ya fue procesado anteriormente.`);
-                return { status: 'skipped', message: `Archivo "${filename}" ya ingresado`, insertedRows: 0 };
+                this.logger.log(`INFO: El archivo "${filename}" ya existe. Se procederá a analizar fila por fila para detectar nuevos movimientos o cambios (idempotencia garantizada por índice de ocurrencia).`);
             }
         }
 
@@ -115,13 +114,15 @@ export class DriveIngestService {
         const normalizedRows = await this.openai.normalizeBankRows(rows);
         this.logger.log(`OpenAI returned ${normalizedRows.length} normalized rows.`);
 
-        // 4. Process Rows — PURE DATE FILTER (no deduplication)
+        // 4. Process Rows — OCCURRENCE-BASED DEDUPLICATION
         let insertedCount = 0;
         let skippedCount = 0;
+        const fileOccurrenceCounter = new Map<string, number>();
 
         for (const row of normalizedRows) {
-            const date = this.parseDate(row['fecha'] || row['Fecha'] || row['date'] || row['Date']);
-            const description = row['description'] || row['Description'] || row['descripcion'] || row['Movimiento'] || 'Sin descripción';
+            const date = this.parseDate(row['date'] || row['fecha'] || row['Fecha'] || row['Date']);
+            const description = row['description'] || row['descripcion'] || row['Movimiento'] || row['Description'] || 'Sin descripción';
+            const reference = row['reference'] ? String(row['reference']) : null;
 
             let amount = 0;
             if (row['amount'] !== undefined) amount = Number(row['amount']);
@@ -139,8 +140,33 @@ export class DriveIngestService {
                 continue;
             }
 
-            // CORE LOGIC: Only insert if date is AFTER the latest in DB
-            if (latestDate && date <= latestDate) {
+            // 1. Check by Reference (Strongest Unique Key)
+            if (reference) {
+                const existingByRef = await this.prisma.bankTransaction.findFirst({
+                    where: { bankAccountId: bankAccount.id, reference },
+                    select: { id: true }
+                });
+                if (existingByRef) {
+                    skippedCount++;
+                    continue;
+                }
+            }
+
+            // 2. Check by Occurrence Index (For identical movements without reference)
+            const key = `${date.toISOString()}_${amount}_${description}`;
+            const occurrenceInFile = (fileOccurrenceCounter.get(key) || 0) + 1;
+            fileOccurrenceCounter.set(key, occurrenceInFile);
+
+            const existingCount = await this.prisma.bankTransaction.count({
+                where: {
+                    bankAccountId: bankAccount.id,
+                    date: date,
+                    amount: amount,
+                    description: description,
+                }
+            });
+
+            if (existingCount >= occurrenceInFile) {
                 skippedCount++;
                 continue;
             }
@@ -157,6 +183,7 @@ export class DriveIngestService {
                     date: date,
                     amount: amount,
                     description: description,
+                    reference: reference,
                     type: type,
                     origin: DataOrigin.N8N_AUTOMATION,
                     metadata: {

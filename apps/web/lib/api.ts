@@ -14,7 +14,7 @@ export function getApiUrl() {
 }
 
 export const apiFetcher = async (url: string) => {
-  const res = await fetch(url);
+  const res = await authFetch(url);
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 };
@@ -201,7 +201,7 @@ export async function fetchConciliacionDashboard(params: {
   url.searchParams.set('fromDate', params.fromDate);
   url.searchParams.set('toDate', params.toDate);
 
-  const res = await fetch(url.toString(), { cache: 'no-store' });
+  const res = await authFetch(url.toString(), { cache: 'no-store' });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Error ${res.status} al cargar conciliación. ${body}`.trim());

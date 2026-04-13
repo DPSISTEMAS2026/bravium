@@ -180,12 +180,13 @@ export class ProveedoresService {
      */
     async getProviderDetail(providerId: string, organizationId?: string) {
         try {
-            const minDate = this.getMinDate();
+            // Para el detalle del proveedor queremos ver historia (un año atrás) incluso si el KPI general es 2026
+            const detailMinDate = new Date('2025-01-01');
             const provider = await this.prisma.provider.findFirst({
                 where: { id: providerId, ...(organizationId ? { organizationId } : {}) },
                 include: {
                     dtes: {
-                        where: minDate ? { issuedDate: { gte: minDate } } : undefined,
+                        where: { issuedDate: { gte: detailMinDate } },
                         orderBy: { issuedDate: 'desc' },
                         include: {
                             matches: {

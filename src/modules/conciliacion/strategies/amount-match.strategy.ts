@@ -61,8 +61,8 @@ export class AmountMatchStrategy implements MatchingStrategy {
             const providerScore = this.scoreProvider(txDesc, dte);
 
             let totalScore =
-                amountScore * 0.40 +
-                dateScore * 0.35 +
+                amountScore * 0.30 +
+                dateScore * 0.45 +
                 providerScore * 0.25;
 
             // Near-exact amount (±$10) is the strongest conciliation signal.
@@ -109,8 +109,8 @@ export class AmountMatchStrategy implements MatchingStrategy {
         if (daysDiff <= 3) return 0.95;
         if (daysDiff <= 7) return 0.85;
         if (daysDiff <= 15) return 0.70;
-        if (daysDiff <= 30) return 0.50;
-        return Math.max(0, 1.0 - daysDiff / this.dateWindowDays);
+        if (daysDiff <= 30) return 0.30; // Penalización fuerte al mes
+        return Math.max(0, 0.5 - daysDiff / this.dateWindowDays);
     }
 
     private scoreProvider(txDesc: string, dte: DteWithProvider): number {
