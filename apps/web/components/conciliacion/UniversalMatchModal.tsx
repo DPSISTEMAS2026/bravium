@@ -1042,13 +1042,13 @@ export function UniversalMatchModal({
 
                         <button 
                             onClick={() => handleSave('EXACT')} 
-                            disabled={(selectedTxs.length === 0 && mode !== 'ANNOTATE') || (selectedDtes.length === 0 && mode !== 'ANNOTATE') || isSaving}
-                            className={`px-6 py-2.5 text-sm font-bold text-white shadow-sm rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${hasMatchedDtes ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20' : isPerfect ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'}`}
+                            disabled={selectedTxs.length === 0 || isSaving}
+                            className={`px-6 py-2.5 text-sm font-bold text-white shadow-sm rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${selectedDtes.length === 0 ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20' : hasMatchedDtes ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20' : isPerfect ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'}`}
                         >
                             {isSaving ? 'Guardando...' : 
+                             selectedDtes.length === 0 ? 'Guardar Anotación Manual' :
                              hasMatchedDtes ? 'Confirmar y Reasignar' :
-                             mode !== 'ANNOTATE' && selectedDtes.length === 0 ? 'Marcar como Revisado' :
-                             isPerfect ? 'Confirmar Cuadratura' : 'Liquidar con Diferencia (Forzar)'}
+                             isPerfect ? 'Confirmar Cuadratura Perfecta' : 'Liquidar con Diferencia (Forzar)'}
                         </button>
                     </div>
                 </div>
