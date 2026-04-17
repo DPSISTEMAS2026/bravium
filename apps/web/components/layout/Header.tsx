@@ -5,20 +5,28 @@ import { useAuth } from '../../contexts/AuthContext';
 
 interface HeaderProps {
     onToggle: () => void;
+    isCollapsed?: boolean;
+    isMobile?: boolean;
 }
 
-export default function Header({ onToggle }: HeaderProps) {
+export default function Header({ onToggle, isCollapsed = false, isMobile = false }: HeaderProps) {
     const { user, logout } = useAuth();
+
+    // Show hamburger on mobile always, or on desktop when sidebar is collapsed
+    const showHamburger = isMobile || isCollapsed;
 
     return (
         <header className="header shadow-sm flex items-center justify-between w-full overflow-hidden px-4">
-            <button
-                type="button"
-                onClick={onToggle}
-                className="p-2 -ml-2 text-slate-500 rounded-lg hover:bg-slate-100 transition-colors z-50 md:hidden"
-            >
-                <Bars3Icon className="w-6 h-6" />
-            </button>
+            {showHamburger && (
+                <button
+                    type="button"
+                    onClick={onToggle}
+                    className="p-2 -ml-2 text-slate-500 rounded-lg hover:bg-slate-100 transition-colors z-50"
+                    title={isCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
+                >
+                    <Bars3Icon className="w-6 h-6" />
+                </button>
+            )}
 
             <div className="flex items-center gap-3 sm:gap-4 px-2 min-w-0 flex-1 justify-end flex-nowrap">
                 {/* Status */}

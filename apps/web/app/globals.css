@@ -15,7 +15,8 @@
   /* Slate 950 */
   --bravium-text-muted: #64748b;
   /* Slate 500 */
-  --sidebar-width: 280px;
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 0px;
 }
 
 body {
@@ -25,7 +26,13 @@ body {
   min-height: 100vh;
 }
 
-/* Sidebar Styling */
+/* ============================================
+   SIDEBAR STYLING
+   z-index layers:
+     sidebar = 40
+     header  = 30
+     modals  = 50 (above everything)
+   ============================================ */
 .sidebar {
   width: var(--sidebar-width);
   height: 100vh;
@@ -34,11 +41,15 @@ body {
   left: 0;
   background: linear-gradient(180deg, var(--bravium-sidebar-bg) 0%, #1e1b4b 100%);
   color: #fff;
-  z-index: 1000;
+  z-index: 40;
   padding: 1.5rem 0.75rem;
   box-shadow: 4px 0 15px rgba(0, 0, 0, 0.4);
   overflow-y: auto;
+  overflow-x: hidden;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
 }
 
 .sidebar .nav-section-title {
@@ -48,6 +59,8 @@ body {
   color: rgba(255, 255, 255, 0.4);
   padding: 1.5rem 1rem 0.5rem;
   letter-spacing: 0.05em;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .sidebar .nav-link {
@@ -60,6 +73,8 @@ body {
   display: flex;
   align-items: center;
   font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .sidebar .nav-link:hover {
@@ -79,6 +94,43 @@ body {
   height: 1.25rem;
   margin-right: 0.75rem;
   opacity: 0.8;
+  flex-shrink: 0;
+}
+
+/* Sidebar collapse toggle button */
+.sidebar-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sidebar-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+/* ============================================
+   COLLAPSED STATE — Desktop (>= 769px)
+   Sidebar slides out completely, main-content
+   fills the full viewport width.
+   ============================================ */
+@media (min-width: 769px) {
+  .sidebar-collapsed .sidebar {
+    transform: translateX(-100%);
+  }
+
+  .sidebar-collapsed .main-content {
+    margin-left: 0 !important;
+  }
 }
 
 /* Main Content Wrapper */
@@ -87,29 +139,56 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  transition: margin-left 0.2s ease;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-
-/* Responsive Sidebar */
+/* ============================================
+   RESPONSIVE — Mobile (<= 768px)
+   Sidebar hidden by default, slides in as drawer
+   ============================================ */
 @media (max-width: 768px) {
   .sidebar {
     transform: translateX(-100%);
-    transition: transform 0.2s ease;
   }
+
+  /* On mobile, "collapsed" = OPEN drawer */
   .sidebar-collapsed .sidebar {
     transform: translateX(0);
-    width: 280px; /* Full width on mobile drawer toggle */
   }
+
   .main-content {
     margin-left: 0 !important;
   }
 }
 
-/* Header: no scroll, elementos derecha siempre visibles */
+/* Mobile overlay backdrop */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 39;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.sidebar-collapsed .sidebar-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (min-width: 769px) {
+  .sidebar-overlay {
+    display: none !important;
+  }
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
 .header {
-  height: 70px;
-  min-height: 70px;
+  height: 56px;
+  min-height: 56px;
   flex-shrink: 0;
   background-color: #fff;
   border-bottom: 1px solid #e2e8f0;
@@ -118,7 +197,22 @@ body {
   justify-content: flex-end;
   position: sticky;
   top: 0;
-  z-index: 30; /* Below modals (z-50) but above page content */
+  z-index: 30;
+}
+
+/* ============================================
+   MODAL Z-INDEX FIX
+   All modals must appear ABOVE the sidebar.
+   ============================================ */
+.modal-overlay {
+  z-index: 50 !important;
+}
+
+/* Catch-all: any fixed overlay with backdrop used as modal */
+div.fixed.inset-0[class*="z-50"],
+div.fixed.inset-0[class*="bg-slate-900"],
+div.fixed.inset-0[class*="backdrop-blur"] {
+  z-index: 50 !important;
 }
 
 /* Card & Component Styling */

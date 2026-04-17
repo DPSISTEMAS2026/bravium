@@ -17,7 +17,8 @@ import {
     SparklesIcon,
     DocumentTextIcon,
     ClipboardDocumentListIcon,
-    MagnifyingGlassIcon
+    MagnifyingGlassIcon,
+    ChevronDoubleLeftIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
 import { getApiUrl, apiFetcher } from '../../lib/api';
@@ -62,7 +63,12 @@ const prefetchMap: Record<string, string[]> = {
     '/reportes': ['/reportes/deuda-proveedores', '/reportes/flujo-caja'],
 };
 
-export default function Sidebar() {
+interface SidebarProps {
+    isCollapsed: boolean;
+    onToggle: () => void;
+}
+
+export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     const pathname = usePathname();
     const { user, logout } = useAuth();
     const API_URL = getApiUrl();
@@ -85,15 +91,26 @@ export default function Sidebar() {
 
     return (
         <div className="sidebar d-flex flex-column transition-all">
-            {/* Logo Section */}
-            <div className="px-5 py-4 mb-2 flex items-center justify-center">
-                <Link href="/" className="block">
+            {/* Logo + Collapse Toggle */}
+            <div className="px-3 py-4 mb-2 flex items-center justify-between">
+                <Link href="/" className="block flex-1 min-w-0">
                     <img
                         src="/logo.svg"
                         alt="BRAVIUM Logo"
                         className="h-6 w-auto object-contain brightness-0 invert"
                     />
                 </Link>
+                <button
+                    type="button"
+                    onClick={onToggle}
+                    className="sidebar-toggle-btn ml-2"
+                    title={isCollapsed ? 'Expandir menú' : 'Colapsar menú'}
+                >
+                    <ChevronDoubleLeftIcon
+                        className="w-4 h-4 transition-transform duration-300"
+                        style={{ transform: isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                    />
+                </button>
             </div>
 
             {/* Sections */}

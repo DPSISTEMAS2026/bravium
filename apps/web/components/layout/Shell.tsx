@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCartolaIngestion } from '../../contexts/CartolaIngestionContext';
 import Sidebar from './Sidebar';
@@ -8,14 +8,32 @@ import Header from './Header';
 import { CartolaIngestionBar } from './CartolaIngestionBar';
 import { usePathname, useRouter } from 'next/navigation';
 
+const SIDEBAR_STORAGE_KEY = 'bravium-sidebar-collapsed';
+
 export function Shell({ children }: { children: React.ReactNode }) {
     const { user, isLoading } = useAuth();
     const pathname = usePathname();
     const router = useRouter();
     const { active: ingestionActive } = useCartolaIngestion();
-    const [isCollapsed, setIsCollapsed] = React.useState(false);
 
-    React.useEffect(() => {
+    // Desktop collapse = sidebar hidden; Mobile collapse = sidebar shown (drawer)
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+
+    // Restore desktop sidebar state from localStorage on mount
+    useEffect(() => {
+        const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+        if (stored === 'true') {
+            setIsCollapsed(true);
+        }
+
+        const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
+    useEffect(() => {
         if (!isLoading && !user && pathname !== '/login') {
             router.push('/login');
             return;
@@ -26,6 +44,25 @@ export function Shell({ children }: { children: React.ReactNode }) {
             router.push('/busqueda');
         }
     }, [user, isLoading, pathname, router]);
+
+    // Close mobile drawer on route change
+    useEffect(() => {
+        if (isMobile && isCollapsed) {
+            setIsCollapsed(false);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pathname]);
+
+    const handleToggle = useCallback(() => {
+        setIsCollapsed(prev => {
+            const next = !prev;
+            // Only persist on desktop (collapse = hidden)
+            if (!isMobile) {
+                localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+            }
+            return next;
+        });
+    }, [isMobile]);
 
     if (isLoading) {
         return (
@@ -44,14 +81,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
     return (
         <div className={`d-flex w-100 min-vh-100 ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
-            <Sidebar />
+            <Sidebar isCollapsed={!isMobile ? isCollapsed : !isCollapsed} onToggle={handleToggle} />
             <div className="main-content flex-grow-1 d-flex flex-column">
-                <Header onToggle={() => setIsCollapsed(!isCollapsed)} />
+                <Header onToggle={handleToggle} isCollapsed={isCollapsed} isMobile={isMobile} />
                 <main className={`flex-grow-1 p-4 p-lg-5 ${ingestionActive ? 'pb-20' : ''}`}>
                     {children}
                 </main>
             </div>
-            {isCollapsed && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsCollapsed(false)} />}
+            {/* Mobile overlay */}
+            <div className="sidebar-overlay" onClick={handleToggle} />
             <CartolaIngestionBar />
         </div>
     );
