@@ -27,7 +27,7 @@ interface UniversalMatchModalProps {
     reviewMatchId?: string;
     matchStatus?: string;
     mode?: 'MANUAL' | 'SUGGESTION' | 'ANNOTATE' | 'REVIEW';
-    onAnnotateSave?: (note: string, providerId?: string) => Promise<void>;
+    onAnnotateSave?: (note: string, providerId?: string, ruleId?: string) => Promise<void>;
 }
 
 const formatCurrency = (n: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(n);
@@ -367,7 +367,7 @@ export function UniversalMatchModal({
                 } else {
                     // Regular Annotate
                     if (onAnnotateSave) {
-                        await onAnnotateSave(note, selectedProvider?.id);
+                        await onAnnotateSave(note, selectedProvider?.id, selectedRuleId || undefined);
                     } else {
                         for (const tx of selectedTxs) {
                             await authFetch(`${API_URL}/transactions/${tx.id}/review`, {

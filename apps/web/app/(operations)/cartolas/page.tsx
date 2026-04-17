@@ -1247,7 +1247,7 @@ export default function CartolasPage() {
                             (USE_NEW_MODAL && reviewMatch) ? 'REVIEW' : 'MANUAL'
                         }
                         onAnnotateSave={
-                            (USE_NEW_MODAL && annotateTx) ? async (note, providerId) => {
+                            (USE_NEW_MODAL && annotateTx) ? async (note, providerId, ruleId) => {
                                 if (!annotateTx?.id || annotateTx.id === '-') {
                                     console.error('ID de transacción inválido para anotación:', annotateTx);
                                     return;
@@ -1255,14 +1255,15 @@ export default function CartolasPage() {
                                 const res = await authFetch(`${API_URL}/transactions/${annotateTx.id}/review`, {
                                     method: 'PATCH',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ note, providerId })
+                                    body: JSON.stringify({ note, providerId, ruleId })
                                 });
                                 if (!res.ok) throw new Error('Error al guardar la nota');
                                 
                                 optimisticUpdate((list) =>
                                     list.map((tx) => (tx.id !== annotateTx.id ? tx : {
                                         ...tx,
-                                        status: 'UNMATCHED',
+                                        status: ruleId ? 'MATCHED' : 'UNMATCHED',
+                                        categoryId: ruleId ? ruleId : tx.categoryId,
                                         metadata: { 
                                             ...(tx.metadata as any || {}), 
                                             reviewNote: note, 
