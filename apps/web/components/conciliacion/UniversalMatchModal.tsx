@@ -283,6 +283,9 @@ export function UniversalMatchModal({
         
         setSelectedDtes(newDtes);
         if (txsAdded) setSelectedTxs(newTxs);
+        if (dte.provider && dte.provider.id !== selectedProvider?.id) {
+            setSelectedProvider(dte.provider);
+        }
     };
     const removeDte = (id: string) => setSelectedDtes(prev => prev.filter(d => d.id !== id));
 
