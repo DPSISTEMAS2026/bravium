@@ -560,11 +560,6 @@ export function UniversalMatchModal({
         finally { setIsSaving(false); }
     };
 
-    const handleQuickTag = (tag: string) => {
-        const tagStr = `[${tag}]`;
-        if (note.includes(tagStr)) return;
-        setNote(prev => prev ? `${tagStr} ${prev}` : tagStr);
-    };
 
     const hasMatchedDtes = selectedDtes.some(dte => dte.hasMatch || (dte.matches && dte.matches.some((m: any) => m.status === 'CONFIRMED')));
 
@@ -959,38 +954,49 @@ export function UniversalMatchModal({
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${diff > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
-                                        <ExclamationTriangleIcon className="h-6 w-6" />
-                                        <div>
-                                            <div className="font-bold text-sm">Diferencia: {formatCurrency(Math.abs(diff))}</div>
-                                            <div className="text-xs opacity-80">
-                                                {diff > 0 
-                                                    ? 'Monto del banco superior (Excedente)' 
-                                                    : 'Monto de facturas superior (Saldo pendiente)'}
+                                    <div className={`flex flex-col gap-3 px-4 py-3 rounded-xl border ${diff > 0 ? 'bg-amber-50 text-amber-900 border-amber-200 shadow-sm' : 'bg-rose-50 text-rose-900 border-rose-200 shadow-sm'}`}>
+                                        <div className="flex items-center gap-3">
+                                            <ExclamationTriangleIcon className={`h-8 w-8 ${diff > 0 ? 'text-amber-600' : 'text-rose-600'}`} />
+                                            <div>
+                                                <div className="font-bold text-base">Diferencia: {formatCurrency(Math.abs(diff))}</div>
+                                                <div className="text-xs font-medium opacity-80 mt-0.5">
+                                                    {diff > 0 
+                                                        ? 'El pago en el banco es mayor al documento.' 
+                                                        : 'El documento es por un monto mayor al pago.'}
+                                                </div>
                                             </div>
                                         </div>
+                                        
+                                        {(!hasMatchedDtes && mode !== 'ANNOTATE') && (
+                                            <div className="flex gap-2 mt-1">
+                                                <button
+                                                    onClick={() => setDiffResolution('PARTIAL')}
+                                                    className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg shadow-sm border transition-all ${diffResolution === 'PARTIAL' ? 'bg-white border-indigo-500 text-indigo-700 ring-2 ring-indigo-500/20' : 'bg-white/60 border-black/10 hover:bg-white hover:border-black/20 text-slate-600'}`}
+                                                >
+                                                    Dejar pago parcial
+                                                </button>
+                                                <button
+                                                    onClick={() => setDiffResolution('EXACT')}
+                                                    className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg shadow-sm border transition-all ${diffResolution === 'EXACT' ? 'bg-white border-indigo-500 text-indigo-700 ring-2 ring-indigo-500/20' : 'bg-white/60 border-black/10 hover:bg-white hover:border-black/20 text-slate-600'}`}
+                                                >
+                                                    Liquidar y absorber
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                                 
-                                <div className="flex-1 max-w-[400px]">
-                                    <div className="flex flex-wrap gap-1 mb-1.5">
-                                        {['NC', 'Pago Parcial', 'Dif. Cambio', 'Redondeo'].map(tag => (
-                                            <button 
-                                                key={tag}
-                                                type="button"
-                                                onClick={() => handleQuickTag(tag)}
-                                                className="text-[9px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded border border-indigo-200 transition-colors"
-                                            >
-                                                + {tag}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <div className="relative">
-                                        <PencilSquareIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                <div className="flex-1 max-w-[500px]">
+                                    <div className="relative h-full flex flex-col justify-center">
+                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 pointer-events-none">
+                                            <PencilSquareIcon className="h-full w-full text-slate-400" />
+                                        </div>
                                         <input
                                             value={note}
                                             onChange={e => setNote(e.target.value)}
-                                            placeholder="Notas de conciliación..."
+                                            placeholder="Ingresa un comentario / nota (Opcional)..."
+                                            className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition-shadow"
+                                        />
                                             className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500"
                                         />
                                     </div>
@@ -1033,70 +1039,43 @@ export function UniversalMatchModal({
                         )}
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        <button onClick={onClose} className="px-5 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 bg-slate-100 rounded-xl transition-colors">
-                            Cancelar
-                        </button>
-                        
-                        {((suggestionId && selectedDtes.length > 0) || (mode === 'SUGGESTION' && selectedDtes.length > 0) || (mode === 'REVIEW' && (matchStatus === 'SUGGESTED' || matchStatus === 'DRAFT') && selectedDtes.length > 0)) && (
+                    <div className="flex items-center justify-between mt-6">
+                        <div className="flex gap-3">
+                            {((suggestionId && selectedDtes.length > 0) || (mode === 'SUGGESTION' && selectedDtes.length > 0) || (mode === 'REVIEW' && (matchStatus === 'SUGGESTED' || matchStatus === 'DRAFT') && selectedDtes.length > 0)) && (
+                                <button 
+                                    onClick={reviewMatchId ? handleRejectMatch : handleRejectSuggestion}
+                                    disabled={isSaving}
+                                    className="px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 border-2 border-rose-100 rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50"
+                                >
+                                    <HandThumbDownIcon className="h-4 w-4" /> Rechazar Sugerencia
+                                </button>
+                            )}
+    
+                            {((mode === 'REVIEW' && matchStatus === 'CONFIRMED') || initialDtes.some(d => d.hasMatch)) && (
+                                <button 
+                                    onClick={handleDiscardMatch}
+                                    disabled={isSaving}
+                                    className="px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 border-2 border-red-100 rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50"
+                                >
+                                    <TrashIcon className="h-4 w-4" /> Descartar Match
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="flex">
                             <button 
-                                onClick={reviewMatchId ? handleRejectMatch : handleRejectSuggestion}
-                                disabled={isSaving}
-                                className="px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 border-2 border-rose-100 rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50"
+                                onClick={() => handleSave(diffResolution || 'EXACT')} 
+                                disabled={selectedTxs.length === 0 || isSaving || (!isPerfect && selectedDtes.length > 0 && mode !== 'ANNOTATE' && !hasMatchedDtes && !diffResolution)}
+                                className={`px-8 py-3 text-sm font-bold text-white shadow-md rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${selectedDtes.length === 0 ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30 hover:shadow-lg' : hasMatchedDtes ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30 hover:shadow-lg' : isPerfect ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30 hover:shadow-lg' : diffResolution ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30 hover:shadow-lg' : 'bg-slate-300 text-white shadow-none'}`}
                             >
-                                <HandThumbDownIcon className="h-4 w-4" /> Rechazar Sugerencia
+                                {isSaving ? 'Guardando...' : 
+                                 selectedDtes.length === 0 ? 'Guardar Anotación Manual' :
+                                 hasMatchedDtes ? 'Confirmar y Reasignar' :
+                                 isPerfect ? 'Confirmar Cuadratura Perfecta' : 
+                                 diffResolution === 'PARTIAL' ? 'Confirmar Pago Parcial' : 
+                                 diffResolution === 'EXACT' ? 'Liquidar con Diferencia' : 'Selecciona una resolución'}
                             </button>
-                        )}
-
-                        {((mode === 'REVIEW' && matchStatus === 'CONFIRMED') || initialDtes.some(d => d.hasMatch)) && (
-                            <button 
-                                onClick={handleDiscardMatch}
-                                disabled={isSaving}
-                                className="px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 border-2 border-red-100 rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50"
-                            >
-                                <TrashIcon className="h-4 w-4" /> Descartar Match
-                            </button>
-                        )}
-
-                        {(!isPerfect && !hasMatchedDtes && mode !== 'ANNOTATE' && selectedDtes.length > 0) && (
-                            <div className="flex bg-slate-100 rounded-lg p-1 mr-4 border border-slate-200">
-                                <label className={`flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-xs font-bold transition-all ${diffResolution === 'PARTIAL' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>
-                                    <input 
-                                        type="radio" 
-                                        name="diffRes" 
-                                        value="PARTIAL" 
-                                        checked={diffResolution === 'PARTIAL'} 
-                                        onChange={() => setDiffResolution('PARTIAL')} 
-                                        className="sr-only"
-                                    />
-                                    Adelanto / Pago Parcial
-                                </label>
-                                <label className={`flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-xs font-bold transition-all ${diffResolution === 'EXACT' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>
-                                    <input 
-                                        type="radio" 
-                                        name="diffRes" 
-                                        value="EXACT" 
-                                        checked={diffResolution === 'EXACT'} 
-                                        onChange={() => setDiffResolution('EXACT')} 
-                                        className="sr-only"
-                                    />
-                                    Absorber Diferencia
-                                </label>
-                            </div>
-                        )}
-
-                        <button 
-                            onClick={() => handleSave(diffResolution || 'EXACT')} 
-                            disabled={selectedTxs.length === 0 || isSaving || (!isPerfect && selectedDtes.length > 0 && mode !== 'ANNOTATE' && !hasMatchedDtes && !diffResolution)}
-                            className={`px-6 py-2.5 text-sm font-bold text-white shadow-sm rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${selectedDtes.length === 0 ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20' : hasMatchedDtes ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20' : isPerfect ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'}`}
-                        >
-                            {isSaving ? 'Guardando...' : 
-                             selectedDtes.length === 0 ? 'Guardar Anotación Manual' :
-                             hasMatchedDtes ? 'Confirmar y Reasignar' :
-                             isPerfect ? 'Confirmar Cuadratura Perfecta' : 
-                             diffResolution === 'PARTIAL' ? 'Confirmar Pago Parcial' : 
-                             diffResolution === 'EXACT' ? 'Liquidar con Diferencia' : 'Selecciona una resolución'}
-                        </button>
+                        </div>
                     </div>
                 </div>
 
