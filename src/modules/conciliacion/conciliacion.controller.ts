@@ -313,4 +313,10 @@ export class ConciliacionController {
         const organizationId = (req as any).user?.organizationId || (req as any).organizationId;
         return this.rulesEngine.deleteRule(id, organizationId);
     }
+
+    @Get('rules/:id/transactions')
+    async getRuleTransactions(@Param('id') id: string, @Req() req: Request) {
+        const organizationId = (req as any).user?.organizationId || (req as any).organizationId;
+        return this.rulesEngine.getRuleTransactions(id, organizationId);
+    }
 }

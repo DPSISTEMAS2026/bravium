@@ -214,11 +214,11 @@ export class TransactionsController {
     async reviewTransaction(
         @Req() req: Request,
         @Param('id') id: string,
-        @Body() body: { note: string; providerId?: string; newProviderName?: string },
+        @Body() body: { note: string; providerId?: string; newProviderName?: string; ruleId?: string },
     ) {
         const organizationId = (req as any).organizationId;
-        this.logger.log(`Marking transaction ${id} as reviewed. Note: ${body.note}, Prov: ${body.providerId}, NewProv: ${body.newProviderName}`);
-        return this.transactionsService.markAsReviewed(organizationId, id, body.note, body.providerId, body.newProviderName);
+        this.logger.log(`Marking transaction ${id} as reviewed. Note: ${body.note}, Prov: ${body.providerId}, NewProv: ${body.newProviderName}, RuleId: ${body.ruleId}`);
+        return this.transactionsService.markAsReviewed(organizationId, id, body.note, body.providerId, body.newProviderName, body.ruleId);
     }
 
     /**

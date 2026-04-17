@@ -13,6 +13,113 @@ interface AutoCategoryRule {
     isActive: boolean;
 }
 
+const formatCurrency = (val: number) =>
+    new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(val);
+
+function RuleRow({ rule, onDelete }: { rule: AutoCategoryRule; onDelete: (id: string) => void }) {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const API_URL = getApiUrl();
+    
+    // Only fetch when expanded to save bandwidth
+    const { data: txs, isLoading } = useSWR(
+        isExpanded ? `${API_URL}/conciliacion/rules/${rule.id}/transactions` : null, 
+        apiFetcher
+    );
+
+    return (
+        <>
+            <tr 
+                className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
+                <td className="px-6 py-4">
+                    <span className="inline-block px-3 py-1 bg-indigo-100 text-indigo-800 font-mono text-sm font-bold rounded-lg border border-indigo-200">
+                        {rule.keywordMatch}
+                    </span>
+                </td>
+                <td className="px-6 py-4">
+                    <span className="font-semibold text-slate-700">
+                        {rule.categoryName}
+                    </span>
+                </td>
+                <td className="px-6 py-4">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${rule.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${rule.isActive ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                        {rule.isActive ? 'Activa' : 'Inactiva'}
+                    </span>
+                </td>
+                <td className="px-6 py-4 text-right">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onDelete(rule.id); }}
+                        className="p-2 text-rose-500 bg-rose-50 rounded-lg hover:bg-rose-100 transition-colors opacity-0 group-hover:opacity-100"
+                        title="Eliminar regla"
+                    >
+                        <TrashIcon className="w-5 h-5" />
+                    </button>
+                </td>
+            </tr>
+            {isExpanded && (
+                <tr className="bg-slate-50/50 border-b border-slate-200">
+                    <td colSpan={4} className="p-0">
+                        <div className="px-8 py-6 ring-1 ring-inset ring-slate-100 bg-slate-50/50">
+                            <h4 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+                                <SparklesIcon className="h-4 w-4 text-indigo-500" />
+                                Historial de Cargos Relacionados
+                            </h4>
+                            {isLoading ? (
+                                <div className="text-sm text-slate-500 animate-pulse">Cargando movimientos...</div>
+                            ) : txs && txs.length > 0 ? (
+                                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-slate-100/50 text-xs text-slate-500 uppercase">
+                                            <tr>
+                                                <th className="px-4 py-3">Fecha</th>
+                                                <th className="px-4 py-3">Glosa Banco</th>
+                                                <th className="px-4 py-3">Pestaña / Cuenta</th>
+                                                <th className="px-4 py-3 text-right">Monto</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {txs.map((tx: any) => (
+                                                <tr key={tx.id} className="hover:bg-slate-50">
+                                                    <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                                                        {new Date(tx.date).toLocaleDateString('es-CL')}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-slate-800 font-medium">
+                                                        {tx.description}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-slate-500 text-xs">
+                                                        {tx.bankAccount?.name}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-bold text-rose-600">
+                                                        {formatCurrency(tx.amount)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-slate-50 text-xs border-t border-slate-200">
+                                            <tr>
+                                                <td colSpan={3} className="px-4 py-3 font-bold text-right text-slate-600">Total Histórico:</td>
+                                                <td className="px-4 py-3 font-bold text-right text-rose-700">
+                                                    {formatCurrency(txs.reduce((sum: number, tx: any) => sum + tx.amount, 0))}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="text-sm text-slate-500 bg-white p-4 rounded-xl border border-slate-200 text-center">
+                                    No hay movimientos registrados bajo esta regla aún.
+                                </div>
+                            )}
+                        </div>
+                    </td>
+                </tr>
+            )}
+        </>
+    );
+}
+
 export default function GastosFijosPage() {
     const API_URL = getApiUrl();
     const { data: rules = [], mutate, isLoading } = useSWR<AutoCategoryRule[]>(`${API_URL}/conciliacion/rules`, apiFetcher);
@@ -156,33 +263,7 @@ export default function GastosFijosPage() {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {rules.map((rule) => (
-                                <tr key={rule.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <span className="inline-block px-3 py-1 bg-indigo-100 text-indigo-800 font-mono text-sm font-bold rounded-lg border border-indigo-200">
-                                            {rule.keywordMatch}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className="font-semibold text-slate-700">
-                                            {rule.categoryName}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${rule.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${rule.isActive ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
-                                            {rule.isActive ? 'Activa' : 'Inactiva'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button 
-                                            onClick={() => handleDeleteRule(rule.id)}
-                                            className="p-2 text-rose-500 bg-rose-50 rounded-lg hover:bg-rose-100 transition-colors"
-                                            title="Eliminar regla"
-                                        >
-                                            <TrashIcon className="w-5 h-5" />
-                                        </button>
-                                    </td>
-                                </tr>
+                                <RuleRow key={rule.id} rule={rule} onDelete={handleDeleteRule} />
                             ))}
                         </tbody>
                     </table>

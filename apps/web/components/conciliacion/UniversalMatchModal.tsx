@@ -10,9 +10,11 @@ import {
     BanknotesIcon,
     HandThumbDownIcon,
     TrashIcon,
-    PencilSquareIcon
+    PencilSquareIcon,
+    SparklesIcon
 } from '@heroicons/react/24/outline';
-import { authFetch } from '../../lib/api';
+import { authFetch, apiFetcher } from '../../lib/api';
+import useSWR from 'swr';
 
 interface UniversalMatchModalProps {
     isOpen: boolean;
@@ -72,6 +74,12 @@ export function UniversalMatchModal({
     // Unidirectional states
     const [boletaFolio, setBoletaFolio] = useState('');
     const [boletaAmount, setBoletaAmount] = useState<number | ''>('');
+    
+    // New states for Gastos Fijos & Diff Resolution
+    const [selectedRuleId, setSelectedRuleId] = useState<string>('');
+    const [diffResolution, setDiffResolution] = useState<'PARTIAL' | 'EXACT' | null>(null);
+
+    const { data: rules = [] } = useSWR(isOpen ? `${API_URL}/conciliacion/rules` : null, apiFetcher);
 
     useEffect(() => {
         if (isOpen) {
@@ -112,6 +120,8 @@ export function UniversalMatchModal({
             setDteSearch('');
             setProviderResults([]);
             setProviderInfo(null);
+            setSelectedRuleId('');
+            setDiffResolution(null);
             
             // Pre-populate existing annotation if opening in ANNOTATE mode
             const firstTx = txs[0];
@@ -363,7 +373,7 @@ export function UniversalMatchModal({
                             await authFetch(`${API_URL}/transactions/${tx.id}/review`, {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ note: note, providerId: selectedProvider?.id })
+                                body: JSON.stringify({ note: note, providerId: selectedProvider?.id, ruleId: selectedRuleId || undefined })
                             });
                         }
                     }
@@ -467,7 +477,7 @@ export function UniversalMatchModal({
                         transactionIds: selectedTxs.map(t => t.id).filter(Boolean), 
                         dteIds: selectedDtes.map(d => d.id).filter(Boolean),
                         notes: note || undefined,
-                        action: actionOverride || 'EXACT'
+                        action: diffResolution || actionOverride || 'EXACT'
                     }),
                 });
             }
@@ -599,6 +609,24 @@ export function UniversalMatchModal({
                                     <p className="text-[11px] text-orange-600 mt-2 font-medium flex items-center gap-1">
                                         <CheckCircleIcon className="h-3 w-3" /> Al presionar guardar, este movimiento se marcará como revisado.
                                     </p>
+                                </div>
+                                
+                                <div className="border-t border-orange-100 pt-3">
+                                    <p className="text-xs font-bold text-orange-800 mb-2 flex items-center gap-1">
+                                        <SparklesIcon className="h-3.5 w-3.5" /> Categorizar como Gasto Fijo (Opcional)
+                                    </p>
+                                    <select
+                                        value={selectedRuleId}
+                                        onChange={(e) => setSelectedRuleId(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white border border-orange-200 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm shadow-sm"
+                                    >
+                                        <option value="">-- No categorizar / Sin Regla --</option>
+                                        {rules.map((r: any) => (
+                                            <option key={r.id} value={r.id}>
+                                                {r.keywordMatch} ({r.categoryName})
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
 
                                 <div className="border-t border-orange-100 pt-3">
@@ -1031,24 +1059,43 @@ export function UniversalMatchModal({
                         )}
 
                         {(!isPerfect && !hasMatchedDtes && mode !== 'ANNOTATE' && selectedDtes.length > 0) && (
-                            <button 
-                                onClick={() => handleSave('PARTIAL')} 
-                                disabled={isSaving}
-                                className="px-6 py-2.5 text-sm font-bold text-white shadow-sm rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-sky-600 hover:bg-sky-700 shadow-sky-600/20"
-                            >
-                                Confirmar Pago Parcial
-                            </button>
+                            <div className="flex bg-slate-100 rounded-lg p-1 mr-4 border border-slate-200">
+                                <label className={`flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-xs font-bold transition-all ${diffResolution === 'PARTIAL' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>
+                                    <input 
+                                        type="radio" 
+                                        name="diffRes" 
+                                        value="PARTIAL" 
+                                        checked={diffResolution === 'PARTIAL'} 
+                                        onChange={() => setDiffResolution('PARTIAL')} 
+                                        className="sr-only"
+                                    />
+                                    Adelanto / Pago Parcial
+                                </label>
+                                <label className={`flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-xs font-bold transition-all ${diffResolution === 'EXACT' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>
+                                    <input 
+                                        type="radio" 
+                                        name="diffRes" 
+                                        value="EXACT" 
+                                        checked={diffResolution === 'EXACT'} 
+                                        onChange={() => setDiffResolution('EXACT')} 
+                                        className="sr-only"
+                                    />
+                                    Absorber Diferencia
+                                </label>
+                            </div>
                         )}
 
                         <button 
-                            onClick={() => handleSave('EXACT')} 
-                            disabled={selectedTxs.length === 0 || isSaving}
+                            onClick={() => handleSave(diffResolution || 'EXACT')} 
+                            disabled={selectedTxs.length === 0 || isSaving || (!isPerfect && selectedDtes.length > 0 && mode !== 'ANNOTATE' && !hasMatchedDtes && !diffResolution)}
                             className={`px-6 py-2.5 text-sm font-bold text-white shadow-sm rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${selectedDtes.length === 0 ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20' : hasMatchedDtes ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20' : isPerfect ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'}`}
                         >
                             {isSaving ? 'Guardando...' : 
                              selectedDtes.length === 0 ? 'Guardar Anotación Manual' :
                              hasMatchedDtes ? 'Confirmar y Reasignar' :
-                             isPerfect ? 'Confirmar Cuadratura Perfecta' : 'Liquidar con Diferencia (Forzar)'}
+                             isPerfect ? 'Confirmar Cuadratura Perfecta' : 
+                             diffResolution === 'PARTIAL' ? 'Confirmar Pago Parcial' : 
+                             diffResolution === 'EXACT' ? 'Liquidar con Diferencia' : 'Selecciona una resolución'}
                         </button>
                     </div>
                 </div>

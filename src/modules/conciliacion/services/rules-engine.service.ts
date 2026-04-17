@@ -98,4 +98,19 @@ export class RulesEngineService {
             where: { id, organizationId }
         });
     }
+
+    async getRuleTransactions(id: string, organizationId: string) {
+        return this.prisma.bankTransaction.findMany({
+            where: {
+                bankAccount: { organizationId },
+                metadata: {
+                    path: ['ruleId'],
+                    equals: id
+                }
+            },
+            include: { bankAccount: true },
+            orderBy: { date: 'desc' },
+            take: 100
+        });
+    }
 }

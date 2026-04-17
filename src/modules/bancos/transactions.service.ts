@@ -719,18 +719,31 @@ export class TransactionsService {
         });
     }
 
-    async markAsReviewed(organizationId: string, id: string, note: string, providerId?: string, newProviderName?: string) {
+    async markAsReviewed(organizationId: string, id: string, note: string, providerId?: string, newProviderName?: string, ruleId?: string) {
         const tx = await this.prisma.bankTransaction.findUnique({
             where: { id },
              include: { bankAccount: true },
         });
         if (!tx || tx.bankAccount.organizationId !== organizationId) throw new Error('Transacción no encontrada');
 
-        const meta = (tx.metadata as Record<string, any>) || {};
-        meta.reviewNote = note;
-        meta.reviewedAt = new Date().toISOString();
-
         let finalProviderId = providerId;
+        let categoryName = null;
+
+        if (ruleId) {
+            const rule = await this.prisma.autoCategoryRule.findUnique({ where: { id: ruleId } });
+            if (rule && rule.organizationId === organizationId) {
+                categoryName = rule.categoryName;
+                if (!finalProviderId && rule.providerId) finalProviderId = rule.providerId;
+            }
+        }
+
+        const meta = (tx.metadata as Record<string, any>) || {};
+        meta.reviewNote = note || (categoryName ? `[Auto: ${categoryName}]` : undefined);
+        meta.reviewedAt = new Date().toISOString();
+        if (ruleId && categoryName) {
+            meta.autoCategorized = true;
+            meta.ruleId = ruleId;
+        }
 
         if (!finalProviderId && newProviderName && newProviderName.trim()) {
              const nameTrim = newProviderName.trim();
@@ -783,7 +796,7 @@ export class TransactionsService {
         const result = await this.prisma.bankTransaction.update({
             where: { id },
             data: {
-                status: 'UNMATCHED',
+                status: ruleId ? 'MATCHED' : 'UNMATCHED',
                 metadata: meta,
             },
         });
