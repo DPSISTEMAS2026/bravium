@@ -181,11 +181,13 @@ export function UniversalMatchModal({
         if (!txSearch.trim()) return;
         setTxLoading(true);
         try {
-            const params = new URLSearchParams({ search: txSearch, status: 'ALL', limit: '20' });
+            const params = new URLSearchParams({ search: txSearch, status: 'ALL', limit: '20', year: '2026' });
             const res = await authFetch(`${API_URL}/transactions?${params}`);
             if (res.ok) {
                 const data = await res.json();
-                setPendingTxs(Array.isArray(data) ? data : data.data || []);
+                let arr = Array.isArray(data) ? data : data.data || [];
+                arr = arr.filter((tx: any) => new Date(tx.date).getFullYear() >= 2026);
+                setPendingTxs(arr);
             }
         } catch { /* ignore */ }
         finally { setTxLoading(false); }
@@ -195,11 +197,13 @@ export function UniversalMatchModal({
         if (!dteSearch.trim()) return;
         setDteLoading(true);
         try {
-            const params = new URLSearchParams({ search: dteSearch, limit: '40', includeMatched: 'true' });
+            const params = new URLSearchParams({ search: dteSearch, limit: '40', includeMatched: 'true', year: '2026' });
             const res = await authFetch(`${API_URL}/dtes?${params}`);
             if (res.ok) {
                 const data = await res.json();
-                setUnpaidDtes(Array.isArray(data) ? data : data.data || []);
+                let arr = Array.isArray(data) ? data : data.data || [];
+                arr = arr.filter((dte: any) => new Date(dte.issuedDate).getFullYear() >= 2026);
+                setUnpaidDtes(arr);
             }
         } catch { /* ignore */ }
         finally { setDteLoading(false); }
