@@ -1572,15 +1572,19 @@ export default function CartolasPage() {
                                                         </button>
                                                     </div>
                                                 ) : tx.status === 'MATCHED' && tx.metadata?.autoCategorized ? (
-                                                    <div className="mx-auto flex flex-col items-center text-center cursor-help" title="Regla de Gasto Fijo aplicada automáticamente">
-                                                        <span className="inline-flex items-center text-purple-600 font-bold text-xs mb-1 bg-purple-50 rounded px-2 py-0.5 border border-purple-200">
+                                                    <button 
+                                                        onClick={() => openAnnotateModal(tx)}
+                                                        className="mx-auto flex flex-col items-center text-center cursor-pointer group hover:scale-105 transition-transform" 
+                                                        title="Regla de Gasto Fijo aplicada automáticamente. Clic para detalles."
+                                                    >
+                                                        <span className="inline-flex items-center text-purple-600 font-bold text-xs mb-1 bg-purple-50 rounded px-2 py-0.5 border border-purple-200 group-hover:bg-purple-100 transition-colors">
                                                             <SparklesIcon className="h-3.5 w-3.5 mr-1" />
                                                             GASTO FIJO
                                                         </span>
                                                         <div className="text-[10px] text-purple-700 font-medium leading-tight max-w-[140px] truncate">
                                                             {tx.metadata.reviewNote?.replace('[Auto: ', '')?.replace(']', '') || 'Regla Automática'}
                                                         </div>
-                                                    </div>
+                                                    </button>
                                                 ) : tx.status === 'MATCHED' ? (
                                                     <span className="inline-flex items-center text-emerald-600 font-bold text-xs">
                                                         <CheckCircleIcon className="h-4 w-4 mr-1" />
