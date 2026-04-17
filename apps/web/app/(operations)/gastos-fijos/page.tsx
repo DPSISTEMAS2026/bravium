@@ -189,7 +189,7 @@ export default function GastosFijosPage() {
                         Gastos Fijos y Reglas
                     </h1>
                     <p className="mt-2 text-indigo-200">
-                        Entrena al motor de conciliación para que detecte y categorice automáticamente transacciones recurrentes basadas en palabras clave (ej: "COMUNIDAD EDIFICIO").
+                        Entrena al motor de conciliación para que detecte y categorice automáticamente transacciones recurrentes basadas en palabras clave (ej: &quot;COMUNIDAD EDIFICIO&quot;).
                     </p>
                 </div>
                 <button

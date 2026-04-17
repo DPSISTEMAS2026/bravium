@@ -50,7 +50,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         if (isMobile && isCollapsed) {
             setIsCollapsed(false);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [pathname]);
 
     const handleToggle = useCallback(() => {

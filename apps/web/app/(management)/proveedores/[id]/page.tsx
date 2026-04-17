@@ -830,7 +830,7 @@ function TransferBankCard({ provider, onSaved, formatCurrency }: {
                     </div>
                 ) : (
                     <div className="text-center py-4 text-slate-400 text-sm">
-                        No hay datos bancarios configurados. Haz clic en "Editar" para agregar.
+                        No hay datos bancarios configurados. Haz clic en &quot;Editar&quot; para agregar.
                     </div>
                 )}
             </div>

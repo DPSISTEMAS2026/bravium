@@ -74,7 +74,7 @@ export class MatchSuggestionsService {
             where: { id },
             include: {
                 dte: {
-                    include: { provider: { select: { name: true, rut: true } } },
+                    include: { provider: { select: { id: true, name: true, rut: true } } },
                 },
             },
         });

@@ -83,8 +83,8 @@ export function UniversalMatchModal({
 
     useEffect(() => {
         if (isOpen) {
-            let txs = [...(initialTransactions || [])];
-            let dtes = [...(initialDtes || [])];
+            const txs = [...(initialTransactions || [])];
+            const dtes = [...(initialDtes || [])];
 
             // Auto-load related DTEs from initial txs
             txs.forEach(tx => {
@@ -141,7 +141,7 @@ export function UniversalMatchModal({
                 setSelectedProvider(null);
             }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [isOpen]);
 
     useEffect(() => {
@@ -150,7 +150,7 @@ export function UniversalMatchModal({
         } else {
             setProviderInfo(null);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [selectedProvider]);
 
     if (!isOpen) return null;
@@ -191,12 +191,11 @@ export function UniversalMatchModal({
         if (!txSearch.trim()) return;
         setTxLoading(true);
         try {
-            const params = new URLSearchParams({ search: txSearch, status: 'ALL', limit: '20', year: '2026' });
+            const params = new URLSearchParams({ search: txSearch, status: 'ALL', limit: '20', fromDate: '2026-01-01' });
             const res = await authFetch(`${API_URL}/transactions?${params}`);
             if (res.ok) {
                 const data = await res.json();
-                let arr = Array.isArray(data) ? data : data.data || [];
-                arr = arr.filter((tx: any) => new Date(tx.date).getFullYear() >= 2026);
+                const arr = Array.isArray(data) ? data : data.data || [];
                 setPendingTxs(arr);
             }
         } catch { /* ignore */ }
@@ -207,12 +206,11 @@ export function UniversalMatchModal({
         if (!dteSearch.trim()) return;
         setDteLoading(true);
         try {
-            const params = new URLSearchParams({ search: dteSearch, limit: '40', includeMatched: 'true', year: '2026' });
+            const params = new URLSearchParams({ search: dteSearch, limit: '40', includeMatched: 'true', fromDate: '2026-01-01' });
             const res = await authFetch(`${API_URL}/dtes?${params}`);
             if (res.ok) {
                 const data = await res.json();
-                let arr = Array.isArray(data) ? data : data.data || [];
-                arr = arr.filter((dte: any) => new Date(dte.issuedDate).getFullYear() >= 2026);
+                const arr = Array.isArray(data) ? data : data.data || [];
                 setUnpaidDtes(arr);
             }
         } catch { /* ignore */ }
@@ -222,8 +220,8 @@ export function UniversalMatchModal({
     const addTx = (tx: any) => {
         if (selectedTxs.find(t => t.id === tx.id)) return;
         
-        let newTxs = [...selectedTxs, tx];
-        let newDtes = [...selectedDtes];
+        const newTxs = [...selectedTxs, tx];
+        const newDtes = [...selectedDtes];
         let dtesAdded = false;
 
         // Auto-load related DTEs if this transaction was already matched
@@ -275,8 +273,8 @@ export function UniversalMatchModal({
     const addDte = (dte: any) => {
         if (selectedDtes.find(d => d.id === dte.id)) return;
         
-        let newDtes = [...selectedDtes, dte];
-        let newTxs = [...selectedTxs];
+        const newDtes = [...selectedDtes, dte];
+        const newTxs = [...selectedTxs];
         let txsAdded = false;
 
         // Auto-load related Txs if this DTE was already matched
@@ -325,7 +323,7 @@ export function UniversalMatchModal({
         if (selectedTxs.length > 0 && selectedDtes.length === 0) {
             setIsSaving(true);
             try {
-                let finalDteIds: string[] = [];
+                const finalDteIds: string[] = [];
                 let finalNote = note;
                 
                 if (boletaFolio && Number(boletaFolio) > 0 && selectedProvider) {
@@ -482,12 +480,14 @@ export function UniversalMatchModal({
                 });
             }
 
-            if (res.ok) {
+            if (res && res.ok) {
                 if (onRefresh) onRefresh();
                 onClose();
-            } else {
+            } else if (res) {
                 const data = await res.json();
                 alert(`Error: ${data.message || 'No se pudo guardar el match'}`);
+            } else {
+                alert(`Error inesperado procesando la orden`);
             }
         } catch (err) {
             alert('Error de conexión');

@@ -190,7 +190,7 @@ export class TransactionsService {
                                   folio: true,
                                   type: true,
                                   totalAmount: true,
-                                  provider: { select: { name: true, rut: true } },
+                                  provider: { select: { id: true, name: true, rut: true } },
                               },
                           },
                       },

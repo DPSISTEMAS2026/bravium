@@ -1263,7 +1263,6 @@ export default function CartolasPage() {
                                     list.map((tx) => (tx.id !== annotateTx.id ? tx : {
                                         ...tx,
                                         status: ruleId ? 'MATCHED' : 'UNMATCHED',
-                                        categoryId: ruleId ? ruleId : tx.categoryId,
                                         metadata: { 
                                             ...(tx.metadata as any || {}), 
                                             reviewNote: note, 
