@@ -120,12 +120,19 @@ export class FintocService {
                 continue;
             }
 
+            const rawDateStr = mov.post_date || mov.created_at;
+            let finalDate = new Date(rawDateStr);
+            // Fix timezone discrepancy for dates retrieved at midnight UTC
+            if (rawDateStr && typeof rawDateStr === 'string' && rawDateStr.includes('T00:00:00Z')) {
+                finalDate.setUTCHours(12, 0, 0, 0);
+            }
+
             await this.prisma.bankTransaction.create({
                 data: {
                     bankAccountId: bankAccount.id,
                     amount: mov.amount,
                     description: mov.description || 'Movimiento Fintoc',
-                    date: new Date(mov.post_date || mov.created_at),
+                    date: finalDate,
                     reference: mov.recipient_account?.number || externalId,
                     type: mov.amount < 0 ? TransactionType.DEBIT : TransactionType.CREDIT,
                     status: TransactionStatus.PENDING,
