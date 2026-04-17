@@ -1107,8 +1107,8 @@ export default function FacturasPage() {
                             globalMutate((k: string) => typeof k === 'string' && (k.includes('/dtes') || k.includes('/conciliacion') || k.includes('/transactions'))); 
                         }
                     }}
-                    suggestionId={reviewModal && reviewModal.match.status === 'DRAFT' ? reviewModal.match.id : undefined}
-                    reviewMatchId={reviewModal && reviewModal.match.status === 'CONFIRMED' ? reviewModal.match.id : undefined}
+                    suggestionId={undefined} // We use reviewMatchId for all matches now
+                    reviewMatchId={reviewModal ? reviewModal.match.id : undefined}
                     mode={
                         (reviewModal && reviewModal.match.status === 'DRAFT') ? 'SUGGESTION' :
                         (reviewModal && reviewModal.match.status === 'CONFIRMED') ? 'REVIEW' : 'MANUAL'
