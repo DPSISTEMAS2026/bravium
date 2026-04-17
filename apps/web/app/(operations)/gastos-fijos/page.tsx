@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { getApiUrl } from '@/lib/api';
+import { getApiUrl, apiFetcher, authFetch } from '@/lib/api';
 import { TrashIcon, PlusIcon, SparklesIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface AutoCategoryRule {
@@ -15,7 +15,7 @@ interface AutoCategoryRule {
 
 export default function GastosFijosPage() {
     const API_URL = getApiUrl();
-    const { data: rules = [], mutate, isLoading } = useSWR<AutoCategoryRule[]>(`${API_URL}/conciliacion/rules`);
+    const { data: rules = [], mutate, isLoading } = useSWR<AutoCategoryRule[]>(`${API_URL}/conciliacion/rules`, apiFetcher);
 
     const [isAdding, setIsAdding] = useState(false);
     const [keywordMatch, setKeywordMatch] = useState('');
@@ -28,7 +28,7 @@ export default function GastosFijosPage() {
 
         setIsSubmitting(true);
         try {
-            const res = await fetch(`${API_URL}/conciliacion/rules`, {
+            const res = await authFetch(`${API_URL}/conciliacion/rules`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ keywordMatch, categoryName })
@@ -52,7 +52,7 @@ export default function GastosFijosPage() {
         if (!confirm('¿Estás seguro de eliminar esta regla? Ya no se categorizarán futuros pagos automáticamente.')) return;
 
         try {
-            const res = await fetch(`${API_URL}/conciliacion/rules/${id}`, {
+            const res = await authFetch(`${API_URL}/conciliacion/rules/${id}`, {
                 method: 'DELETE'
             });
 
