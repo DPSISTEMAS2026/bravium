@@ -498,7 +498,7 @@ export class DtesService {
     /**
      * Marcar un DTE como revisado o pagado manualmente
      */
-    async updateManualReview(id: string, organizationId: string | undefined, data: { note?: string; status?: string }) {
+    async updateManualReview(id: string, organizationId: string | undefined, data: { note?: string; status?: string; ruleId?: string }) {
         if (!organizationId) throw new Error('Missing organizationId');
 
         const dte = await this.prisma.dTE.findUnique({
@@ -519,6 +519,7 @@ export class DtesService {
                 metadata: {
                     ...currentMetadata,
                     reviewNote: data.note,
+                    ruleId: data.ruleId,
                     reviewedAt: new Date().toISOString()
                 }
             }

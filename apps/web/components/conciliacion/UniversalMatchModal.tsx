@@ -306,7 +306,11 @@ export function UniversalMatchModal({
                     await authFetch(`${API_URL}/dtes/${dte.id}/review`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ note: note, status: 'PAID' })
+                        body: JSON.stringify({ 
+                            note: note, 
+                            status: 'PAID',
+                            ruleId: selectedRuleId || undefined 
+                        })
                     });
                 }
                 if (onRefresh) onRefresh();
@@ -590,7 +594,7 @@ export function UniversalMatchModal({
                 <div className="flex-1 overflow-auto p-6 md:flex gap-8">
                     
                     <div className="flex-1 flex flex-col gap-4 border-r border-slate-100 pr-8">
-                        {(mode === 'ANNOTATE' || selectedDtes.length === 0) && (
+                        {(mode === 'ANNOTATE' || selectedDtes.length === 0 || selectedTxs.length === 0) && (
                             <div className="mb-2 bg-orange-50/80 border border-orange-100 rounded-lg p-4 space-y-4">
                                 <div>
                                     <h4 className="text-sm font-bold text-orange-800 mb-2">Anotación Rápida</h4>
@@ -1063,11 +1067,12 @@ export function UniversalMatchModal({
                         <div className="flex">
                             <button 
                                 onClick={() => handleSave(diffResolution || 'EXACT')} 
-                                disabled={selectedTxs.length === 0 || isSaving || (!isPerfect && selectedDtes.length > 0 && mode !== 'ANNOTATE' && !hasMatchedDtes && !diffResolution)}
-                                className={`px-8 py-3 text-sm font-bold text-white shadow-md rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${selectedDtes.length === 0 ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30 hover:shadow-lg' : hasMatchedDtes ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30 hover:shadow-lg' : isPerfect ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30 hover:shadow-lg' : diffResolution ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30 hover:shadow-lg' : 'bg-slate-300 text-white shadow-none'}`}
+                                disabled={(selectedTxs.length === 0 && selectedDtes.length === 0) || isSaving || (selectedTxs.length > 0 && !isPerfect && selectedDtes.length > 0 && mode !== 'ANNOTATE' && !hasMatchedDtes && !diffResolution)}
+                                className={`px-8 py-3 text-sm font-bold text-white shadow-md rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${(selectedDtes.length === 0 || selectedTxs.length === 0) ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30 hover:shadow-lg' : hasMatchedDtes ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30 hover:shadow-lg' : isPerfect ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30 hover:shadow-lg' : diffResolution ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30 hover:shadow-lg' : 'bg-slate-300 text-white shadow-none'}`}
                             >
                                 {isSaving ? 'Guardando...' : 
                                  selectedDtes.length === 0 ? 'Guardar Anotación Manual' :
+                                 selectedTxs.length === 0 ? 'Anotar / Pagar Manualmente' :
                                  hasMatchedDtes ? 'Confirmar y Reasignar' :
                                  isPerfect ? 'Confirmar Cuadratura Perfecta' : 
                                  diffResolution === 'PARTIAL' ? 'Confirmar Pago Parcial' : 

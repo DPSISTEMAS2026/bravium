@@ -148,7 +148,7 @@ export class DtesController {
     @Patch(':id/review')
     async updateManualReview(
         @Param('id') id: string,
-        @Body() body: { note?: string; status?: string },
+        @Body() body: { note?: string; status?: string; ruleId?: string },
         @Req() req?: Request
     ) {
         const organizationId = (req as any)?.organizationId;
