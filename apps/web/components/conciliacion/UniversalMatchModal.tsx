@@ -809,28 +809,54 @@ export function UniversalMatchModal({
                                 <div className="text-xs text-slate-400">Cargando...</div>
                             ) : (
                                 <div className="space-y-4">
-                                    <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                        <div className="text-[10px] flex items-center gap-1 uppercase font-bold text-slate-500 mb-1">
-                                            <BanknotesIcon className="w-3 h-3"/> Estado de Deuda
+                                    {/* Folios Pendientes */}
+                                    <div className="p-4 bg-white border border-rose-200 rounded-xl shadow-sm">
+                                        <div className="text-[10px] flex items-center gap-1 uppercase font-bold text-rose-500 mb-3">
+                                            <BanknotesIcon className="w-3 h-3"/> Folios Pendientes
                                         </div>
-                                        <div className={`text-xl font-black ${providerInfo.balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                            {formatCurrency(providerInfo.balance)}
+                                        <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                                            {providerInfo?.rawData?.dtes?.filter((d: any) => d.outstandingAmount > 0).length > 0 ? (
+                                                providerInfo.rawData.dtes
+                                                    .filter((d: any) => d.outstandingAmount > 0)
+                                                    .map((dte: any) => (
+                                                    <div key={dte.id} className="text-[11px] flex justify-between items-center border-b border-slate-50 pb-2 last:border-0 last:pb-0">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-bold text-slate-700">Folio: {dte.folio}</span>
+                                                            <span className="text-slate-400 font-mono text-[9px]">{formatDate(dte.issuedDate)}</span>
+                                                        </div>
+                                                        <span className="font-bold text-rose-600">{formatCurrency(dte.outstandingAmount)}</span>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="text-[11px] text-slate-400">Sin facturas pendientes</div>
+                                            )}
                                         </div>
                                     </div>
                                     
-                                    {providerInfo?.rawData?.payments?.length > 0 && (
-                                        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                            <div className="text-[10px] uppercase font-bold text-slate-500 mb-3">Último Pagos (Manuales)</div>
-                                            <div className="space-y-3">
-                                                {providerInfo.rawData.payments.slice(0, 4).map((p: any) => (
-                                                    <div key={p.id} className="text-xs flex justify-between items-center border-b border-slate-50 pb-2 last:border-0 last:pb-0">
-                                                        <span className="text-slate-500 font-mono">{formatDate(p.paymentDate)}</span>
-                                                        <span className="font-bold text-slate-700">{formatCurrency(p.amount)}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                    {/* Folios Pagados */}
+                                    <div className="p-4 bg-white border border-emerald-200 rounded-xl shadow-sm">
+                                        <div className="text-[10px] flex items-center gap-1 uppercase font-bold text-emerald-600 mb-3">
+                                            <BanknotesIcon className="w-3 h-3"/> Folios Pagados
                                         </div>
-                                    )}
+                                        <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                                            {providerInfo?.rawData?.dtes?.filter((d: any) => d.outstandingAmount <= 0).length > 0 ? (
+                                                providerInfo.rawData.dtes
+                                                    .filter((d: any) => d.outstandingAmount <= 0)
+                                                    .slice(0, 10) // Show last 10 paid max
+                                                    .map((dte: any) => (
+                                                    <div key={dte.id} className="text-[11px] flex justify-between items-center border-b border-slate-50 pb-2 last:border-0 last:pb-0">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-bold text-slate-700">Folio: {dte.folio}</span>
+                                                            <span className="text-slate-400 font-mono text-[9px]">{formatDate(dte.issuedDate)}</span>
+                                                        </div>
+                                                        <span className="font-bold text-emerald-700">{formatCurrency(dte.totalAmount)}</span>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="text-[11px] text-slate-400">Sin pagos recientes</div>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
