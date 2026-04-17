@@ -1108,6 +1108,7 @@ export default function FacturasPage() {
                         }
                     }}
                     suggestionId={reviewModal && reviewModal.match.status === 'DRAFT' ? reviewModal.match.id : undefined}
+                    reviewMatchId={reviewModal && reviewModal.match.status === 'CONFIRMED' ? reviewModal.match.id : undefined}
                     mode={
                         (reviewModal && reviewModal.match.status === 'DRAFT') ? 'SUGGESTION' :
                         (reviewModal && reviewModal.match.status === 'CONFIRMED') ? 'REVIEW' : 'MANUAL'

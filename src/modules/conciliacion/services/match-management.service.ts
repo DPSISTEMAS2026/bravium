@@ -116,7 +116,10 @@ export class MatchManagementService {
         if (txIds.length === 0) throw new BadRequestException('Se requiere al menos un transactionId');
 
         const transactions = await this.prisma.bankTransaction.findMany({ where: { id: { in: txIds } } });
-        if (transactions.length !== txIds.length) throw new NotFoundException('Una o más transacciones no encontradas');
+        if (transactions.length !== txIds.length) {
+            this.logger.error(`Manual match 404: txIds sent=${JSON.stringify(txIds)}. Found=${transactions.map(t=>t.id).join(',')}`);
+            throw new NotFoundException(`Una o más transacciones no encontradas: ${JSON.stringify(txIds)}`);
+        }
         
         // Auto-release any existing CONFIRMED matches on these transactions
         for (const tx of transactions) {

@@ -326,10 +326,19 @@ export function UniversalMatchModal({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: 'CONFIRMED' }),
                 });
+
+                // If notes were added/changed, optionally patch notes too
+                if (res.ok && note) {
+                    await authFetch(`${API_URL}/conciliacion/matches/${reviewMatchId}/notes`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ notes: note }),
+                    });
+                }
             } 
             
-            // Si no habia sugerencia, o la sugerencia original ya no existía (fallback manual)
-            if (!suggestionId || isManualFallback) {
+            // Si no habia sugerencia ni reviewMatchId, o la sugerencia original ya no existía (fallback manual)
+            if ((!suggestionId && !reviewMatchId) || isManualFallback) {
                 if (isManualFallback) {
                     console.log('Haciendo fallback a match manual porque la sugerencia ya no existe');
                 }
@@ -337,8 +346,8 @@ export function UniversalMatchModal({
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
-                        transactionIds: selectedTxs.map(t => t.id), 
-                        dteIds: selectedDtes.map(d => d.id),
+                        transactionIds: selectedTxs.map(t => t.id).filter(Boolean), 
+                        dteIds: selectedDtes.map(d => d.id).filter(Boolean),
                         notes: note || undefined
                     }),
                 });

@@ -317,25 +317,27 @@ export default function CartolasPage() {
     }, [page, periodDates, selectedAccount, typeFilter, statusFilter, selectedFilename, appliedSearch, sortBy, sortOrder]);
 
     // SWR: Static data (cached globally, rarely changes)
-    const { data: bankAccounts = [] } = useSWR<BankAccount[]>(`${API_URL}/transactions/bank-accounts`);
+    const { data: bankAccounts = [] } = useSWR<BankAccount[]>(
+        user?.organizationId ? `${API_URL}/transactions/bank-accounts?org=${user.organizationId}` : null
+    );
 
     // Cartolas visibles solo en el periodo seleccionado (no todas las ingestadas)
     const { data: cartolasInPeriod = [] } = useSWR<{ filename: string }[]>(
-        `${API_URL}/transactions/files-in-period?fromDate=${periodDates.fromDate}&toDate=${periodDates.toDate}`,
+        user?.organizationId ? `${API_URL}/transactions/files-in-period?fromDate=${periodDates.fromDate}&toDate=${periodDates.toDate}&org=${user.organizationId}` : null,
     );
 
     // Todas las cartolas cargadas (para listar y poder eliminar)
     const { data: allCartolas = [], mutate: mutateAllCartolas } = useSWR<CartolaSourceFile[]>(
-        `${API_URL}/transactions/source-files-all`,
+        user?.organizationId ? `${API_URL}/transactions/source-files-all?org=${user.organizationId}` : null,
     );
 
     // SWR: keepPreviousData para que al confirmar/rechazar un match no parpadee ni recargue toda la vista
     const { data: txData, isLoading: txLoading, isValidating: txValidating, mutate: mutateTx } = useSWR(
-        `${API_URL}/transactions?${queryParams}`,
+        user?.organizationId ? `${API_URL}/transactions?${queryParams}&org=${user.organizationId}` : null,
         { keepPreviousData: true }
     );
     const { data: summary, mutate: mutateSummary } = useSWR<Summary>(
-        `${API_URL}/transactions/summary?${queryParams}`,
+        user?.organizationId ? `${API_URL}/transactions/summary?${queryParams}&org=${user.organizationId}` : null,
         { keepPreviousData: true }
     );
 
