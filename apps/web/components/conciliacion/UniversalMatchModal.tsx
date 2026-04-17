@@ -385,6 +385,9 @@ export function UniversalMatchModal({
 
             // Helper: delete a match, gracefully ignoring 404 (already deleted)
             const safeDeleteMatch = async (matchId: string) => {
+                // Prevent deleting the very match we are trying to review/confirm!
+                if (matchId === reviewMatchId) return; 
+
                 if (deletedMatches.has(matchId)) return;
                 const delRes = await authFetch(`${API_URL}/conciliacion/matches/${matchId}`, { method: 'DELETE' });
                 if (!delRes.ok && delRes.status !== 404) {
