@@ -16,6 +16,7 @@ import { AmountMatchStrategy } from './strategies/amount-match.strategy';
 import { SumMatchStrategy } from './strategies/sum-match.strategy';
 import { SplitPaymentMatchStrategy } from './strategies/split-payment-match.strategy';
 import { MatchingStrategy } from './domain/matching.interfaces';
+import { RulesEngineService } from './services/rules-engine.service';
 
 @Injectable()
 export class ConciliacionService {
@@ -30,6 +31,7 @@ export class ConciliacionService {
         private sumMatchStrategy: SumMatchStrategy,
         private splitPaymentStrategy: SplitPaymentMatchStrategy,
         private readonly visibility: DataVisibilityService,
+        private readonly rulesEngine: RulesEngineService,
     ) {
         this.strategies = [this.exactStrategy, this.amountStrategy];
     }
@@ -304,13 +306,20 @@ export class ConciliacionService {
                 this.logger.warn(`SplitPaymentMatchStrategy error: ${splitErr.message}`);
             }
 
+            // === Cuarta pasada (Opcional): Auto-Categorización de Gastos Fijos ===
+            const rulesResult = await this.rulesEngine.executeAutoCategoryRules(organizationId);
+            if (rulesResult.categorized > 0) {
+                this.fileLog(`AUTO-CATEGORIZED: ${rulesResult.categorized} pending transactions via rule engine.`);
+            }
+
             const totalAutoMatches = matchCount + sumAutoConfirmed + splitAutoConfirmed;
             const totalSuggestions = suggestionsCount + splitSuggestions;
-            this.fileLog(`COMPLETED: ${totalAutoMatches} total auto-matches, ${totalSuggestions} suggestions.`);
+            this.fileLog(`COMPLETED: ${totalAutoMatches} total auto-matches, ${totalSuggestions} suggestions. Auto-Categorized: ${rulesResult.categorized}`);
             return {
                 processed: pendingTransactions.length,
                 matches: totalAutoMatches,
                 suggestions: totalSuggestions,
+                autoCategorized: rulesResult.categorized,
                 detail: { exact: matchCount, sumAuto: sumAutoConfirmed, splitAuto: splitAutoConfirmed, sumSuggestions: suggestionsCount, splitSuggestions },
             };
         } catch (err) {

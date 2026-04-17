@@ -16,40 +16,40 @@ datasource db {
 // ==============================
 
 model BankAccount {
-  id            String            @id @default(uuid())
+  id            String  @id @default(uuid())
   bankName      String // Banco de Chile, Santander, etc.
   accountNumber String
-  currency      String            @default("CLP")
+  currency      String  @default("CLP")
   rutHolder     String // RUT del titular
-  isActive      Boolean           @default(true)
-  
+  isActive      Boolean @default(true)
+
   // Multi-tenancy
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  transactions  BankTransaction[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  transactions BankTransaction[]
 
   @@map("bank_accounts")
 }
 
 model BankTransaction {
-  id            String                @id @default(uuid())
-  bankAccountId String
-  bankAccount   BankAccount           @relation(fields: [bankAccountId], references: [id])
-  date          DateTime // Fecha del movimiento
-  amount        Int // Monto en CLP
-  description   String // Descripción de la cartola
-  reference     String? // Número de documento/operación si existe
-  type          TransactionType // CREDIT (Abono), DEBIT (Cargo)
-  status        TransactionStatus     @default(PENDING)
-  matches       ReconciliationMatch[]
+  id             String                @id @default(uuid())
+  bankAccountId  String
+  bankAccount    BankAccount           @relation(fields: [bankAccountId], references: [id])
+  date           DateTime // Fecha del movimiento
+  amount         Int // Monto en CLP
+  description    String // Descripción de la cartola
+  reference      String? // Número de documento/operación si existe
+  type           TransactionType // CREDIT (Abono), DEBIT (Cargo)
+  status         TransactionStatus     @default(PENDING)
+  matches        ReconciliationMatch[]
   paymentRecords PaymentRecord[]
 
   // Ingestion Metadata
-  origin        DataOrigin            @default(API_INTEGRATION)
-  metadata      Json?                 // Raw payload from n8n or bank
+  origin   DataOrigin @default(API_INTEGRATION)
+  metadata Json? // Raw payload from n8n or bank
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -79,42 +79,43 @@ enum TransactionStatus {
 // ==============================
 
 model Provider {
-  id        String    @id @default(uuid())
-  rut       String
-  name      String
-  category  String?
-  currentBalance Int @default(0)
-  
+  id             String  @id @default(uuid())
+  rut            String
+  name           String
+  category       String?
+  currentBalance Int     @default(0)
+
   // Datos bancarios para transferencias
   transferBankName      String?
   transferAccountNumber String?
-  transferAccountType   String?   // "Corriente", "Vista", "Ahorro"
-  transferRut           String?   // RUT titular (puede diferir del proveedor)
-  transferEmail         String?   // Email para notificación
+  transferAccountType   String? // "Corriente", "Vista", "Ahorro"
+  transferRut           String? // RUT titular (puede diferir del proveedor)
+  transferEmail         String? // Email para notificación
 
   // Datos de control interno / Relación comercial
-  contactName           String?   // Persona a cargo contable
-  logisticsContact      String?   // Logistica
-  creditLine            Int?      // Linea de credito
-  comments              String?   // Comentarios
-  deliveryTime          String?   // Plazos de entrega
-  differential          String?   // Diferencial
-  boardReview           Boolean   @default(false) // Revision del directorio
-  favorableBalance      Int       @default(0) // Saldos a favor
+  contactName      String? // Persona a cargo contable
+  logisticsContact String? // Logistica
+  creditLine       Int? // Linea de credito
+  comments         String? // Comentarios
+  deliveryTime     String? // Plazos de entrega
+  differential     String? // Diferencial
+  boardReview      Boolean @default(false) // Revision del directorio
+  favorableBalance Int     @default(0) // Saldos a favor
 
   // Multi-tenancy
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
-  payments  Payment[]
-  dtes      DTE[]
-  ledgerEntries FinancialLedgerEntry[]
+  payments         Payment[]
+  dtes             DTE[]
+  ledgerEntries    FinancialLedgerEntry[]
   supplierProducts SupplierProduct[]
   priceHistory     ProductPriceHistory[]
   aliases          ProviderAlias[] // <--- NUEVA RELACIÓN
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  AutoCategoryRule AutoCategoryRule[]
 
   @@unique([rut, organizationId])
   @@map("providers")
@@ -122,7 +123,7 @@ model Provider {
 
 model ProviderAlias {
   id          String   @id @default(uuid())
-  description String   // Glosa del banco (ej. "Transf a AVILA RAMIREZ")
+  description String // Glosa del banco (ej. "Transf a AVILA RAMIREZ")
   providerId  String
   provider    Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
@@ -136,149 +137,149 @@ model ProviderAlias {
 // ==============================
 
 model Product {
-  id            String            @id @default(uuid())
-  sku           String
-  name          String
-  description   String?
-  category      String?
-  unit          String            @default("UN") // KG, LT, CAJA, UN
-  
+  id          String  @id @default(uuid())
+  sku         String
+  name        String
+  description String?
+  category    String?
+  unit        String  @default("UN") // KG, LT, CAJA, UN
+
   // Multi-tenancy
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
-  
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   // Analytics
-  averagePrice  Int               @default(0)
-  minPrice      Int               @default(0)
-  maxPrice      Int               @default(0)
-  lastPrice     Int               @default(0)
-  
+  averagePrice Int @default(0)
+  minPrice     Int @default(0)
+  maxPrice     Int @default(0)
+  lastPrice    Int @default(0)
+
   // Relations
   supplierProducts SupplierProduct[]
   priceHistory     ProductPriceHistory[]
   externalOffers   ExternalOffer[]
   recommendations  PurchaseRecommendation[]
-  aliases          ProductAlias[]        // Added for Normalization
-  costAlerts       CostAlert[]           // Added for Cost Monitoring
+  aliases          ProductAlias[] // Added for Normalization
+  costAlerts       CostAlert[] // Added for Cost Monitoring
 
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([sku, organizationId])
   @@map("products")
 }
 
 model SupplierProduct {
-  id                String    @id @default(uuid())
-  
-  productId         String
-  product           Product   @relation(fields: [productId], references: [id])
-  
-  providerId        String
-  provider          Provider  @relation(fields: [providerId], references: [id])
-  
-  supplierSku       String?   // Código del proveedor para este producto
-  lastPrice         Int       @default(0)
-  lastPurchaseDate  DateTime?
-  
-  url               String?   // Link directo a la ficha del proveedor (B2B portal)
+  id String @id @default(uuid())
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id])
+
+  supplierSku      String? // Código del proveedor para este producto
+  lastPrice        Int       @default(0)
+  lastPurchaseDate DateTime?
+
+  url String? // Link directo a la ficha del proveedor (B2B portal)
 
   // Multi-tenancy
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([productId, providerId])
   @@map("supplier_products")
 }
 
 model ProductPriceHistory {
-  id            String      @id @default(uuid())
-  
-  productId     String
-  product       Product     @relation(fields: [productId], references: [id])
-  
-  providerId    String?     // Nullable if source is EXTERNAL_GENERIC
-  provider      Provider?   @relation(fields: [providerId], references: [id])
+  id String @id @default(uuid())
 
-  price         Int
-  currency      String      @default("CLP")
-  date          DateTime
-  
-  source        PriceSource // DTE, PURCHASE_ORDER, EXTERNAL_SCRAPING, MANUAL_QUOTE
-  referenceId   String?     // ID del DTE o PO
-              
-  quantity      Float?      // To calc weighted average
-  
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  providerId String? // Nullable if source is EXTERNAL_GENERIC
+  provider   Provider? @relation(fields: [providerId], references: [id])
+
+  price    Int
+  currency String   @default("CLP")
+  date     DateTime
+
+  source      PriceSource // DTE, PURCHASE_ORDER, EXTERNAL_SCRAPING, MANUAL_QUOTE
+  referenceId String? // ID del DTE o PO
+
+  quantity Float? // To calc weighted average
+
   // Multi-tenancy
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
-  
-  createdAt     DateTime    @default(now())
-  
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  createdAt DateTime @default(now())
+
   @@index([productId, date])
   @@map("product_price_history")
 }
 
 model ExternalOffer {
-  id            String      @id @default(uuid())
-  
-  productId     String
-  product       Product     @relation(fields: [productId], references: [id])
-  
-  vendorName    String      // "MercadoLibre", "Amazon", "Sodimac", etc.
-  price         Int
-  url           String?
-  
-  lastCheckedAt DateTime    @default(now())
-  isValid       Boolean     @default(true)
-  
+  id String @id @default(uuid())
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  vendorName String // "MercadoLibre", "Amazon", "Sodimac", etc.
+  price      Int
+  url        String?
+
+  lastCheckedAt DateTime @default(now())
+  isValid       Boolean  @default(true)
+
   // Multi-tenancy
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
-  
-  createdAt     DateTime    @default(now())
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  createdAt DateTime @default(now())
 
   @@map("external_offers")
 }
 
 model PurchaseRecommendation {
-  id            String              @id @default(uuid())
-  
-  productId     String
-  product       Product             @relation(fields: [productId], references: [id])
-  
-  type          RecommendationType  // BETTER_PRICE_AVAILABLE, HISTORICAL_OVERPRICING
-  
-  description   String
-  explanation   String?           // "Pagando 15% más que el promedio de 3 meses"
-  potentialSaving Int               // Monto estimado de ahorro
-  savingPct       Float             // % de ahorro
-  confidenceScore Int             @default(0) // 0-100
+  id String @id @default(uuid())
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  type RecommendationType // BETTER_PRICE_AVAILABLE, HISTORICAL_OVERPRICING
+
+  description     String
+  explanation     String? // "Pagando 15% más que el promedio de 3 meses"
+  potentialSaving Int // Monto estimado de ahorro
+  savingPct       Float // % de ahorro
+  confidenceScore Int     @default(0) // 0-100
 
   // Actionable Info
   suggestedProviderId String?
   suggestedUrl        String?
-  
-  status        RecommendationStatus @default(PENDING)
-  validUntil    DateTime?
-  
+
+  status     RecommendationStatus @default(PENDING)
+  validUntil DateTime?
+
   // Multi-tenancy
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
-  
-  createdAt     DateTime            @default(now())
-  
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  createdAt DateTime @default(now())
+
   @@map("purchase_recommendations")
 }
 
 enum PriceSource {
-  DTE               // Real invoice
-  PURCHASE_ORDER    // Negotiated price
+  DTE // Real invoice
+  PURCHASE_ORDER // Negotiated price
   EXTERNAL_SCRAPING // Bot/Script
-  MANUAL_QUOTE      // User input
+  MANUAL_QUOTE // User input
 }
 
 enum RecommendationType {
@@ -289,55 +290,55 @@ enum RecommendationType {
 }
 
 model ProductAlias {
-  id            String    @id @default(uuid())
-  
-  productId     String
-  product       Product   @relation(fields: [productId], references: [id])
-  
-  aliasName     String
-  source        String?   // "DTE_PROVIDER_A"
-  
-  confidence    Float     @default(1.0) // 1.0 = Manual/Confirmed, <1.0 = Auto/Fuzzy
-  
-  createdAt     DateTime  @default(now())
+  id String @id @default(uuid())
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  aliasName String
+  source    String? // "DTE_PROVIDER_A"
+
+  confidence Float @default(1.0) // 1.0 = Manual/Confirmed, <1.0 = Auto/Fuzzy
+
+  createdAt DateTime @default(now())
 
   // Multi-tenancy
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
   @@unique([aliasName, organizationId])
   @@map("product_aliases")
 }
 
 model CostAlert {
-  id            String    @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Multi-tenancy
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
-  productId     String
-  product       Product   @relation(fields: [productId], references: [id])
-  
-  type          CostAlertType // SPIKE, MARKET_DRIFT
-  severity      String    // HIGH, MEDIUM, LOW
-  
-  message       String
-  detectedValue Int       // Precio detectado que gatilló la alerta
-  referenceValue Int      // Precio referencia (promedio/mercado)
-  
-  status        AlertStatus @default(OPEN)
-  
-  createdAt     DateTime  @default(now())
-  
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  type     CostAlertType // SPIKE, MARKET_DRIFT
+  severity String // HIGH, MEDIUM, LOW
+
+  message        String
+  detectedValue  Int // Precio detectado que gatilló la alerta
+  referenceValue Int // Precio referencia (promedio/mercado)
+
+  status AlertStatus @default(OPEN)
+
+  createdAt DateTime @default(now())
+
   @@map("cost_alerts")
 }
 
 enum CostAlertType {
-  PRICE_SPIKE           // Subida repentina > X%
-  MARKET_DRIFT          // Desviación lenta pero constante
-  ABOVE_MARKET_AVG      // Más caro que la calle
-} 
+  PRICE_SPIKE // Subida repentina > X%
+  MARKET_DRIFT // Desviación lenta pero constante
+  ABOVE_MARKET_AVG // Más caro que la calle
+}
 
 enum RecommendationStatus {
   PENDING
@@ -358,12 +359,12 @@ model Payment {
   matches           ReconciliationMatch[]
 
   // Ingestion Metadata
-  origin            DataOrigin            @default(MANUAL_UPLOAD)
-  metadata          Json?
+  origin   DataOrigin @default(MANUAL_UPLOAD)
+  metadata Json?
 
   // Multi-tenancy
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -390,35 +391,35 @@ enum PaymentStatus {
 // ==============================
 
 model DTE {
-  id              String                @id @default(uuid())
-  folio           Int
-  type            Int // 33 (Factura), 34 (Exenta), 61 (Nota Crédito), etc.
-  rutIssuer       String
-  rutReceiver     String
-  totalAmount     Int
-  issuedDate      DateTime
-  dueDate         DateTime? // Fecha de vencimiento
-  siiStatus       String // RECHAZADO, ACEPTADO, ETC.
-  providerId      String?
-  provider        Provider?             @relation(fields: [providerId], references: [id])
-  matches         ReconciliationMatch[]
-  suggestions     MatchSuggestion[]
-  paymentRecords  PaymentRecord[]
+  id             String                @id @default(uuid())
+  folio          Int
+  type           Int // 33 (Factura), 34 (Exenta), 61 (Nota Crédito), etc.
+  rutIssuer      String
+  rutReceiver    String
+  totalAmount    Int
+  issuedDate     DateTime
+  dueDate        DateTime? // Fecha de vencimiento
+  siiStatus      String // RECHAZADO, ACEPTADO, ETC.
+  providerId     String?
+  provider       Provider?             @relation(fields: [providerId], references: [id])
+  matches        ReconciliationMatch[]
+  suggestions    MatchSuggestion[]
+  paymentRecords PaymentRecord[]
 
   // Financial Status
-  paymentStatus   DtePaymentStatus         @default(UNPAID)
-  outstandingAmount Int                 // Monto pendiente de pago (Inicialmente = totalAmount)
+  paymentStatus     DtePaymentStatus @default(UNPAID)
+  outstandingAmount Int // Monto pendiente de pago (Inicialmente = totalAmount)
 
   // Ingestion Metadata
-  origin          DataOrigin            @default(API_INTEGRATION)
-  metadata        Json?
+  origin   DataOrigin @default(API_INTEGRATION)
+  metadata Json?
 
   // Multi-tenancy
-  organizationId  String?
-  organization    Organization?         @relation(fields: [organizationId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([rutIssuer, type, folio, organizationId])
   @@index([issuedDate])
@@ -441,39 +442,39 @@ enum DtePaymentStatus {
 // ==============================
 
 model ReconciliationMatch {
-  id            String          @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // The Bank Transaction being reconciled
   transactionId String
   transaction   BankTransaction @relation(fields: [transactionId], references: [id])
 
   // Matched against a Payment (Internal) OR a DTE (Invoice)
-  paymentId     String?
-  payment       Payment?        @relation(fields: [paymentId], references: [id])
-  
-  dteId         String?
-  dte           DTE?            @relation(fields: [dteId], references: [id])
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id])
+
+  dteId String?
+  dte   DTE?    @relation(fields: [dteId], references: [id])
 
   // Meta info
-  origin        MatchOrigin     @default(AUTOMATIC)
-  status        MatchStatus     @default(DRAFT)
-  confidence    Float           @default(0.0) // 0.0 - 1.0 (Score de coincidencia)
-  ruleApplied   String?         // Nombre de la estrategia usada (ej: "ExactMatch", "FuzzyMatch")
-  notes         String?
-  
+  origin      MatchOrigin @default(AUTOMATIC)
+  status      MatchStatus @default(DRAFT)
+  confidence  Float       @default(0.0) // 0.0 - 1.0 (Score de coincidencia)
+  ruleApplied String? // Nombre de la estrategia usada (ej: "ExactMatch", "FuzzyMatch")
+  notes       String?
+
   // Audit del match
-  confirmedAt   DateTime?
-  confirmedBy   String?         // User ID que confirmó
+  confirmedAt DateTime?
+  confirmedBy String? // User ID que confirmó
 
   // Financial Impact
-  adjustments   BalanceAdjustment[] // Diferencias de monto (Write-offs, small diffs)
+  adjustments BalanceAdjustment[] // Diferencias de monto (Write-offs, small diffs)
 
   // Multi-tenancy
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
-  createdAt     DateTime        @default(now())
-  createdBy     String?         // User ID (if manual)
+  createdAt DateTime @default(now())
+  createdBy String? // User ID (if manual)
 
   @@index([transactionId])
   @@index([dteId])
@@ -486,25 +487,25 @@ model ReconciliationMatch {
 // ==============================
 
 model AccountingPeriod {
-  id        String   @id @default(uuid())
-  year      Int
-  month     Int      
-  status    PeriodStatus @default(OPEN)
-  
+  id     String       @id @default(uuid())
+  year   Int
+  month  Int
+  status PeriodStatus @default(OPEN)
+
   startDate DateTime
   endDate   DateTime
-  
-  adjustments BalanceAdjustment[]
-  exportJobs  ExportJob[]
-  alerts      FinancialAlert[]
+
+  adjustments   BalanceAdjustment[]
+  exportJobs    ExportJob[]
+  alerts        FinancialAlert[]
   ledgerEntries FinancialLedgerEntry[]
 
   organizationId String?
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@unique([year, month, organizationId])
   @@map("accounting_periods")
 }
@@ -518,29 +519,29 @@ enum PeriodStatus {
 
 model BalanceAdjustment {
   id          String           @id @default(uuid())
-  amount      Int              // Monto del ajuste (Positivo o Negativo)
+  amount      Int // Monto del ajuste (Positivo o Negativo)
   reason      AdjustmentReason
   description String?
-  
-  // Relations
-  matchId     String?
-  match       ReconciliationMatch? @relation(fields: [matchId], references: [id])
-  
-  periodId    String?
-  period      AccountingPeriod?    @relation(fields: [periodId], references: [id])
 
-  createdAt   DateTime         @default(now())
-  createdBy   String?          // User ID o SYSTEM
+  // Relations
+  matchId String?
+  match   ReconciliationMatch? @relation(fields: [matchId], references: [id])
+
+  periodId String?
+  period   AccountingPeriod? @relation(fields: [periodId], references: [id])
+
+  createdAt DateTime @default(now())
+  createdBy String? // User ID o SYSTEM
 
   @@map("balance_adjustments")
 }
 
 enum AdjustmentReason {
-  SMALL_DIFFERENCE_FAVOR  // Diferencia a favor empresa (Ingreso)
-  SMALL_DIFFERENCE_AGAINST// Diferencia en contra (Gasto)
-  EXCHANGE_RATE           // Diferencia tipo de cambio
-  WRITE_OFF               // Castigo (incobrable/impagable)
-  CARRY_UNDER             // Valor arrastrado (saldos)
+  SMALL_DIFFERENCE_FAVOR // Diferencia a favor empresa (Ingreso)
+  SMALL_DIFFERENCE_AGAINST // Diferencia en contra (Gasto)
+  EXCHANGE_RATE // Diferencia tipo de cambio
+  WRITE_OFF // Castigo (incobrable/impagable)
+  CARRY_UNDER // Valor arrastrado (saldos)
 }
 
 // ==============================
@@ -559,54 +560,54 @@ enum DataOrigin {
 // ==============================
 
 model FinancialLedgerEntry {
-  id              String            @id @default(uuid())
+  id              String   @id @default(uuid())
   transactionDate DateTime
-  
+
   // Who does this affect?
-  providerId      String?
-  provider        Provider?         @relation(fields: [providerId], references: [id])
+  providerId String?
+  provider   Provider? @relation(fields: [providerId], references: [id])
 
   // What period?
-  periodId        String?
-  period          AccountingPeriod? @relation(fields: [periodId], references: [id])
+  periodId String?
+  period   AccountingPeriod? @relation(fields: [periodId], references: [id])
 
   // Multi-tenancy (CRITICAL for Ledger)
   organizationId String?
-  organization   Organization?      @relation(fields: [organizationId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
   // Classification
-  type            LedgerEntryType
-  
+  type LedgerEntryType
+
   // Financials
   // Logic: Positive (+) = Aumenta Deuda (Factura recibida) / Negative (-) = Disminuye Deuda (Pago realizado)
-  amount          Int 
-  
-  // Traceability (Polymorphic-ish reference)
-  referenceType   ReferenceType     // DTE, PAYMENT, ADJUSTMENT, NONE
-  referenceId     String?           // Optional for MANUAL_ENTRY
-  
-  description     String?           // Comentario humano obligatorio/opcional
-  metadata        Json?             // Para guardar filas crudas del Excel o datos extra
+  amount Int
 
-  createdAt       DateTime          @default(now())
-  createdBy       String?           // User identification
-  
+  // Traceability (Polymorphic-ish reference)
+  referenceType ReferenceType // DTE, PAYMENT, ADJUSTMENT, NONE
+  referenceId   String? // Optional for MANUAL_ENTRY
+
+  description String? // Comentario humano obligatorio/opcional
+  metadata    Json? // Para guardar filas crudas del Excel o datos extra
+
+  createdAt DateTime @default(now())
+  createdBy String? // User identification
+
   @@index([providerId, transactionDate])
   @@map("financial_ledger_entries")
 }
 
 enum LedgerEntryType {
-  INVOICE_RECEIVED      // Factura (Aumenta Deuda)
-  PAYMENT_ISSUED        // Pago (Disminuye Deuda)
-  CREDIT_NOTE_RECEIVED  // Nota Crédito (Disminuye Deuda)
-  DEBIT_NOTE_RECEIVED   // Nota Débito (Aumenta Deuda)
-  
-  ADJUSTMENT            // Ajuste manual o correctivo
+  INVOICE_RECEIVED // Factura (Aumenta Deuda)
+  PAYMENT_ISSUED // Pago (Disminuye Deuda)
+  CREDIT_NOTE_RECEIVED // Nota Crédito (Disminuye Deuda)
+  DEBIT_NOTE_RECEIVED // Nota Débito (Aumenta Deuda)
+
+  ADJUSTMENT // Ajuste manual o correctivo
   EXPENSE_BY_DIFFERENCE // Diferencia negativa (Gasto)
-  INCOME_BY_DIFFERENCE  // Diferencia positiva (Ingreso)
-  
-  MANUAL_ENTRY          // Fila histórica de Excel
-  OPENING_BALANCE       // Saldo inicial de migración
+  INCOME_BY_DIFFERENCE // Diferencia positiva (Ingreso)
+
+  MANUAL_ENTRY // Fila histórica de Excel
+  OPENING_BALANCE // Saldo inicial de migración
 }
 
 enum ReferenceType {
@@ -634,31 +635,31 @@ enum MatchStatus {
 // ==============================
 
 model ExportJob {
-  id          String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Target Period
-  periodId    String
-  period      AccountingPeriod @relation(fields: [periodId], references: [id])
-  
-  format      ExportFormat
-  status      ExportStatus     @default(PENDING)
-  
+  periodId String
+  period   AccountingPeriod @relation(fields: [periodId], references: [id])
+
+  format ExportFormat
+  status ExportStatus @default(PENDING)
+
   // Artifact
-  fileUrl     String?  // URL/Path to the generated snapshot file
-  rowCount    Int      // Audit: How many lines were exported
-  checksum    String?  // Audit: Hash of the file content
-  
+  fileUrl  String? // URL/Path to the generated snapshot file
+  rowCount Int // Audit: How many lines were exported
+  checksum String? // Audit: Hash of the file content
+
   // Execution
-  createdAt   DateTime @default(now())
-  createdBy   String?  // User ID
-  
+  createdAt DateTime @default(now())
+  createdBy String? // User ID
+
   @@map("export_jobs")
 }
 
 enum ExportFormat {
-  NUBOX_PRO       // CSV específico para Nubox
+  NUBOX_PRO // CSV específico para Nubox
   SII_LIBRO_DIARIO // Formato estándar SII
-  GENERIC_EXCEL   // Formato humano para contadores
+  GENERIC_EXCEL // Formato humano para contadores
 }
 
 enum ExportStatus {
@@ -673,24 +674,24 @@ enum ExportStatus {
 // ==============================
 
 model FinancialAlert {
-  id          String        @id @default(uuid())
-  code        String        // e.g. OVERDUE_INVOICE, UNMATCHED_TX
-  message     String
-  severity    AlertSeverity
-  status      AlertStatus   @default(OPEN)
+  id       String        @id @default(uuid())
+  code     String // e.g. OVERDUE_INVOICE, UNMATCHED_TX
+  message  String
+  severity AlertSeverity
+  status   AlertStatus   @default(OPEN)
 
   // Context
-  periodId    String?
-  period      AccountingPeriod? @relation(fields: [periodId], references: [id])
+  periodId String?
+  period   AccountingPeriod? @relation(fields: [periodId], references: [id])
 
   // Linked Entity (Polymorphic-ish)
-  entityType  String?       // DTE, BANK_TRANSACTION, PROVIDER, MATCH
-  entityId    String?
+  entityType String? // DTE, BANK_TRANSACTION, PROVIDER, MATCH
+  entityId   String?
 
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  resolvedAt  DateTime?
-  resolvedBy  String?       // User ID
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  resolvedAt DateTime?
+  resolvedBy String? // User ID
 
   @@index([status, severity])
   @@map("financial_alerts")
@@ -714,31 +715,31 @@ enum AlertStatus {
 // ==============================
 
 model Organization {
-  id            String    @id @default(uuid())
-  rut           String    @unique
-  name          String
-  slug          String?   @unique   // Subdomain: "bravium" → bravium.dpsistemas.cl
-  plan          String    @default("PRO") // SaaS Plan
-  isActive      Boolean   @default(true)  // Enable/disable tenant access
+  id       String  @id @default(uuid())
+  rut      String  @unique
+  name     String
+  slug     String? @unique // Subdomain: "bravium" → bravium.dpsistemas.cl
+  plan     String  @default("PRO") // SaaS Plan
+  isActive Boolean @default(true) // Enable/disable tenant access
 
   // Branding
-  logoUrl       String?   // URL or path to org logo
-  primaryColor  String?   // Hex color for UI theming (e.g. "#1a56db")
+  logoUrl      String? // URL or path to org logo
+  primaryColor String? // Hex color for UI theming (e.g. "#1a56db")
 
   // Per-org Credentials (encrypted in production)
-  libreDteApiKey    String?   // LibreDTE API key for this org
-  libreDteRut       String?   // RUT configured in LibreDTE
-  googleDriveFolderId   String?   // Google Drive folder to watch
-  googleDriveCredentials String?  // Service account JSON (stored encrypted)
-  fintocApiKey      String?   // Fintoc Secret Key
-  fintocPublicKey   String?   // Fintoc Public Key
-  fintocLinkToken   String?   // Fintoc Link Token (for account identification)
+  libreDteApiKey         String? // LibreDTE API key for this org
+  libreDteRut            String? // RUT configured in LibreDTE
+  googleDriveFolderId    String? // Google Drive folder to watch
+  googleDriveCredentials String? // Service account JSON (stored encrypted)
+  fintocApiKey           String? // Fintoc Secret Key
+  fintocPublicKey        String? // Fintoc Public Key
+  fintocLinkToken        String? // Fintoc Link Token (for account identification)
 
   // Data visibility
-  dataVisibleFrom   DateTime? // Minimum date for data queries
+  dataVisibleFrom DateTime? // Minimum date for data queries
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   users         User[]
   bankAccounts  BankAccount[]
@@ -749,43 +750,44 @@ model Organization {
   dtes          DTE[]
   payments      Payment[]
   matches       ReconciliationMatch[]
-  
+
   // Purchase Intelligence
-  products      Product[]
+  products         Product[]
   supplierProducts SupplierProduct[]
-  priceHistory  ProductPriceHistory[]
-  externalOffers ExternalOffer[]
-  recommendations PurchaseRecommendation[]
-  aliases       ProductAlias[]
-  costAlerts    CostAlert[]
-  suggestions   MatchSuggestion[]
-  paymentRecords PaymentRecord[]
-  
+  priceHistory     ProductPriceHistory[]
+  externalOffers   ExternalOffer[]
+  recommendations  PurchaseRecommendation[]
+  aliases          ProductAlias[]
+  costAlerts       CostAlert[]
+  suggestions      MatchSuggestion[]
+  paymentRecords   PaymentRecord[]
+  AutoCategoryRule AutoCategoryRule[]
+
   @@map("organizations")
 }
 
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  passwordHash  String
-  fullName      String
-  role          UserRole  @default(COMPRAS)
-  
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  role         UserRole @default(COMPRAS)
+
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("users")
 }
 
 enum UserRole {
-  ADMIN         // Configuración total
-  GERENCIA      // Ver ahorro, aceptar recomendaciones
-  COMPRAS       // Ver y gestionar compras
-  CONTADOR      // Cierres, ajustes, exportación
-  AUDITOR       // Solo lectura
+  ADMIN // Configuración total
+  GERENCIA // Ver ahorro, aceptar recomendaciones
+  COMPRAS // Ver y gestionar compras
+  CONTADOR // Cierres, ajustes, exportación
+  AUDITOR // Solo lectura
 }
 
 // ==============================
@@ -793,29 +795,29 @@ enum UserRole {
 // ==============================
 
 model AuditLog {
-  id            String    @id @default(uuid())
-  action        String    // e.g. "CLOSE_PERIOD", "CONFIRM_MATCH"
-  
+  id     String @id @default(uuid())
+  action String // e.g. "CLOSE_PERIOD", "CONFIRM_MATCH"
+
   // Actor
-  userId        String?
-  systemEvent   Boolean   @default(false)
-  ipAddress     String?
-  userAgent     String?
+  userId      String?
+  systemEvent Boolean @default(false)
+  ipAddress   String?
+  userAgent   String?
 
   // Context
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
 
   // Target
-  entityType    String    // e.g. "FinancialLedgerEntry"
-  entityId      String
-  
+  entityType String // e.g. "FinancialLedgerEntry"
+  entityId   String
+
   // Data Changes
   previousValue Json?
   newValue      Json?
   metadata      Json?
 
-  createdAt     DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   @@index([organizationId, action])
   @@index([entityType, entityId])
@@ -827,29 +829,29 @@ model AuditLog {
 // ==============================
 
 model PaymentRecord {
-  id              String   @id @default(uuid())
-  empresa         String
-  detalle         String?
-  tipoDocumento   String?  // "Factura", "Boleta", "Contrato", "Recibo"
-  folioFactura    String?
-  folioBoleta     String?
-  monto           Float
-  fechaPago       DateTime
-  medioPago       String?  // "TRANSFERENCIA", "TARJETA DE CREDITO", "BOTON DE PAGO"
-  comentario      String?
-  autorizacion    String?
-  mesOrigen       String?  // "2026-01", "2026-02", etc.
+  id            String   @id @default(uuid())
+  empresa       String
+  detalle       String?
+  tipoDocumento String? // "Factura", "Boleta", "Contrato", "Recibo"
+  folioFactura  String?
+  folioBoleta   String?
+  monto         Float
+  fechaPago     DateTime
+  medioPago     String? // "TRANSFERENCIA", "TARJETA DE CREDITO", "BOTON DE PAGO"
+  comentario    String?
+  autorizacion  String?
+  mesOrigen     String? // "2026-01", "2026-02", etc.
 
-  transactionId   String?
-  transaction     BankTransaction? @relation(fields: [transactionId], references: [id])
-  dteId           String?
-  dte             DTE?     @relation(fields: [dteId], references: [id])
+  transactionId String?
+  transaction   BankTransaction? @relation(fields: [transactionId], references: [id])
+  dteId         String?
+  dte           DTE?             @relation(fields: [dteId], references: [id])
 
-  organizationId  String?
-  organization    Organization? @relation(fields: [organizationId], references: [id])
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdBy       String?
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  createdBy      String?
 
   @@index([transactionId])
   @@index([dteId])
@@ -863,20 +865,20 @@ model PaymentRecord {
 // ==============================
 
 model MatchSuggestion {
-  id              String   @id @default(uuid())
-  type            String   @default("SUM") // SUM (N tx -> 1 DTE), SPLIT (1 tx -> N DTEs)
-  dteId           String
-  dte             DTE      @relation(fields: [dteId], references: [id])
-  transactionIds  Json     // String[] de IDs de BankTransaction
-  relatedDteIds   Json?    // String[] de IDs de DTE adicionales (para SPLIT)
-  totalAmount     Float
-  confidence      Float
-  status          String   @default("PENDING") // PENDING, ACCEPTED, REJECTED
-  reason          String?
-  organizationId  String?
-  organization    Organization? @relation(fields: [organizationId], references: [id])
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String        @id @default(uuid())
+  type           String        @default("SUM") // SUM (N tx -> 1 DTE), SPLIT (1 tx -> N DTEs)
+  dteId          String
+  dte            DTE           @relation(fields: [dteId], references: [id])
+  transactionIds Json // String[] de IDs de BankTransaction
+  relatedDteIds  Json? // String[] de IDs de DTE adicionales (para SPLIT)
+  totalAmount    Float
+  confidence     Float
+  status         String        @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  reason         String?
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([dteId])
   @@index([status])
@@ -889,29 +891,49 @@ model MatchSuggestion {
 // ==============================
 
 model SyncLog {
-  id              String    @id @default(uuid())
-  
-  organizationId  String
-  
-  type            String    // DTE_SYNC, DRIVE_SYNC, AUTO_MATCH, STARTUP_SYNC
-  status          String    @default("RUNNING") // RUNNING, SUCCESS, FAILED
-  
+  id String @id @default(uuid())
+
+  organizationId String
+
+  type   String // DTE_SYNC, DRIVE_SYNC, AUTO_MATCH, STARTUP_SYNC
+  status String @default("RUNNING") // RUNNING, SUCCESS, FAILED
+
   // Counters
-  totalFound      Int       @default(0)
-  created         Int       @default(0)
-  skipped         Int       @default(0)
-  errors          Int       @default(0)
-  
+  totalFound Int @default(0)
+  created    Int @default(0)
+  skipped    Int @default(0)
+  errors     Int @default(0)
+
   // Metadata
-  message         String?
-  durationMs      Int?      // How long it took
-  dateRangeFrom   String?   // e.g. "2026-03-01"
-  dateRangeTo     String?   // e.g. "2026-03-22"
-  
-  startedAt       DateTime  @default(now())
-  finishedAt      DateTime?
-  
+  message       String?
+  durationMs    Int? // How long it took
+  dateRangeFrom String? // e.g. "2026-03-01"
+  dateRangeTo   String? // e.g. "2026-03-22"
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
   @@index([organizationId, type])
   @@index([startedAt])
   @@map("sync_logs")
+}
+
+// ==============================
+// 15. AUTO CATEGORY RULES
+// ==============================
+
+model AutoCategoryRule {
+  id             String   @id @default(cuid())
+  organizationId String
+  keywordMatch   String
+  categoryName   String
+  providerId     String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  provider     Provider?    @relation(fields: [providerId], references: [id])
+
+  @@index([organizationId])
+  @@map("auto_category_rules")
 }

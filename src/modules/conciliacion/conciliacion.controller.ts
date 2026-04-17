@@ -7,6 +7,7 @@ import { MatchManagementService } from './services/match-management.service';
 import { MatchSuggestionsService } from './services/match-suggestions.service';
 import { ExportService } from './services/export.service';
 import { MorningBriefingService } from './services/morning-briefing.service';
+import { RulesEngineService } from './services/rules-engine.service';
 import { DashboardFiltersDto } from './dto/dashboard-filters.dto';
 import { ExportType } from './dto/export-filters.dto';
 
@@ -36,6 +37,7 @@ export class ConciliacionController {
         private readonly exportService: ExportService,
         private readonly libreDteService: LibreDteService,
         private readonly morningBriefing: MorningBriefingService,
+        private readonly rulesEngine: RulesEngineService,
     ) { }
 
     /**
@@ -289,5 +291,26 @@ export class ConciliacionController {
             status: 'accepted',
             message: 'Deep scan iniciado en segundo plano. Los DTEs faltantes aparecerán progresivamente.',
         };
+    }
+
+    // ── Auto Category Rules ──
+
+    @Get('rules')
+    async getRules(@Req() req: Request) {
+        const organizationId = (req as any).user?.organizationId || (req as any).organizationId;
+        return this.rulesEngine.getRules(organizationId);
+    }
+
+    @Post('rules')
+    async createRule(@Body() body: { keywordMatch: string; categoryName: string; providerId?: string }, @Req() req: Request) {
+        const organizationId = (req as any).user?.organizationId || (req as any).organizationId;
+        if (!body.keywordMatch || !body.categoryName) throw new BadRequestException('keywordMatch and categoryName are required');
+        return this.rulesEngine.createRule(organizationId, body.keywordMatch, body.categoryName, body.providerId);
+    }
+
+    @Delete('rules/:id')
+    async deleteRule(@Param('id') id: string, @Req() req: Request) {
+        const organizationId = (req as any).user?.organizationId || (req as any).organizationId;
+        return this.rulesEngine.deleteRule(id, organizationId);
     }
 }

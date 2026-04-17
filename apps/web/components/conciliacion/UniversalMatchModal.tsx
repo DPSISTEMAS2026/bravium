@@ -289,7 +289,7 @@ export function UniversalMatchModal({
     };
     const removeDte = (id: string) => setSelectedDtes(prev => prev.filter(d => d.id !== id));
 
-    const handleSave = async () => {
+    const handleSave = async (actionOverride?: 'PARTIAL' | 'EXACT') => {
         // Unidirectional: DTEs but NO Txs (Manual Payment / Review)
         if (selectedDtes.length > 0 && selectedTxs.length === 0) {
             setIsSaving(true);
@@ -419,7 +419,7 @@ export function UniversalMatchModal({
             let res;
             let isManualFallback = false;
 
-            if (suggestionId) {
+            if (suggestionId && actionOverride !== 'PARTIAL') {
                 res = await authFetch(`${API_URL}/conciliacion/suggestions/${suggestionId}/accept`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -438,7 +438,7 @@ export function UniversalMatchModal({
                         isManualFallback = true;
                     }
                 }
-            } else if (reviewMatchId) {
+            } else if (reviewMatchId && actionOverride !== 'PARTIAL') {
                 res = await authFetch(`${API_URL}/conciliacion/matches/${reviewMatchId}/status`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
@@ -455,8 +455,8 @@ export function UniversalMatchModal({
                 }
             } 
             
-            // Si no habia sugerencia ni reviewMatchId, o la sugerencia original ya no existía (fallback manual)
-            if ((!suggestionId && !reviewMatchId) || isManualFallback) {
+            // Si no habia sugerencia ni reviewMatchId, o la sugerencia original ya no existía (fallback manual), o si fue PARCIAL
+            if ((!suggestionId && !reviewMatchId) || isManualFallback || actionOverride === 'PARTIAL') {
                 if (isManualFallback) {
                     console.log('Haciendo fallback a match manual porque la sugerencia ya no existe');
                 }
@@ -466,7 +466,8 @@ export function UniversalMatchModal({
                     body: JSON.stringify({ 
                         transactionIds: selectedTxs.map(t => t.id).filter(Boolean), 
                         dteIds: selectedDtes.map(d => d.id).filter(Boolean),
-                        notes: note || undefined
+                        notes: note || undefined,
+                        action: actionOverride || 'EXACT'
                     }),
                 });
             }
@@ -1029,15 +1030,25 @@ export function UniversalMatchModal({
                             </button>
                         )}
 
+                        {(!isPerfect && !hasMatchedDtes && mode !== 'ANNOTATE' && selectedDtes.length > 0) && (
+                            <button 
+                                onClick={() => handleSave('PARTIAL')} 
+                                disabled={isSaving}
+                                className="px-6 py-2.5 text-sm font-bold text-white shadow-sm rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-sky-600 hover:bg-sky-700 shadow-sky-600/20"
+                            >
+                                Confirmar Pago Parcial
+                            </button>
+                        )}
+
                         <button 
-                            onClick={handleSave} 
+                            onClick={() => handleSave('EXACT')} 
                             disabled={(selectedTxs.length === 0 && mode !== 'ANNOTATE') || (selectedDtes.length === 0 && mode !== 'ANNOTATE') || isSaving}
                             className={`px-6 py-2.5 text-sm font-bold text-white shadow-sm rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${hasMatchedDtes ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20' : isPerfect ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'}`}
                         >
                             {isSaving ? 'Guardando...' : 
                              hasMatchedDtes ? 'Confirmar y Reasignar' :
                              mode !== 'ANNOTATE' && selectedDtes.length === 0 ? 'Marcar como Revisado' :
-                             isPerfect ? 'Confirmar Cuadratura' : 'Forzar Conciliación Parcial'}
+                             isPerfect ? 'Confirmar Cuadratura' : 'Liquidar con Diferencia (Forzar)'}
                         </button>
                     </div>
                 </div>

@@ -507,8 +507,8 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
                                                 {dte.dueDate && <div className="text-[9px] text-slate-400 mt-1">{formatDate(dte.dueDate)}</div>}
                                             </td>
                                             <td className="px-6 py-4 text-center">
-                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold border ${dte.paymentStatus === 'PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-                                                    {dte.paymentStatus === 'PAID' ? 'PAGADO' : 'PENDIENTE'}
+                                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold border ${dte.paymentStatus === 'PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : dte.paymentStatus === 'PARTIAL' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                                    {dte.paymentStatus === 'PAID' ? 'PAGADO' : dte.paymentStatus === 'PARTIAL' ? 'PAGO PARCIAL' : 'PENDIENTE'}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">

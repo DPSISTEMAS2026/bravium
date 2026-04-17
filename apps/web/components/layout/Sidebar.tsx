@@ -49,6 +49,7 @@ const sections: NavSection[] = [
     {
         title: 'Gestión y Sistema',
         items: [
+            { name: 'Gastos Fijos y Reglas', href: '/gastos-fijos', icon: SparklesIcon },
             { name: 'Exportación', href: '/exportar', icon: ArrowDownTrayIcon },
             { name: 'Mi Perfil', href: '/perfil', icon: UsersIcon },
         ]
