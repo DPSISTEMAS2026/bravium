@@ -448,4 +448,80 @@ export class DtesService {
             include: { provider: true },
         });
     }
+
+    /**
+     * Crear una boleta de honorarios manualmente (DTE tipo 112 o similar)
+     */
+    async createBoletaHonorarios(organizationId: string | undefined, data: { providerId: string; folio: number; amount: number; date?: string; notes?: string }) {
+        if (!organizationId) throw new Error('Missing organizationId');
+        
+        // Check if it already exists
+        const existing = await this.prisma.dTE.findFirst({
+            where: {
+                providerId: data.providerId,
+                folio: data.folio,
+                type: 112, // Boleta de Honorarios is typically 112
+                organizationId
+            }
+        });
+
+        if (existing) {
+            throw new Error('La boleta de honorarios con este folio ya existe para este proveedor.');
+        }
+
+        const provider = await this.prisma.provider.findUnique({ where: { id: data.providerId } });
+        const rutIssuer = provider?.rut || '1-9';
+        const issuedDate = data.date ? new Date(data.date) : new Date();
+        
+        return this.prisma.dTE.create({
+            data: {
+                folio: data.folio,
+                type: 112,
+                totalAmount: data.amount,
+                outstandingAmount: data.amount,
+                paymentStatus: 'UNPAID',
+                issuedDate: issuedDate,
+                dueDate: issuedDate,
+                rutIssuer: rutIssuer,
+                rutReceiver: '1-9', // Or fetch from organization
+                siiStatus: 'ACEPTADO',
+                metadata: {
+                    notes: data.notes,
+                    isManual: true,
+                },
+                providerId: data.providerId,
+                organizationId,
+            }
+        });
+    }
+
+    /**
+     * Marcar un DTE como revisado o pagado manualmente
+     */
+    async updateManualReview(id: string, organizationId: string | undefined, data: { note?: string; status?: string }) {
+        if (!organizationId) throw new Error('Missing organizationId');
+
+        const dte = await this.prisma.dTE.findUnique({
+            where: { id }
+        });
+
+        if (!dte || dte.organizationId !== organizationId) {
+            throw new Error('DTE no encontrado');
+        }
+
+        const currentMetadata = (dte.metadata as any) || {};
+
+        return this.prisma.dTE.update({
+            where: { id },
+            data: {
+                paymentStatus: data.status === 'PAID' ? 'PAID' : dte.paymentStatus,
+                outstandingAmount: data.status === 'PAID' ? 0 : dte.outstandingAmount,
+                metadata: {
+                    ...currentMetadata,
+                    reviewNote: data.note,
+                    reviewedAt: new Date().toISOString()
+                }
+            }
+        });
+    }
 }

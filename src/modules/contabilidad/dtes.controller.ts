@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Logger, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, Logger, UseGuards, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { DtesService, DteFilters } from './dtes.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -125,5 +125,34 @@ export class DtesController {
         const organizationId = (req as any)?.organizationId;
         this.logger.log('Fetching overdue DTEs');
         return this.dtesService.getOverdueDtes(organizationId);
+    }
+
+    /**
+     * POST /dtes/honorarios
+     * Crear una boleta de honorarios manualmente
+     */
+    @Post('honorarios')
+    async createBoletaHonorarios(
+        @Body() body: { providerId: string; folio: number; amount: number; date?: string; notes?: string },
+        @Req() req?: Request
+    ) {
+        const organizationId = (req as any)?.organizationId;
+        this.logger.log(`Creating manual boleta honorarios for provider ${body.providerId}`);
+        return this.dtesService.createBoletaHonorarios(organizationId, body);
+    }
+
+    /**
+     * PATCH /dtes/:id/review
+     * Marcar un DTE como revisado/pagado manualmente
+     */
+    @Patch(':id/review')
+    async updateManualReview(
+        @Param('id') id: string,
+        @Body() body: { note?: string; status?: string },
+        @Req() req?: Request
+    ) {
+        const organizationId = (req as any)?.organizationId;
+        this.logger.log(`Updating DTE ${id} with manual review`);
+        return this.dtesService.updateManualReview(id, organizationId, body);
     }
 }

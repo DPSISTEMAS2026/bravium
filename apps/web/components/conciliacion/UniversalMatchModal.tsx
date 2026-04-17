@@ -66,8 +66,12 @@ export function UniversalMatchModal({
     const [providerSearch, setProviderSearch] = useState('');
     const [providerResults, setProviderResults] = useState<any[]>([]);
     const [selectedProvider, setSelectedProvider] = useState<any | null>(null);
-    const [providerInfo, setProviderInfo] = useState<{ balance: number, unpaidNCs: any[] } | null>(null);
+    const [providerInfo, setProviderInfo] = useState<{ balance: number, unpaidNCs: any[], rawData?: any } | null>(null);
     const [isProviderLoading, setIsProviderLoading] = useState(false);
+    
+    // Unidirectional states
+    const [boletaFolio, setBoletaFolio] = useState('');
+    const [boletaAmount, setBoletaAmount] = useState<number | ''>('');
 
     useEffect(() => {
         if (isOpen) {
@@ -153,8 +157,9 @@ export function UniversalMatchModal({
             const ncData = await resNC.json();
             
             setProviderInfo({
-                balance: provData?.currentBalance || 0,
-                unpaidNCs: Array.isArray(ncData) ? ncData : ncData.data || []
+                balance: provData?.currentBalance || provData?.favorableBalance || 0,
+                unpaidNCs: Array.isArray(ncData) ? ncData : ncData.data || [],
+                rawData: provData
             });
         } catch { /* ignore */ }
         finally { setIsProviderLoading(false); }
@@ -249,12 +254,85 @@ export function UniversalMatchModal({
     const removeDte = (id: string) => setSelectedDtes(prev => prev.filter(d => d.id !== id));
 
     const handleSave = async () => {
-        if (selectedTxs.length === 0 && mode !== 'ANNOTATE') return;
-        
-        if (mode === 'ANNOTATE' && selectedDtes.length === 0 && onAnnotateSave) {
+        // Unidirectional: DTEs but NO Txs (Manual Payment / Review)
+        if (selectedDtes.length > 0 && selectedTxs.length === 0) {
             setIsSaving(true);
             try {
-                await onAnnotateSave(note, selectedProvider?.id);
+                for (const dte of selectedDtes) {
+                    await authFetch(`${API_URL}/dtes/${dte.id}/review`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ note: note, status: 'PAID' })
+                    });
+                }
+                if (onRefresh) onRefresh();
+                onClose();
+            } catch (err: any) {
+                alert(`Error al guardar: ${err.message}`);
+            } finally {
+                setIsSaving(false);
+            }
+            return;
+        }
+
+        // Unidirectional: Txs but NO DTEs (Annotate / Create Boleta)
+        if (selectedTxs.length > 0 && selectedDtes.length === 0) {
+            setIsSaving(true);
+            try {
+                let finalDteIds: string[] = [];
+                let finalNote = note;
+                
+                if (boletaFolio && Number(boletaFolio) > 0 && selectedProvider) {
+                    const amount = boletaAmount || Math.abs(selectedTxs.reduce((s, t) => s + (t.amount || 0), 0));
+                    const dteRes = await authFetch(`${API_URL}/dtes/honorarios`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            providerId: selectedProvider.id,
+                            folio: Number(boletaFolio),
+                            amount,
+                            notes: note || undefined,
+                            date: selectedTxs[0]?.date
+                        })
+                    });
+                    
+                    if (!dteRes.ok) {
+                        const err = await dteRes.json().catch(()=>({}));
+                        throw new Error(err.message || 'Error al crear la Boleta de Honorarios');
+                    }
+                    
+                    const newDte = await dteRes.json();
+                    finalDteIds.push(newDte.id);
+                    finalNote = `[Boleta Honorarios Nº ${boletaFolio}] ${note}`.trim();
+                }
+
+                if (finalDteIds.length > 0) {
+                    // Match with the new Boleta
+                    const mRes = await authFetch(`${API_URL}/conciliacion/matches/manual`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            transactionIds: selectedTxs.map(t => t.id), 
+                            dteIds: finalDteIds,
+                            notes: finalNote || undefined
+                        }),
+                    });
+                    if (!mRes.ok) throw new Error('Error al generar match manual con la boleta.');
+                } else {
+                    // Regular Annotate
+                    if (onAnnotateSave) {
+                        await onAnnotateSave(note, selectedProvider?.id);
+                    } else {
+                        for (const tx of selectedTxs) {
+                            await authFetch(`${API_URL}/transactions/${tx.id}/review`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ note: note, providerId: selectedProvider?.id })
+                            });
+                        }
+                    }
+                }
+
                 if (onRefresh) onRefresh();
                 onClose();
             } catch (err: any) {
@@ -265,7 +343,8 @@ export function UniversalMatchModal({
             return;
         }
 
-        if (selectedDtes.length === 0) return;
+        // Bi-directional normal match
+        if (selectedTxs.length === 0 || selectedDtes.length === 0) return;
 
         setIsSaving(true);
         try {
@@ -450,7 +529,7 @@ export function UniversalMatchModal({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className={`bg-white rounded-xl shadow-2xl w-full flex flex-col max-h-[90vh] overflow-hidden transition-all duration-300 ${selectedProvider ? 'max-w-[90vw] lg:max-w-7xl' : 'max-w-6xl'}`} onClick={e => e.stopPropagation()}>
                 
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
                     <h2 className="text-xl font-bold text-slate-800">Conciliación Universal</h2>
@@ -516,6 +595,28 @@ export function UniversalMatchModal({
                                     {selectedProvider && (
                                         <div className="mt-2 flex items-center gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
                                             <CheckCircleIcon className="h-3.5 w-3.5" /> Proveedor Asociado: {selectedProvider.name}
+                                        </div>
+                                    )}
+                                    {selectedProvider && (
+                                        <div className="mt-4 pt-3 border-t border-orange-100/50">
+                                            <p className="text-[11px] font-bold text-orange-800 mb-2">Generar Boleta de Honorarios (Opcional)</p>
+                                            <div className="flex gap-2">
+                                                <input 
+                                                    type="number"
+                                                    value={boletaFolio}
+                                                    onChange={e => setBoletaFolio(e.target.value)}
+                                                    placeholder="N° Folio"
+                                                    className="w-1/2 px-2 py-1.5 bg-white border border-orange-200 rounded text-xs outline-none focus:ring-1 focus:ring-orange-500"
+                                                />
+                                                <input 
+                                                    type="number"
+                                                    value={boletaAmount}
+                                                    onChange={e => setBoletaAmount(Number(e.target.value) || '')}
+                                                    placeholder="Monto (Opcional)"
+                                                    className="w-1/2 px-2 py-1.5 bg-white border border-orange-200 rounded text-xs outline-none focus:ring-1 focus:ring-orange-500"
+                                                />
+                                            </div>
+                                            <p className="text-[10px] text-orange-600 mt-1">Si ingresas un folio, se creará el DTE y quedará como pagado con este movimiento.</p>
                                         </div>
                                     )}
                                 </div>
@@ -698,8 +799,42 @@ export function UniversalMatchModal({
                                 <span className="text-lg font-black text-emerald-700 cursor-help" title="Descuenta Notas de Crédito automáticamente">{formatCurrency(totalDtes)}</span>
                             </div>
                         </div>
-
                     </div>
+
+                    {/* Historical Provider Panel */}
+                    {selectedProvider && providerInfo && (
+                        <div className="hidden lg:flex w-72 flex-col gap-4 border-l border-slate-100 pl-6 shrink-0">
+                            <h3 className="text-sm font-bold text-slate-700 mb-2">Historial del Proveedor</h3>
+                            {isProviderLoading ? (
+                                <div className="text-xs text-slate-400">Cargando...</div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                        <div className="text-[10px] flex items-center gap-1 uppercase font-bold text-slate-500 mb-1">
+                                            <BanknotesIcon className="w-3 h-3"/> Estado de Deuda
+                                        </div>
+                                        <div className={`text-xl font-black ${providerInfo.balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                            {formatCurrency(providerInfo.balance)}
+                                        </div>
+                                    </div>
+                                    
+                                    {providerInfo?.rawData?.payments?.length > 0 && (
+                                        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                            <div className="text-[10px] uppercase font-bold text-slate-500 mb-3">Último Pagos (Manuales)</div>
+                                            <div className="space-y-3">
+                                                {providerInfo.rawData.payments.slice(0, 4).map((p: any) => (
+                                                    <div key={p.id} className="text-xs flex justify-between items-center border-b border-slate-50 pb-2 last:border-0 last:pb-0">
+                                                        <span className="text-slate-500 font-mono">{formatDate(p.paymentDate)}</span>
+                                                        <span className="font-bold text-slate-700">{formatCurrency(p.amount)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <div className="border-t border-slate-200 bg-slate-50/80 px-6 py-5 flex items-center justify-between">
