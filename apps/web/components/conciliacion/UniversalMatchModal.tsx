@@ -498,7 +498,9 @@ export function UniversalMatchModal({
             });
             if (res.ok) {
                 if (onRefresh) onRefresh();
-                onClose();
+                setSelectedDtes([]);
+            } else {
+                alert('Error al rechazar sugerencia');
             }
         } catch { alert('Error de conexión'); }
         finally { setIsSaving(false); }
@@ -517,7 +519,9 @@ export function UniversalMatchModal({
             });
             if (res.ok) {
                 if (onRefresh) onRefresh();
-                onClose();
+                setSelectedDtes([]);
+            } else {
+                alert('Error al rechazar sugerencia');
             }
         } catch { alert('Error de conexión'); }
         finally { setIsSaving(false); }
@@ -580,7 +584,7 @@ export function UniversalMatchModal({
                 <div className="flex-1 overflow-auto p-6 md:flex gap-8">
                     
                     <div className="flex-1 flex flex-col gap-4 border-r border-slate-100 pr-8">
-                        {mode === 'ANNOTATE' && (
+                        {(mode === 'ANNOTATE' || selectedDtes.length === 0) && (
                             <div className="mb-2 bg-orange-50/80 border border-orange-100 rounded-lg p-4 space-y-4">
                                 <div>
                                     <h4 className="text-sm font-bold text-orange-800 mb-2">Anotación Rápida</h4>
@@ -1005,7 +1009,7 @@ export function UniversalMatchModal({
                             Cancelar
                         </button>
                         
-                        {(suggestionId || mode === 'SUGGESTION' || (mode === 'REVIEW' && matchStatus === 'SUGGESTED')) && (
+                        {((suggestionId && selectedDtes.length > 0) || (mode === 'SUGGESTION' && selectedDtes.length > 0) || (mode === 'REVIEW' && (matchStatus === 'SUGGESTED' || matchStatus === 'DRAFT') && selectedDtes.length > 0)) && (
                             <button 
                                 onClick={reviewMatchId ? handleRejectMatch : handleRejectSuggestion}
                                 disabled={isSaving}
@@ -1032,7 +1036,7 @@ export function UniversalMatchModal({
                         >
                             {isSaving ? 'Guardando...' : 
                              hasMatchedDtes ? 'Confirmar y Reasignar' :
-                             mode === 'ANNOTATE' && selectedDtes.length === 0 ? 'Marcar como Revisado' :
+                             mode !== 'ANNOTATE' && selectedDtes.length === 0 ? 'Marcar como Revisado' :
                              isPerfect ? 'Confirmar Cuadratura' : 'Forzar Conciliación Parcial'}
                         </button>
                     </div>
