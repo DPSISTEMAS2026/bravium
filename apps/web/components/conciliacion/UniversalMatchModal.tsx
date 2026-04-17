@@ -997,8 +997,6 @@ export function UniversalMatchModal({
                                             placeholder="Ingresa un comentario / nota (Opcional)..."
                                             className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition-shadow"
                                         />
-                                            className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                                        />
                                     </div>
                                 </div>
                             </div>
