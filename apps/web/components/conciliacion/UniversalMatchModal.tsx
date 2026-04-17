@@ -231,6 +231,35 @@ export function UniversalMatchModal({
         setSelectedTxs(newTxs);
         if (dtesAdded) setSelectedDtes(newDtes);
     };
+
+    const editDteAmount = async (dteId: string, currentAmount: number) => {
+        const raw = window.prompt(`Corregir monto bruto del documento:`, currentAmount.toString());
+        if (!raw) return;
+        const newAmount = parseInt(raw.replace(/\D/g, ''), 10);
+        if (isNaN(newAmount) || newAmount <= 0 || newAmount === currentAmount) return;
+
+        setIsSaving(true);
+        try {
+            const res = await authFetch(`${API_URL}/dtes/${dteId}/amount`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: newAmount })
+            });
+
+            if (res.ok) {
+                setSelectedDtes(prev => prev.map(d => d.id === dteId ? { ...d, totalAmount: newAmount, outstandingAmount: newAmount } : d));
+                // Optionally update unpaidDtes if present
+                setUnpaidDtes(prev => prev.map(d => d.id === dteId ? { ...d, totalAmount: newAmount, outstandingAmount: newAmount } : d));
+            } else {
+                throw new Error('No se pudo actualizar el monto.');
+            }
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     const removeTx = (id: string) => setSelectedTxs(prev => prev.filter(t => t.id !== id));
 
     const addDte = (dte: any) => {
@@ -786,9 +815,19 @@ export function UniversalMatchModal({
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-3">
-                                                    <span className={`font-bold ${isNC ? 'text-rose-600' : 'text-emerald-700'}`}>
-                                                        {isNC ? '-' : ''}{formatCurrency(dte.totalAmount)}
-                                                    </span>
+                                                    {dte.type === 112 ? (
+                                                        <button 
+                                                            onClick={() => editDteAmount(dte.id, dte.totalAmount)}
+                                                            className={`font-bold hover:underline cursor-pointer ${isNC ? 'text-rose-600' : 'text-indigo-600 hover:text-indigo-800'}`}
+                                                            title="Editar monto bruto de boleta"
+                                                        >
+                                                            {formatCurrency(dte.totalAmount)} ✏️
+                                                        </button>
+                                                    ) : (
+                                                        <span className={`font-bold ${isNC ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                                            {isNC ? '-' : ''}{formatCurrency(dte.totalAmount)}
+                                                        </span>
+                                                    )}
                                                     <button onClick={() => removeDte(dte.id)} className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <XMarkIcon className="h-5 w-5" />
                                                     </button>

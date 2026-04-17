@@ -155,4 +155,19 @@ export class DtesController {
         this.logger.log(`Updating DTE ${id} with manual review`);
         return this.dtesService.updateManualReview(id, organizationId, body);
     }
+
+    /**
+     * PATCH /dtes/:id/amount
+     * Corrige el monto de un documento (especialmente útil para Boletas de Honorarios manuales)
+     */
+    @Patch(':id/amount')
+    async updateDteAmount(
+        @Param('id') id: string,
+        @Body() body: { amount: number },
+        @Req() req?: Request
+    ) {
+        const organizationId = (req as any)?.organizationId;
+        this.logger.log(`Updating amount for DTE ${id} to ${body.amount}`);
+        return this.dtesService.updateDteAmount(id, organizationId, body.amount);
+    }
 }

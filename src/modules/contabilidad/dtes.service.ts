@@ -524,4 +524,29 @@ export class DtesService {
             }
         });
     }
+
+    async updateDteAmount(id: string, organizationId: string | undefined, amount: number) {
+        if (!organizationId) throw new Error('Missing organizationId');
+
+        const dte = await this.prisma.dTE.findUnique({
+            where: { id }
+        });
+
+        if (!dte || dte.organizationId !== organizationId) {
+            throw new Error('DTE no encontrado');
+        }
+
+        // Si ya está pagado por completo, mantenemos status pero ajustamos monto pendiente
+        const newOutstanding = Math.max(0, amount - (dte.totalAmount - dte.outstandingAmount));
+        const newStatus = newOutstanding <= 0 ? 'PAID' : (newOutstanding < amount ? 'PARTIAL' : 'UNPAID');
+
+        return this.prisma.dTE.update({
+            where: { id },
+            data: {
+                totalAmount: amount,
+                outstandingAmount: newOutstanding,
+                paymentStatus: newStatus as any
+            }
+        });
+    }
 }
