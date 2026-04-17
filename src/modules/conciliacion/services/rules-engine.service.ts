@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../../../prisma/prisma.service';
+import { PrismaService } from '../../../common/prisma/prisma.service';
+import { TransactionStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class RulesEngineService {
@@ -14,7 +15,7 @@ export class RulesEngineService {
     async executeAutoCategoryRules(organizationId?: string): Promise<{ categorized: number }> {
         try {
             // Fetch all active rules
-            const rulesWhere = { isActive: true };
+            const rulesWhere: any = { isActive: true };
             if (organizationId) {
                 rulesWhere['organizationId'] = organizationId;
             }
@@ -26,9 +27,9 @@ export class RulesEngineService {
             if (rules.length === 0) return { categorized: 0 };
 
             // Fetch pending transactions
-            const txWhere = { status: 'PENDING' };
+            const txWhere: Prisma.BankTransactionWhereInput = { status: TransactionStatus.PENDING };
             if (organizationId) {
-                txWhere['bankAccount'] = { organizationId };
+                txWhere.bankAccount = { organizationId };
             }
             const pendingTx = await this.prisma.bankTransaction.findMany({
                 where: txWhere,
@@ -49,7 +50,7 @@ export class RulesEngineService {
                     await this.prisma.bankTransaction.update({
                         where: { id: tx.id },
                         data: {
-                            status: 'REVIEWED',
+                            status: TransactionStatus.MATCHED,
                             metadata: {
                                 ...(typeof tx.metadata === 'object' && tx.metadata ? tx.metadata : {}),
                                 reviewNote: `[Auto: ${matchedRule.categoryName}]`,
