@@ -815,9 +815,9 @@ export function UniversalMatchModal({
                                             <BanknotesIcon className="w-3 h-3"/> Folios Pendientes
                                         </div>
                                         <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
-                                            {providerInfo?.rawData?.dtes?.filter((d: any) => d.outstandingAmount > 0).length > 0 ? (
+                                            {providerInfo?.rawData?.dtes?.filter((d: any) => d.outstandingAmount > 0 && new Date(d.issuedDate).getFullYear() >= 2026).length > 0 ? (
                                                 providerInfo.rawData.dtes
-                                                    .filter((d: any) => d.outstandingAmount > 0)
+                                                    .filter((d: any) => d.outstandingAmount > 0 && new Date(d.issuedDate).getFullYear() >= 2026)
                                                     .map((dte: any) => (
                                                     <div key={dte.id} className="text-[11px] flex justify-between items-center border-b border-slate-50 pb-2 last:border-0 last:pb-0">
                                                         <div className="flex flex-col">
@@ -828,7 +828,7 @@ export function UniversalMatchModal({
                                                     </div>
                                                 ))
                                             ) : (
-                                                <div className="text-[11px] text-slate-400">Sin facturas pendientes</div>
+                                                <div className="text-[11px] text-slate-400">Sin facturas pendientes este año</div>
                                             )}
                                         </div>
                                     </div>
@@ -839,9 +839,9 @@ export function UniversalMatchModal({
                                             <BanknotesIcon className="w-3 h-3"/> Folios Pagados
                                         </div>
                                         <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
-                                            {providerInfo?.rawData?.dtes?.filter((d: any) => d.outstandingAmount <= 0).length > 0 ? (
+                                            {providerInfo?.rawData?.dtes?.filter((d: any) => d.outstandingAmount <= 0 && new Date(d.issuedDate).getFullYear() >= 2026).length > 0 ? (
                                                 providerInfo.rawData.dtes
-                                                    .filter((d: any) => d.outstandingAmount <= 0)
+                                                    .filter((d: any) => d.outstandingAmount <= 0 && new Date(d.issuedDate).getFullYear() >= 2026)
                                                     .slice(0, 10) // Show last 10 paid max
                                                     .map((dte: any) => (
                                                     <div key={dte.id} className="text-[11px] flex justify-between items-center border-b border-slate-50 pb-2 last:border-0 last:pb-0">
@@ -853,7 +853,7 @@ export function UniversalMatchModal({
                                                     </div>
                                                 ))
                                             ) : (
-                                                <div className="text-[11px] text-slate-400">Sin pagos recientes</div>
+                                                <div className="text-[11px] text-slate-400">Sin pagos recientes este año</div>
                                             )}
                                         </div>
                                     </div>
