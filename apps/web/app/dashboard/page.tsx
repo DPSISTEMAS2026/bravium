@@ -1,5 +1,6 @@
 import { ExecutiveKPIGrid } from '../../components/dashboard/executive-kpi-grid';
 import { ActionableAlertsFeatures } from '../../components/dashboard/actionable-alerts';
+import { MonthlyBreakdownGrid } from '../../components/dashboard/monthly-breakdown';
 import { fetchConciliacionDashboard } from '../../lib/api';
 
 function isoDate(d: Date) {
@@ -47,6 +48,9 @@ export default async function DashboardPage() {
                                 dtes={dashboard.summary.dtes}
                                 matches={dashboard.summary.matches}
                             />
+                            
+                            {/* Detailed metrics by month */}
+                            <MonthlyBreakdownGrid data={dashboard.monthly_breakdown} />
 
                             <div className="overflow-hidden rounded-lg bg-white shadow">
                                 <div className="p-6">

@@ -37,7 +37,6 @@ export class ConciliacionDashboardService {
             const defaultDteStats = { total: 0, paid: 0, unpaid: 0, partially_paid: 0, payment_rate: '0%', total_amount: 0, outstanding_amount: 0 };
             const defaultMatchStats = { total: 0, confirmed: 0, draft: 0, automatic: 0, manual: 0, auto_rate: '0%' };
 
-            // Execute safely
             const [
                 transactionStats,
                 dteStats,
@@ -46,7 +45,8 @@ export class ConciliacionDashboardService {
                 pendingDtes,
                 recentMatches,
                 topProviders,
-                unmatchedHighValue
+                unmatchedHighValue,
+                monthlyBreakdown
             ] = await Promise.all([
                 this.safeRun(() => this.getTransactionStats(filters), defaultTransactionStats, 'TransactionStats'),
                 this.safeRun(() => this.getDteStats(filters), defaultDteStats, 'DteStats'),
@@ -55,7 +55,8 @@ export class ConciliacionDashboardService {
                 this.safeRun(() => this.getPendingDtes(filters, 20), [], 'PendingDtes'),
                 this.safeRun(() => this.getRecentMatches(filters, 50), [], 'RecentMatches'),
                 this.safeRun(() => this.getTopProviders(filters, 10), [], 'TopProviders'),
-                this.safeRun(() => this.getUnmatchedHighValue(filters, 10), { transactions: [], dtes: [] }, 'UnmatchedHighValue')
+                this.safeRun(() => this.getUnmatchedHighValue(filters, 10), { transactions: [], dtes: [] }, 'UnmatchedHighValue'),
+                this.safeRun(() => this.getMonthlyBreakdown(filters), [], 'MonthlyBreakdown')
             ]);
 
             return {
@@ -72,6 +73,7 @@ export class ConciliacionDashboardService {
                     transactions: pendingTransactions,
                     dtes: pendingDtes
                 },
+                monthly_breakdown: monthlyBreakdown,
                 recent_matches: recentMatches,
                 insights: {
                     top_providers: topProviders,
@@ -128,6 +130,47 @@ export class ConciliacionDashboardService {
             match_rate: total > 0 ? ((matched / total) * 100).toFixed(1) + '%' : '0%',
             total_amount: totalAmount._sum.amount || 0
         };
+    }
+
+    /**
+     * Resumen Mensual
+     */
+    private async getMonthlyBreakdown(filters: DashboardFiltersDto) {
+        const fromDateObj = filters.fromDate ? new Date(filters.fromDate) : new Date(new Date().getFullYear(), 0, 1);
+        const toDateObj = filters.toDate ? new Date(filters.toDate) : new Date();
+        
+        // Generar lista de meses a iterar
+        const months = [];
+        let cur = new Date(fromDateObj.getFullYear(), fromDateObj.getMonth(), 1);
+        
+        while (cur <= toDateObj) {
+            const numMonth = cur.getMonth();
+            const start = new Date(cur.getFullYear(), cur.getMonth(), 1);
+            const end = new Date(cur.getFullYear(), cur.getMonth() + 1, 0); // last day
+            
+            months.push({
+                name: ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][numMonth],
+                year: cur.getFullYear(),
+                start, end
+            });
+            cur.setMonth(cur.getMonth() + 1);
+        }
+
+        const breakdown = [];
+        for (const m of months) {
+            const mFilters: DashboardFiltersDto = { ...filters, fromDate: m.start.toISOString(), toDate: m.end.toISOString() };
+            const [dtes, txs] = await Promise.all([
+                this.getDteStats(mFilters),
+                this.getTransactionStats(mFilters)
+            ]);
+            breakdown.push({
+                month: m.name,
+                year: m.year,
+                dtes,
+                transactions: txs
+            });
+        }
+        return breakdown;
     }
 
     /**

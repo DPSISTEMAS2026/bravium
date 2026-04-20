@@ -145,6 +145,12 @@ export type ConciliacionDashboard = {
       auto_rate: string;
     };
   };
+  monthly_breakdown: Array<{
+    month: string;
+    year: number;
+    dtes: { total: number; paid: number; unpaid: number; payment_rate: string };
+    transactions: { total: number; matched: number; pending: number; match_rate: string };
+  }>;
   pending: {
     transactions: Array<{
       id: string;

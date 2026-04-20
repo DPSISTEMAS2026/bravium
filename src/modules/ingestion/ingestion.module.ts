@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { ExcelLegacyService } from './historical/excel-legacy.service';
-import { AutomatedIngestController } from './automated/automated-ingest.controller';
 import { IngestionController } from './controllers/ingestion.controller';
 import { LibreDteService } from './services/libredte.service';
 import { DriveIngestService } from './services/drive-ingest.service';
@@ -13,7 +12,7 @@ import { FintocService } from './services/fintoc.service';
 
 @Module({
     imports: [PrismaModule, ContabilidadModule, BancosModule],
-    controllers: [AutomatedIngestController, IngestionController],
+    controllers: [IngestionController],
     providers: [ExcelLegacyService, LibreDteService, DriveIngestService, OpenAiService, GoogleDriveService, FintocService],
     exports: [ExcelLegacyService, LibreDteService, DriveIngestService, OpenAiService, GoogleDriveService, FintocService],
 })
