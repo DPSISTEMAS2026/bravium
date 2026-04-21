@@ -136,7 +136,7 @@ export class ProveedoresService {
                     totalInvoiced > 0
                         ? ((paidAmount / totalInvoiced) * 100).toFixed(1)
                         : '0.0',
-                invoiceCount: provider._count.dtes,
+                invoiceCount: provider.dtes.length,
                 paymentCount: provider._count.payments,
                 unpaidInvoices: unpaidDtes,
                 overdueInvoices: overdueInvoices10 > 0 ? overdueInvoices10 : overdueInvoices30,
