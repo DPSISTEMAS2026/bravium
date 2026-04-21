@@ -206,7 +206,7 @@ export function UniversalMatchModal({
         if (!dteSearch.trim()) return;
         setDteLoading(true);
         try {
-            const params = new URLSearchParams({ search: dteSearch, limit: '40', includeMatched: 'true', fromDate: '2026-01-01' });
+            const params = new URLSearchParams({ search: dteSearch, limit: '40', includeMatched: 'true' });
             const res = await authFetch(`${API_URL}/dtes?${params}`);
             if (res.ok) {
                 const data = await res.json();

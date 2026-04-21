@@ -51,6 +51,11 @@ export default function ProveedoresPage() {
     const [selectedYear, setSelectedYear] = useState('2026');
     const [selectedMonth, setSelectedMonth] = useState('ALL');
     const [page, setPage] = useState(1);
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [newProviderName, setNewProviderName] = useState('');
+    const [newProviderRut, setNewProviderRut] = useState('');
+    const [newProviderCat, setNewProviderCat] = useState('');
+    const [isCreating, setIsCreating] = useState(false);
  
     // Debounce de 500ms para el buscador
     useEffect(() => {
@@ -60,7 +65,7 @@ export default function ProveedoresPage() {
         return () => clearTimeout(timer);
     }, [inputValue]);
  
-    const { data: response, isLoading: loading } = useSWR<PaginatedResponse>(
+    const { data: response, isLoading: loading, mutate } = useSWR<PaginatedResponse>(
         `${API_URL}/proveedores?page=${page}&limit=${PAGE_SIZE}&year=${selectedYear}&month=${selectedMonth}${search ? `&search=${encodeURIComponent(search)}` : ''}${statusFilter !== 'ALL' ? `&status=${statusFilter}` : ''}`
     );
  
@@ -79,6 +84,34 @@ export default function ProveedoresPage() {
             currency: 'CLP',
             minimumFractionDigits: 0,
         }).format(amount);
+    };
+
+    const handleCreateProvider = async () => {
+        if (!newProviderName.trim()) return;
+        setIsCreating(true);
+        try {
+            const authFetch = (await import('@/lib/auth')).authFetch;
+            const res = await authFetch(`${API_URL}/proveedores`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: newProviderName,
+                    rut: newProviderRut,
+                    category: newProviderCat
+                })
+            });
+            if (!res.ok) throw new Error('Error al crear proveedor');
+            alert('Proveedor creado exitosamente');
+            setNewProviderName('');
+            setNewProviderRut('');
+            setNewProviderCat('');
+            setIsCreateModalOpen(false);
+            mutate();
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setIsCreating(false);
+        }
     };
 
     // El backend ya filtra por estado si se lo pasamos, por lo que filteredProviders es simplemente providers
@@ -112,8 +145,15 @@ export default function ProveedoresPage() {
                         Gestión de saldos y deuda histórica
                     </p>
                 </div>
-                <button
-                    onClick={async () => {
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="flex items-center px-4 py-2.5 bg-white border border-indigo-200 text-indigo-600 rounded-lg font-medium hover:bg-indigo-50 transition-all text-sm"
+                    >
+                        + Nuevo Proveedor
+                    </button>
+                    <button
+                        onClick={async () => {
                         try {
                             const API_URL = getApiUrl();
                             const res = await fetch(`${API_URL}/proveedores/export/pago-masivo`);
@@ -136,6 +176,7 @@ export default function ProveedoresPage() {
                     <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
                     Exportar Pago Masivo
                 </button>
+                </div>
             </div>
 
             {/* Stats Cards */}
@@ -375,7 +416,7 @@ export default function ProveedoresPage() {
                             {' de '}
                             <span className="font-semibold">{total}</span> proveedores
                         </p>
-                            <Pagination 
+                        <Pagination 
                                 currentPage={currentPage} 
                                 totalPages={totalPages} 
                                 onPageChange={(p) => setPage(p)} 
@@ -383,6 +424,40 @@ export default function ProveedoresPage() {
                     </div>
                 )}
             </div>
+
+            {isCreateModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" onMouseDown={() => setIsCreateModalOpen(false)}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onMouseDown={e => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold text-slate-800 mb-4">Registrar Nuevo Proveedor</h2>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre / Razón Social <span className="text-red-500">*</span></label>
+                                <input value={newProviderName} onChange={e => setNewProviderName(e.target.value)} type="text" className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Ej: Juan Pérez" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">RUT (Opcional)</label>
+                                <input value={newProviderRut} onChange={e => setNewProviderRut(e.target.value)} type="text" className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Opcional. Ej: 12.345.678-9" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Categoría (Opcional)</label>
+                                <select value={newProviderCat} onChange={e => setNewProviderCat(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <option value="">Selecciona (Opcional)</option>
+                                    <option value="HONORARIOS">HONORARIOS</option>
+                                    <option value="SERVICIOS">SERVICIOS</option>
+                                    <option value="INSUMOS">INSUMOS</option>
+                                    <option value="LOGÍSTICA">LOGÍSTICA</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button onClick={() => setIsCreateModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">Cancelar</button>
+                            <button onClick={handleCreateProvider} disabled={isCreating || !newProviderName.trim()} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50">
+                                {isCreating ? 'Guardando...' : 'Registrar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

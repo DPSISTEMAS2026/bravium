@@ -275,6 +275,20 @@ export class ProveedoresService {
         });
     }
 
+    async createProvider(data: { name: string; rut?: string; category?: string }, organizationId?: string) {
+        if (!organizationId) {
+            throw new Error('Organization ID required');
+        }
+        return this.prisma.provider.create({
+            data: {
+                name: data.name,
+                rut: data.rut || '0-0',
+                category: data.category,
+                organizationId
+            }
+        });
+    }
+
     /**
      * Obtener top proveedores por deuda (usa una página amplia para ordenar por deuda)
      */

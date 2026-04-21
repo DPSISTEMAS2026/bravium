@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, Query, Body, Logger, Res, Req, HttpStatus, NotFoundException, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Param, Query, Body, Logger, Res, Req, HttpStatus, NotFoundException, UseGuards } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { ProveedoresService } from './proveedores.service';
 import { PagoMasivoExportService } from './services/pago-masivo-export.service';
@@ -90,6 +90,19 @@ export class ProveedoresController {
         this.logger.log(`Fetching provider detail for ID: ${id}`);
         // Consider passing organizationId if detailed scoping is needed, though id is usually specific.
         return this.proveedoresService.getProviderDetail(id, (req as any).user?.organizationId);
+    }
+
+    /**
+     * POST /proveedores
+     * Crea un nuevo proveedor
+     */
+    @Post()
+    async createProvider(
+        @Body() body: { name: string; rut?: string; category?: string },
+        @Req() req: Request
+    ) {
+        const organizationId = (req as any).user?.organizationId;
+        return this.proveedoresService.createProvider(body, organizationId);
     }
 
     /**
