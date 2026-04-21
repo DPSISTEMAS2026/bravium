@@ -1,18 +1,40 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getApiUrl, authFetch } from '@/lib/api';
 
 export default function CartolasIngestionPage() {
     const [file, setFile] = useState<File | null>(null);
-    const [bankName, setBankName] = useState('Banco de Chile');
+    const [bankAccountId, setBankAccountId] = useState('');
+    const [bankAccounts, setBankAccounts] = useState<any[]>([]);
     const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
     const [result, setResult] = useState<any>(null);
+    const [invertSign, setInvertSign] = useState(false);
+
+    useEffect(() => {
+        authFetch(`${getApiUrl()}/auth/me`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.organization?.bankAccounts) {
+                    setBankAccounts(data.organization.bankAccounts);
+                    if (data.organization.bankAccounts.length > 0) {
+                        setBankAccountId(data.organization.bankAccounts[0].id);
+                    }
+                }
+            })
+            .catch(err => console.error(err));
+    }, []);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            setFile(e.target.files[0]);
+            const f = e.target.files[0];
+            setFile(f);
+            
+            // Auto-detect TC to invert sign
+            if (f.name.toLowerCase().includes('tc') || f.name.toLowerCase().includes('credito')) {
+                setInvertSign(true);
+            }
         }
     };
 
@@ -21,7 +43,6 @@ export default function CartolasIngestionPage() {
             const reader = new FileReader();
             reader.readAsDataURL(file);
             reader.onload = () => {
-                // Remove data URL prefix (e.g. "data:application/vnd.ms-excel;base64,")
                 const result = reader.result as string;
                 const base64 = result.split(',')[1];
                 resolve(base64);
@@ -32,19 +53,23 @@ export default function CartolasIngestionPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!file) return;
+        if (!file || !bankAccountId) return;
 
         setStatus('uploading');
         setResult(null);
+
+        const selectedAccount = bankAccounts.find(a => a.id === bankAccountId);
 
         try {
             const base64Content = await convertToBase64(file);
 
             const payload = {
+                bankAccountId: bankAccountId,
                 fileContentBase64: base64Content,
                 metadata: {
                     filename: file.name,
-                    bankName: bankName
+                    bankName: selectedAccount?.bankName,
+                    invertAmountSign: invertSign
                 }
             };
 
@@ -56,9 +81,9 @@ export default function CartolasIngestionPage() {
 
             const data = await res.json();
 
-            if (res.ok && data.status === 'success') {
+            if (res.ok && data.status === 'ok') {
                 setStatus('success');
-                setResult(data.data);
+                setResult(data);
             } else {
                 throw new Error(data.message || 'Error desconocido');
             }
@@ -77,18 +102,32 @@ export default function CartolasIngestionPage() {
             <div className="bg-white shadow rounded-lg p-6 border border-gray-100">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Banco</label>
+                        <label className="block text-sm font-medium text-gray-700">Cuenta Bancaria</label>
                         <select
-                            value={bankName}
-                            onChange={(e) => setBankName(e.target.value)}
+                            value={bankAccountId}
+                            onChange={(e) => setBankAccountId(e.target.value)}
                             className="mt-1 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm border"
+                            required
                         >
-                            <option value="Banco de Chile">Banco de Chile</option>
-                            <option value="Santander">Santander</option>
-                            <option value="Bci">Bci</option>
-                            <option value="Scotiabank">Scotiabank</option>
-                            <option value="Itau">Itaú</option>
+                            {bankAccounts.map(acc => (
+                                <option key={acc.id} value={acc.id}>
+                                    {acc.bankName} - {acc.accountNumber} ({acc.currency})
+                                </option>
+                            ))}
                         </select>
+                    </div>
+
+                    <div className="flex items-center">
+                        <input
+                            id="invertSign"
+                            type="checkbox"
+                            checked={invertSign}
+                            onChange={(e) => setInvertSign(e.target.checked)}
+                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="invertSign" className="ml-2 block text-sm text-gray-900">
+                            Invertir signos (Para Tarjetas de Crédito donde usos/compras vienen en positivo)
+                        </label>
                     </div>
 
                     <div>
@@ -101,7 +140,7 @@ export default function CartolasIngestionPage() {
                                 <div className="flex text-sm text-gray-600">
                                     <label htmlFor="file-upload" className="relative cursor-pointer rounded-md bg-white font-medium text-indigo-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-offset-2 hover:text-indigo-500">
                                         <span>Subir un archivo</span>
-                                        <input id="file-upload" name="file-upload" type="file" className="sr-only" onChange={handleFileChange} accept=".xlsx, .xls" />
+                                        <input id="file-upload" name="file-upload" type="file" className="sr-only" onChange={handleFileChange} accept=".xlsx, .xls, .xlsm" />
                                     </label>
                                     <p className="pl-1">o arrastrar y soltar</p>
                                 </div>

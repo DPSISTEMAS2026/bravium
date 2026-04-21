@@ -81,7 +81,7 @@ export class RulesEngineService {
     }
 
     async createRule(organizationId: string, keywordMatch: string, categoryName: string, providerId?: string) {
-        return this.prisma.autoCategoryRule.create({
+        const rule = await this.prisma.autoCategoryRule.create({
             data: {
                 organizationId,
                 keywordMatch: keywordMatch.toLowerCase(),
@@ -90,6 +90,11 @@ export class RulesEngineService {
                 isActive: true
             }
         });
+
+        // Ejecutar las reglas retroactivamente sobre transacciones pendientes para dar feedback inmediato
+        await this.executeAutoCategoryRules(organizationId);
+
+        return rule;
     }
 
     async deleteRule(id: string, organizationId: string) {

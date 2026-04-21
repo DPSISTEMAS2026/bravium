@@ -99,7 +99,7 @@ export default function HomePage() {
             const [proveedoresRes, dtesRes, transactionsRes] = await Promise.all([
                 authFetch(`${API_URL}/proveedores`),
                 authFetch(`${API_URL}/dtes/summary?fromDate=2026-01-01&toDate=2026-12-31`),
-                authFetch(`${API_URL}/transactions/summary`),
+                authFetch(`${API_URL}/transactions/summary?fromDate=2026-01-01&toDate=2026-12-31`),
             ]);
 
             const [proveedoresPayload, dtesSummary, txSummary] = await Promise.all([
@@ -236,7 +236,7 @@ export default function HomePage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {/* Matches por revisar */}
                     {briefing.matchesPorRevisar.total > 0 && (
-                        <Link href="/cartolas?status=PARTIALLY_MATCHED" className="group relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 hover:shadow-lg hover:shadow-indigo-100 transition-all">
+                        <Link href="/cartolas?status=PARTIALLY_MATCHED&fromDate=2026-01-01&toDate=2026-12-31" className="group relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-200 hover:shadow-lg hover:shadow-indigo-100 transition-all">
                             <div className="flex items-start justify-between mb-3">
                                 <div className="p-2.5 bg-indigo-100 rounded-xl group-hover:bg-indigo-200 transition-colors">
                                     <SparklesIcon className="h-5 w-5 text-indigo-600" />
@@ -255,7 +255,7 @@ export default function HomePage() {
 
                     {/* Pagos Pendientes */}
                     {briefing.pagosPendientes.total > 0 && (
-                        <Link href={`/facturas?paymentStatus=UNPAID`} className="group relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 hover:shadow-lg hover:shadow-amber-100 transition-all">
+                        <Link href={`/facturas?paymentStatus=UNPAID&fromDate=2026-01-01&toDate=2026-12-31`} className="group relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 hover:shadow-lg hover:shadow-amber-100 transition-all">
                             <div className="flex items-start justify-between mb-3">
                                 <div className="p-2.5 bg-amber-100 rounded-xl group-hover:bg-amber-200 transition-colors">
                                     <BanknotesIcon className="h-5 w-5 text-amber-600" />
@@ -274,7 +274,7 @@ export default function HomePage() {
 
                     {/* Sin Documento */}
                     {briefing.sinDocumento.total > 0 && (
-                        <Link href="/cartolas?status=PENDING" className="group relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-rose-50 to-red-50 border border-rose-200 hover:shadow-lg hover:shadow-rose-100 transition-all">
+                        <Link href="/cartolas?status=PENDING&fromDate=2026-01-01&toDate=2026-12-31" className="group relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-rose-50 to-red-50 border border-rose-200 hover:shadow-lg hover:shadow-rose-100 transition-all">
                             <div className="flex items-start justify-between mb-3">
                                 <div className="p-2.5 bg-rose-100 rounded-xl group-hover:bg-rose-200 transition-colors">
                                     <DocumentMagnifyingGlassIcon className="h-5 w-5 text-rose-600" />
@@ -336,7 +336,7 @@ export default function HomePage() {
                     </Link>
 
                     {/* Transacciones */}
-                    <Link href="/cartolas" className="card-glass p-5 hover:shadow-xl transition-all group">
+                    <Link href="/cartolas?fromDate=2026-01-01&toDate=2026-12-31" className="card-glass p-5 hover:shadow-xl transition-all group">
                         <div className="flex items-center justify-between mb-3">
                             <div className="p-2.5 bg-slate-100 rounded-xl group-hover:bg-emerald-50 transition-colors">
                                 <ChartBarIcon className="h-5 w-5 text-slate-600 group-hover:text-emerald-600" />
@@ -389,7 +389,7 @@ export default function HomePage() {
 
             {/* ===== QUICK ACTIONS ===== */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <a href="/cartolas" className="card p-5 hover:shadow-lg transition-all border border-slate-200 group">
+                <a href="/cartolas?fromDate=2026-01-01&toDate=2026-12-31" className="card p-5 hover:shadow-lg transition-all border border-slate-200 group">
                     <div className="flex items-center space-x-3">
                         <div className="p-2.5 bg-teal-50 rounded-xl group-hover:bg-teal-600 group-hover:text-white transition-all text-teal-600">
                             <SparklesIcon className="h-5 w-5" />
@@ -401,7 +401,7 @@ export default function HomePage() {
                     </div>
                 </a>
 
-                <Link href="/facturas" className="card p-5 hover:shadow-lg transition-all border border-slate-200 group">
+                <Link href="/facturas?fromDate=2026-01-01&toDate=2026-12-31" className="card p-5 hover:shadow-lg transition-all border border-slate-200 group">
                     <div className="flex items-center space-x-3">
                         <div className="p-2.5 bg-violet-50 rounded-xl group-hover:bg-violet-600 group-hover:text-white transition-all text-violet-600">
                             <DocumentTextIcon className="h-5 w-5" />

@@ -204,7 +204,7 @@ export class IngestionController {
         if (!file) throw new BadRequestException('Se requiere un archivo (PDF, Excel o CSV)');
 
         const ext = file.originalname.toLowerCase();
-        const allowed = ['.pdf', '.xlsx', '.xls', '.csv'];
+        const allowed = ['.pdf', '.xlsx', '.xls', '.csv', '.xlsm'];
         if (!allowed.some(e => ext.endsWith(e))) {
             throw new BadRequestException(`Formato no soportado. Usa: ${allowed.join(', ')}`);
         }
