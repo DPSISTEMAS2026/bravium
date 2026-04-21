@@ -188,25 +188,17 @@ export class DtesService {
         ]);
 
         // Solo consideramos "conciliado" si tiene al menos un match CONFIRMED (aceptado en Cartolas)
-        const data = await Promise.all(dtes.map(async (dte) => {
+        const data = dtes.map((dte) => {
             const confirmedMatches = dte.matches.filter((m: { status: string }) => m.status === 'CONFIRMED');
             const hasConfirmedMatch = confirmedMatches.length > 0;
-            if (hasConfirmedMatch && dte.paymentStatus !== 'PAID') {
-                await this.prisma.dTE.update({
-                    where: { id: dte.id },
-                    data: { paymentStatus: 'PAID', outstandingAmount: 0 },
-                });
-            }
             return {
                 ...dte,
                 matches: confirmedMatches.length > 0 ? confirmedMatches : dte.matches,
-                paymentStatus: hasConfirmedMatch ? 'PAID' : dte.paymentStatus,
-                outstandingAmount: hasConfirmedMatch ? 0 : dte.outstandingAmount,
                 hasMatch: hasConfirmedMatch,
                 matchCount: confirmedMatches.length,
                 isPdfAvailable: dte.metadata && (dte.metadata as any).intercambio !== null,
             };
-        }));
+        });
 
         if (page && limit) {
             return {

@@ -581,9 +581,24 @@ export function UniversalMatchModal({
     const isPerfect = diff === 0;
 
     const rutMismatchAlert = selectedTxs.some(tx => {
-        const txRut = tx.providerRut || tx.metadata?.providerRut;
-        if (!txRut || txRut.trim() === '') return false;
-        return selectedDtes.some(dte => dte.provider?.rut && dte.provider.rut !== txRut);
+        let txRut = tx.providerRut || tx.metadata?.providerRut;
+        
+        // Fallback: Buscar RUT directamente en la glosa del banco (ej. Transf.Internet a 16.751.150-0)
+        if (!txRut && tx.description) {
+            const rutMatch = tx.description.match(/(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])/i);
+            if (rutMatch) {
+                txRut = rutMatch[1];
+            }
+        }
+
+        if (!txRut || typeof txRut !== 'string' || txRut.trim() === '') return false;
+        
+        const cleanTx = txRut.replace(/[^0-9Kk]/g, '').toUpperCase();
+        return selectedDtes.some(dte => {
+            if (!dte.provider?.rut) return false;
+            const cleanDte = dte.provider.rut.replace(/[^0-9Kk]/g, '').toUpperCase();
+            return cleanDte !== cleanTx;
+        });
     });
 
     return (
@@ -914,9 +929,9 @@ export function UniversalMatchModal({
                                             <BanknotesIcon className="w-3 h-3"/> Folios Pendientes
                                         </div>
                                         <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
-                                            {providerInfo?.rawData?.dtes?.filter((d: any) => d.outstandingAmount > 0 && new Date(d.issuedDate).getFullYear() >= 2026).length > 0 ? (
+                                            {providerInfo?.rawData?.dtes?.filter((d: any) => (d.paymentStatus === 'UNPAID' || d.paymentStatus === 'PARTIAL') && new Date(d.issuedDate).getFullYear() >= 2026).length > 0 ? (
                                                 providerInfo.rawData.dtes
-                                                    .filter((d: any) => d.outstandingAmount > 0 && new Date(d.issuedDate).getFullYear() >= 2026)
+                                                    .filter((d: any) => (d.paymentStatus === 'UNPAID' || d.paymentStatus === 'PARTIAL') && new Date(d.issuedDate).getFullYear() >= 2026)
                                                     .map((dte: any) => (
                                                     <div key={dte.id} className="text-[11px] flex justify-between items-center border-b border-slate-50 pb-2 last:border-0 last:pb-0">
                                                         <div className="flex flex-col">
@@ -938,9 +953,9 @@ export function UniversalMatchModal({
                                             <BanknotesIcon className="w-3 h-3"/> Folios Pagados
                                         </div>
                                         <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
-                                            {providerInfo?.rawData?.dtes?.filter((d: any) => d.outstandingAmount <= 0 && new Date(d.issuedDate).getFullYear() >= 2026).length > 0 ? (
+                                            {providerInfo?.rawData?.dtes?.filter((d: any) => (d.paymentStatus === 'PAID' || d.paymentStatus === 'OVERPAID') && new Date(d.issuedDate).getFullYear() >= 2026).length > 0 ? (
                                                 providerInfo.rawData.dtes
-                                                    .filter((d: any) => d.outstandingAmount <= 0 && new Date(d.issuedDate).getFullYear() >= 2026)
+                                                    .filter((d: any) => (d.paymentStatus === 'PAID' || d.paymentStatus === 'OVERPAID') && new Date(d.issuedDate).getFullYear() >= 2026)
                                                     .slice(0, 10) // Show last 10 paid max
                                                     .map((dte: any) => (
                                                     <div key={dte.id} className="text-[11px] flex justify-between items-center border-b border-slate-50 pb-2 last:border-0 last:pb-0">
@@ -966,15 +981,25 @@ export function UniversalMatchModal({
                     
                     <div className="flex-1">
                         {selectedTxs.length > 0 && selectedDtes.length > 0 && (
-                            <div className="flex items-center gap-4">
-                                {isPerfect ? (
-                                    <div className="flex items-center gap-2 text-emerald-600 bg-emerald-100/50 px-4 py-2 rounded-lg border border-emerald-200">
-                                        <CheckCircleIcon className="h-6 w-6" />
+                            <div className="flex flex-col gap-3">
+                                {rutMismatchAlert && (
+                                    <div className="flex items-center gap-3 text-rose-800 bg-rose-100/80 px-4 py-3 rounded-lg border border-rose-300 shadow-sm animate-pulse">
+                                        <ExclamationTriangleIcon className="h-6 w-6 text-rose-600" />
                                         <div>
-                                            <div className="font-bold text-sm">Cuadratura Perfecta</div>
-                                            <div className="text-xs text-emerald-700 opacity-80">No hay diferencia de montos.</div>
+                                            <div className="font-bold text-sm">¡Alerta de Inconsistencia de RUT!</div>
+                                            <div className="text-xs text-rose-700 opacity-90">El destinatario original de la transferencia bancaria no coincide con el RUT del proveedor de esta factura. Verifica bien antes de confirmar.</div>
                                         </div>
                                     </div>
+                                )}
+                                <div className="flex items-center gap-4">
+                                    {isPerfect ? (
+                                        <div className="flex items-center gap-2 text-emerald-600 bg-emerald-100/50 px-4 py-2 rounded-lg border border-emerald-200">
+                                            <CheckCircleIcon className="h-6 w-6" />
+                                            <div>
+                                                <div className="font-bold text-sm">Cuadratura Perfecta</div>
+                                                <div className="text-xs text-emerald-700 opacity-80">No hay diferencia de montos.</div>
+                                            </div>
+                                        </div>
                                 ) : (
                                     <div className={`flex flex-col gap-3 px-4 py-3 rounded-xl border ${diff > 0 ? 'bg-amber-50 text-amber-900 border-amber-200 shadow-sm' : 'bg-rose-50 text-rose-900 border-rose-200 shadow-sm'}`}>
                                         <div className="flex items-center gap-3">
@@ -1020,6 +1045,7 @@ export function UniversalMatchModal({
                                             className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition-shadow"
                                         />
                                     </div>
+                                </div>
                                 </div>
                             </div>
                         )}
