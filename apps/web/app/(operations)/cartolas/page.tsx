@@ -1498,18 +1498,22 @@ export default function CartolasPage() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-center">
-                                                {cartolaName ? (
-                                                    <div className="flex flex-col items-center">
+                                                <div className="flex flex-col items-center">
+                                                    {cartolaName ? (
                                                         <span className="text-xs text-slate-700 font-medium max-w-[160px] truncate block" title={tx.metadata?.sourceFile}>
                                                             {cartolaName}
                                                         </span>
-                                                        <span className={`text-[9px] mt-1 font-bold uppercase ${tx.metadata?.source === 'MANUAL_UPLOAD' ? 'text-purple-500' : 'text-indigo-400'}`}>
-                                                            {tx.metadata?.source === 'MANUAL_UPLOAD' ? 'Carga manual' : `${tx.bankAccount?.bankName || 'Banco'}${tx.bankAccount?.accountNumber ? ' · ' + tx.bankAccount.accountNumber.slice(-4) : ''}`}
+                                                    ) : tx.origin === 'API_INTEGRATION' ? (
+                                                        <span className="text-xs text-emerald-600 font-medium flex items-center gap-1" title="Sincronización automática">
+                                                            <CloudArrowUpIcon className="h-3 w-3"/> Fintoc
                                                         </span>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-[10px] text-slate-400 italic">—</span>
-                                                )}
+                                                    ) : (
+                                                        <span className="text-[10px] text-slate-400 italic">—</span>
+                                                    )}
+                                                    <span className="text-[10px] mt-1 font-bold uppercase text-slate-500">
+                                                        {tx.bankAccount?.bankName || 'Banco'}{tx.bankAccount?.accountNumber ? ' · ' + (tx.bankAccount.accountNumber.length > 4 ? tx.bankAccount.accountNumber.slice(-4) : tx.bankAccount.accountNumber) : ''}
+                                                    </span>
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 text-center align-middle">
                                                 {tx.status === 'MATCHED' && firstMatch ? (
