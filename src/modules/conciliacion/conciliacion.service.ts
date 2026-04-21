@@ -246,6 +246,7 @@ export class ConciliacionService {
             try {
                 const sumWhere: any = {
                     status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
+                    type: TransactionType.DEBIT
                 };
                 if (organizationId) sumWhere.bankAccount = { organizationId };
                 if (minDate || toDate) {
@@ -279,6 +280,7 @@ export class ConciliacionService {
             try {
                 const splitWhere: any = {
                     status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
+                    type: TransactionType.DEBIT
                 };
                 if (organizationId) splitWhere.bankAccount = { organizationId };
                 if (minDate || toDate) {
