@@ -65,7 +65,7 @@ export class ExactMatchStrategy implements MatchingStrategy {
             const diff = this.amountDiff(transaction.amount, dte.totalAmount);
             if (!this.isSameAmount(transaction.amount, dte.totalAmount)) continue;
             if (!isWithinDateWindow(transaction.date, dte.issuedDate, this.dateWindowDays)) continue;
-            if (!providerMatchesDescription(transaction.description || '', dte.provider?.name, dte)) continue;
+            if (!providerMatchesDescription(transaction.description || '', dte.provider?.name, dte as any, (transaction.metadata as any)?.providerRut)) continue;
 
             const daysDiff = Math.abs(txDate - new Date(dte.issuedDate).getTime()) / 86400000;
             candidates.push({

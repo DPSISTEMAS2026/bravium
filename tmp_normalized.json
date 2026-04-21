@@ -1,0 +1,704 @@
+[
+  {
+    "date": "2026-04-15",
+    "description": "COMPRA NORMAL",
+    "amount": 104247,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-15",
+    "description": "COMPRA NORMAL",
+    "amount": 329910,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-15",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 2164960,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-15",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 479970,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-15",
+    "description": "COMPRA NORMAL",
+    "amount": 308980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-15",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 265840,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-15",
+    "description": "PAGO",
+    "amount": -10000000,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-14",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 194078,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-14",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 909980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-14",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 287940,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-14",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 249950,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-14",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 61970,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-14",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 1349990,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-13",
+    "description": "COMPRA INT. EN MONEDA NACIONAL",
+    "amount": 94749,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-10",
+    "description": "NOTA DE CREDITO",
+    "amount": -776980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-10",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 629930,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-10",
+    "description": "COMPRA NORMAL",
+    "amount": 930800,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-10",
+    "description": "COMPRA NORMAL",
+    "amount": 312990,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-10",
+    "description": "COMPRA NORMAL",
+    "amount": 39770,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-10",
+    "description": "COMPRA NORMAL",
+    "amount": 251450,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-09",
+    "description": "COMPRA NORMAL",
+    "amount": 5300,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-09",
+    "description": "COMPRA NORMAL",
+    "amount": 114730,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-08",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 603960,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-08",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 1010970,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-08",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 2474970,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-08",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 1237840,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-08",
+    "description": "NOTA DE CREDITO",
+    "amount": -1503980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-08",
+    "description": "COMPRA NORMAL",
+    "amount": 19785,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-07",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 1183960,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-06",
+    "description": "NOTA DE CREDITO",
+    "amount": -978980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-06",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 385990,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-06",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 978980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-06",
+    "description": "COMPRA NORMAL",
+    "amount": 131974,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-06",
+    "description": "COMPRA NORMAL",
+    "amount": 390456,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-02",
+    "description": "COMPRA NORMAL",
+    "amount": 59360,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-02",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 1504980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-02",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 89608,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-02",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 106088,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-02",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 47600,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-01",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 1463970,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-01",
+    "description": "COMPRA NORMAL",
+    "amount": 11801,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-01",
+    "description": "COMPRA NORMAL",
+    "amount": 22540,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-04-01",
+    "description": "COMPRA NORMAL",
+    "amount": 299940,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-31",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 979990,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-31",
+    "description": "PREPAGO EN CUOTAS",
+    "amount": 36592,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-31",
+    "description": "PREPAGO EN CUOTAS",
+    "amount": 883774,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-30",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 159980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-30",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 100970,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-30",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 623970,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-30",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 271980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-30",
+    "description": "COMPRA NORMAL",
+    "amount": 99980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-30",
+    "description": "COMPRA NORMAL",
+    "amount": 779400,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-29",
+    "description": "PAGO",
+    "amount": -3836499,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-29",
+    "description": "PAGO",
+    "amount": -15000000,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-27",
+    "description": "COMPRA INT. EN MONEDA NACIONAL",
+    "amount": 16615,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-27",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 953980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-27",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 618980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-27",
+    "description": "COMPRA NORMAL",
+    "amount": 154952,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-26",
+    "description": "COMPRA NORMAL",
+    "amount": 31220,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-26",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 244686,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-25",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 207810,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-25",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 1503980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-25",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 699345,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-25",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 654980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-25",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 683980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-25",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 594970,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-25",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 139990,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-25",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 288960,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-25",
+    "description": "COMPRA NORMAL",
+    "amount": 19000,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-25",
+    "description": "COMPRA NORMAL",
+    "amount": 63000,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-25",
+    "description": "COMPRA NORMAL",
+    "amount": 754950,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-24",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 1404970,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-24",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 1499990,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-24",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 1027950,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-24",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 148980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-24",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 435980,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-24",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 113670,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  },
+  {
+    "date": "2026-03-24",
+    "description": "COMPRA NACIONAL POR INTERNET",
+    "amount": 284910,
+    "reference": null,
+    "cuotaNumero": null,
+    "cuotaTotal": null,
+    "montoOrigen": null
+  }
+]

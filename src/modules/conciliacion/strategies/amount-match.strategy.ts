@@ -58,7 +58,7 @@ export class AmountMatchStrategy implements MatchingStrategy {
 
             const amountScore = this.scoreAmount(txAbs, dteAbs);
             const dateScore = this.scoreDate(txDate, dte.issuedDate);
-            const providerScore = this.scoreProvider(txDesc, dte);
+            const providerScore = this.scoreProvider(txDesc, dte, (transaction.metadata as any)?.providerRut);
 
             let totalScore =
                 amountScore * 0.30 +
@@ -115,11 +115,11 @@ export class AmountMatchStrategy implements MatchingStrategy {
         return 0;
     }
 
-    private scoreProvider(txDesc: string, dte: DteWithProvider): number {
+    private scoreProvider(txDesc: string, dte: DteWithProvider, txProviderRut?: string | null): number {
         const providerName = dte.provider?.name;
         if (!providerName) return 0.3;
 
-        if (providerMatchesDescription(txDesc, providerName, dte)) {
+        if (providerMatchesDescription(txDesc, providerName, dte as any, txProviderRut)) {
             const normProv = normalizeProviderName(providerName);
             const normDesc = normalizeProviderName(txDesc);
 

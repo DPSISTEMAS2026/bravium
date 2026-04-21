@@ -59,7 +59,7 @@ export class SplitPaymentMatchStrategy {
                 const provName = providerDtes[0]?.provider?.name;
                 if (!provName) continue;
 
-                if (!providerMatchesDescription(tx.description || '', provName, providerDtes[0])) {
+                if (!providerMatchesDescription(tx.description || '', provName, providerDtes[0] as any, (tx.metadata as any)?.providerRut)) {
                     continue;
                 }
 

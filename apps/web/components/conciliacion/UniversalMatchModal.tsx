@@ -580,6 +580,12 @@ export function UniversalMatchModal({
     const diff = totalTxs - totalDtes;
     const isPerfect = diff === 0;
 
+    const rutMismatchAlert = selectedTxs.some(tx => {
+        const txRut = tx.providerRut || tx.metadata?.providerRut;
+        if (!txRut || txRut.trim() === '') return false;
+        return selectedDtes.some(dte => dte.provider?.rut && dte.provider.rut !== txRut);
+    });
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <div className={`bg-white rounded-xl shadow-2xl w-full flex flex-col max-h-[90vh] overflow-hidden transition-all duration-300 ${selectedProvider ? 'max-w-[90vw] lg:max-w-7xl' : 'max-w-6xl'}`} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
@@ -590,6 +596,18 @@ export function UniversalMatchModal({
                         <XMarkIcon className="h-6 w-6" />
                     </button>
                 </div>
+
+                {rutMismatchAlert && (
+                    <div className="px-6 py-3 bg-red-50 border-b border-red-100">
+                        <div className="flex items-start gap-3">
+                            <ExclamationTriangleIcon className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
+                            <div>
+                                <h3 className="text-sm font-bold text-red-800">¡Alerta de Discrepancia de RUT!</h3>
+                                <p className="text-sm text-red-700 mt-0.5">La transferencia seleccionada está dirigida a un RUT distinto al RUT emisor de la factura. Por favor verifica antes de confirmar el match para evitar cruces erróneos.</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="flex-1 overflow-auto p-6 md:flex gap-8">
                     

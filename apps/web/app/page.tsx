@@ -366,18 +366,18 @@ export default function HomePage() {
                     </div>
                     <div className="divide-y divide-slate-100">
                         {briefing.proveedores.top5.map((p: any, i: number) => (
-                            <div key={p.id} className="flex items-center justify-between py-2.5">
+                            <Link href={`/proveedores/${p.id}`} key={p.id} className="flex items-center justify-between py-2.5 px-2 -mx-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors block">
                                 <div className="flex items-center gap-3">
                                     <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
                                         {i + 1}
                                     </div>
                                     <div>
-                                        <div className="text-sm font-semibold text-slate-800">{p.name}</div>
+                                        <div className="text-sm font-semibold text-slate-800 group-hover:text-teal-600 transition-colors">{p.name}</div>
                                         <div className="text-[11px] text-slate-400">{p.rut}</div>
                                     </div>
                                 </div>
                                 <div className="text-sm font-bold text-amber-600">{formatCurrency(p.currentBalance)}</div>
-                            </div>
+                            </Link>
                         ))}
                     </div>
                     <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">

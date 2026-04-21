@@ -1401,6 +1401,19 @@ export default function CartolasPage() {
                         </p>
                     </div>
                 )}
+                {((meta && meta.lastPage > 1) || (statusFilter === 'PARTIALLY_MATCHED' && meta?.total != null)) ? (
+                    <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                        <div className="text-sm text-slate-500">
+                            Mostrando <span className="font-semibold text-slate-700">{transactions.length}</span> de <span className="font-semibold text-slate-700">{meta!.total}</span>
+                            {statusFilter === 'PARTIALLY_MATCHED' ? ' sugerencias' : ' movimientos'}
+                        </div>
+                        <Pagination 
+                            currentPage={page} 
+                            totalPages={meta!.lastPage} 
+                            onPageChange={(p: number) => setPage(p)} 
+                        />
+                    </div>
+                ) : null}
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
                         <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100 uppercase tracking-tight text-[11px]">

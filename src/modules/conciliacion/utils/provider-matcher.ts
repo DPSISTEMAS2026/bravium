@@ -49,8 +49,20 @@ export function normalizeProviderName(name: string): string {
 export function providerMatchesDescription(
     description: string,
     providerName: string | undefined,
-    dte?: DTE & { provider?: { name: string } | null },
+    dte?: DTE & { provider?: { name: string, rut?: string } | null },
+    txProviderRut?: string | null,
 ): boolean {
+    if (txProviderRut && txProviderRut.trim() !== '') {
+        // Strict RUT Matching rules to evade false positives
+        const dteRut = dte?.provider?.rut || dte?.rutIssuer;
+        if (dteRut) {
+            const txR = txProviderRut.replace(/[^0-9Kk]/g, '').toUpperCase();
+            const dteR = dteRut.replace(/[^0-9Kk]/g, '').toUpperCase();
+            if (txR === dteR) return true;
+        }
+        return false; // El banco tiene un RUT explícito. Si no cuadra, forzamos rechazo (evasión de falsos positivos).
+    }
+
     const descUpper = (description || '').toUpperCase();
     const provUpper = (providerName || '').toUpperCase();
     if (!provUpper) return true;

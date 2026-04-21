@@ -45,7 +45,7 @@ export class SumMatchStrategy {
             const matchingTxs = pendingTransactions.filter(
                 (tx) =>
                     !usedTxIds.has(tx.id) &&
-                    providerMatchesDescription(tx.description || '', provName, dte) &&
+                    providerMatchesDescription(tx.description || '', provName, dte as any, (tx.metadata as any)?.providerRut) &&
                     isWithinDateWindow(tx.date, dte.issuedDate, this.dateWindowDays) &&
                     Math.abs(tx.amount) < Math.abs(dte.totalAmount),
             );

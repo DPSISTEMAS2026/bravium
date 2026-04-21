@@ -35,36 +35,52 @@ export class MatchSuggestionsService {
             },
         });
 
-        const enriched = await Promise.all(
+        const enriched = (await Promise.all(
             suggestions.map(async (s) => {
                 const txIds = (s.transactionIds || []) as string[];
                 const transactions = txIds.length > 0
                     ? await this.prisma.bankTransaction.findMany({
-                        where: { id: { in: txIds } },
-                        select: { id: true, date: true, description: true, amount: true, type: true },
+                        where: { 
+                            id: { in: txIds },
+                            status: { in: ['PENDING', 'UNMATCHED'] }
+                        },
+                        select: { id: true, date: true, description: true, amount: true, type: true, status: true },
                         orderBy: { date: 'asc' },
                     })
                     : [];
 
+                // Si alguna de las transacciones ya no está PENDING/UNMATCHED (es decir, el tamaño del array disminuyó), es obsoleta
+                if (transactions.length !== txIds.length) {
+                    return null;
+                }
+
                 let relatedDtes: any[] = [];
-                if (s.type === 'SPLIT') {
+                if (s.type === 'SPLIT' || (s.relatedDteIds && (s.relatedDteIds as string[]).length > 0)) {
                     const dteIds = (s.relatedDteIds || []) as string[];
                     if (dteIds.length > 0) {
                         relatedDtes = await this.prisma.dTE.findMany({
-                            where: { id: { in: dteIds } },
+                            where: { 
+                                id: { in: dteIds },
+                                paymentStatus: { not: 'PAID' }
+                            },
                             select: {
-                                id: true, folio: true, type: true,
+                                id: true, folio: true, type: true, paymentStatus: true,
                                 totalAmount: true, issuedDate: true,
                                 provider: { select: { name: true } },
                             },
                             orderBy: { issuedDate: 'asc' },
                         });
+                        
+                        // Si alguno de los DTEs relacionados ya se pagó, la sugerencia es obsoleta
+                        if (relatedDtes.length !== dteIds.length) {
+                            return null;
+                        }
                     }
                 }
 
                 return { ...s, transactions, relatedDtes };
             }),
-        );
+        )).filter(Boolean); // Remover las obsoletas
 
         return enriched;
     }
