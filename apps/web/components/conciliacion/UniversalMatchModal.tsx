@@ -140,6 +140,27 @@ export function UniversalMatchModal({
             } else {
                 setSelectedProvider(null);
             }
+
+            // Auto-search bank transactions when opening with DTEs but no txs
+            if (mode === 'MANUAL' && dtes.length > 0 && txs.length === 0) {
+                const firstDte = dtes[0];
+                const searchTerm = firstDte.totalAmount?.toString() || '';
+                if (searchTerm) {
+                    setTxSearch(searchTerm);
+                    // Trigger search after state is set
+                    setTimeout(async () => {
+                        try {
+                            const params = new URLSearchParams({ search: searchTerm, status: 'ALL', limit: '20', fromDate: '2026-01-01' });
+                            const res = await authFetch(`${API_URL}/transactions?${params}`);
+                            if (res.ok) {
+                                const data = await res.json();
+                                const arr = Array.isArray(data) ? data : data.data || [];
+                                setPendingTxs(arr);
+                            }
+                        } catch { /* ignore */ }
+                    }, 100);
+                }
+            }
         }
          
     }, [isOpen]);
