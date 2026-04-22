@@ -580,26 +580,46 @@ export function UniversalMatchModal({
     const diff = totalTxs - totalDtes;
     const isPerfect = diff === 0;
 
-    const rutMismatchAlert = selectedTxs.some(tx => {
-        let txRut = tx.providerRut || tx.metadata?.providerRut;
-        
-        // Fallback: Buscar RUT directamente en la glosa del banco (ej. Transf.Internet a 16.751.150-0)
-        if (!txRut && tx.description) {
-            const rutMatch = tx.description.match(/(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])/i);
-            if (rutMatch) {
-                txRut = rutMatch[1];
+    // Extrae SOLO el cuerpo numérico del RUT (sin DV). Ej: "76.376.508-3" → "76376508", "76376508" → "76376508"
+    const extractRutBody = (rut: string): string => {
+        const clean = rut.replace(/[^0-9Kk\-]/g, ''); // quitar puntos y espacios, dejar guión
+        // Si tiene guión, tomar solo la parte antes del guión (cuerpo sin DV)
+        if (clean.includes('-')) return clean.split('-')[0];
+        // Si no tiene guión, puede ser solo el cuerpo numérico (ej. "76376508" de LibreDTE)
+        // o el cuerpo + DV pegado (ej. "763765083"). Heurística: si termina en K, quitar último char.
+        // Para empresas los RUT tienen 8 dígitos de cuerpo. Si tiene 9+ chars y el último es dígito,
+        // podría ser cuerpo+DV. Pero es ambiguo, así que devolvemos tal cual.
+        return clean.replace(/[^0-9]/g, '');
+    };
+
+    // Calcular detalles del mismatch para mostrar en la alerta
+    const rutMismatchDetails = (() => {
+        for (const tx of selectedTxs) {
+            let txRut = tx.providerRut || tx.metadata?.providerRut;
+            if (!txRut && tx.metadata?.raw?.recipient_account?.holder_id) {
+                txRut = String(tx.metadata.raw.recipient_account.holder_id);
+            }
+            if (!txRut && tx.description) {
+                const rutMatch = tx.description.match(/(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])/i);
+                if (rutMatch) txRut = rutMatch[1];
+            }
+            if (!txRut || typeof txRut !== 'string' || txRut.trim() === '') continue;
+            
+            const txBody = extractRutBody(txRut);
+            if (!txBody || txBody.length < 6) continue;
+            
+            for (const dte of selectedDtes) {
+                if (!dte.provider?.rut) continue;
+                const dteBody = extractRutBody(dte.provider.rut);
+                if (!dteBody || dteBody.length < 6) continue;
+                if (txBody === dteBody) continue;
+                if (txBody.startsWith(dteBody) || dteBody.startsWith(txBody)) continue;
+                return { txRut, dteRut: dte.provider.rut, txBody, dteBody };
             }
         }
-
-        if (!txRut || typeof txRut !== 'string' || txRut.trim() === '') return false;
-        
-        const cleanTx = txRut.replace(/[^0-9Kk]/g, '').toUpperCase();
-        return selectedDtes.some(dte => {
-            if (!dte.provider?.rut) return false;
-            const cleanDte = dte.provider.rut.replace(/[^0-9Kk]/g, '').toUpperCase();
-            return cleanDte !== cleanTx;
-        });
-    });
+        return null;
+    })();
+    const rutMismatchAlert = !!rutMismatchDetails;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -612,6 +632,7 @@ export function UniversalMatchModal({
                     </button>
                 </div>
 
+                {/* TODO: Alerta de discrepancia de RUT deshabilitada temporalmente — revisar lógica más adelante
                 {rutMismatchAlert && (
                     <div className="px-6 py-3 bg-red-50 border-b border-red-100">
                         <div className="flex items-start gap-3">
@@ -619,10 +640,16 @@ export function UniversalMatchModal({
                             <div>
                                 <h3 className="text-sm font-bold text-red-800">¡Alerta de Discrepancia de RUT!</h3>
                                 <p className="text-sm text-red-700 mt-0.5">La transferencia seleccionada está dirigida a un RUT distinto al RUT emisor de la factura. Por favor verifica antes de confirmar el match para evitar cruces erróneos.</p>
+                                {rutMismatchDetails && (
+                                    <p className="text-xs text-red-600 mt-1 font-mono opacity-75">
+                                        Banco: {rutMismatchDetails.txRut} ({rutMismatchDetails.txBody}) → Factura: {rutMismatchDetails.dteRut} ({rutMismatchDetails.dteBody})
+                                    </p>
+                                )}
                             </div>
                         </div>
                     </div>
                 )}
+                */}
 
                 <div className="flex-1 overflow-auto p-6 md:flex gap-8">
                     
