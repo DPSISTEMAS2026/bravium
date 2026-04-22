@@ -268,7 +268,17 @@ export class ProveedoresService {
         differential?: string;
         boardReview?: boolean;
         favorableBalance?: number;
-    }) {
+    }, organizationId?: string) {
+        // Validar que el proveedor pertenece a la org del usuario
+        if (organizationId) {
+            const existing = await this.prisma.provider.findFirst({
+                where: { id: providerId, organizationId },
+                select: { id: true },
+            });
+            if (!existing) {
+                throw new Error('Proveedor no encontrado o no pertenece a su organización.');
+            }
+        }
         return this.prisma.provider.update({
             where: { id: providerId },
             data,

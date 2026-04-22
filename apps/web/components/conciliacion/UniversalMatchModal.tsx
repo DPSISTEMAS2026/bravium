@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     MagnifyingGlassIcon, 
     XMarkIcon, 
@@ -81,7 +81,23 @@ export function UniversalMatchModal({
 
     const { data: rules = [] } = useSWR(isOpen ? `${API_URL}/conciliacion/rules` : null, apiFetcher);
 
+    // Ref para cancelar setTimeout de auto-search si el modal se cierra rápido
+    const autoSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Clave serializada para detectar cambios en las props iniciales sin causar re-renders innecesarios
+    const initKey = useMemo(() => {
+        const txIds = (initialTransactions || []).map((t: any) => t.id).sort().join(',');
+        const dteIds = (initialDtes || []).map((d: any) => d.id).sort().join(',');
+        return `${txIds}|${dteIds}`;
+    }, [initialTransactions, initialDtes]);
+
     useEffect(() => {
+        // Limpiar cualquier auto-search pendiente de una apertura anterior
+        if (autoSearchTimerRef.current) {
+            clearTimeout(autoSearchTimerRef.current);
+            autoSearchTimerRef.current = null;
+        }
+
         if (isOpen) {
             const txs = [...(initialTransactions || [])];
             const dtes = [...(initialDtes || [])];
@@ -147,23 +163,34 @@ export function UniversalMatchModal({
                 const searchTerm = firstDte.totalAmount?.toString() || '';
                 if (searchTerm) {
                     setTxSearch(searchTerm);
-                    // Trigger search after state is set
-                    setTimeout(async () => {
+                    // Trigger search after state is set — with cancellable ref
+                    let cancelled = false;
+                    autoSearchTimerRef.current = setTimeout(async () => {
+                        if (cancelled) return;
                         try {
-                            const params = new URLSearchParams({ search: searchTerm, status: 'ALL', limit: '20', fromDate: '2026-01-01' });
+                            const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+                            const params = new URLSearchParams({ search: searchTerm, status: 'ALL', limit: '50', fromDate: sixMonthsAgo.toISOString().split('T')[0], sortBy: 'date', order: 'desc' });
                             const res = await authFetch(`${API_URL}/transactions?${params}`);
-                            if (res.ok) {
+                            if (res.ok && !cancelled) {
                                 const data = await res.json();
                                 const arr = Array.isArray(data) ? data : data.data || [];
                                 setPendingTxs(arr);
                             }
                         } catch { /* ignore */ }
                     }, 100);
+                    // Cleanup on unmount / re-run
+                    return () => {
+                        cancelled = true;
+                        if (autoSearchTimerRef.current) {
+                            clearTimeout(autoSearchTimerRef.current);
+                            autoSearchTimerRef.current = null;
+                        }
+                    };
                 }
             }
         }
          
-    }, [isOpen]);
+    }, [isOpen, initKey]);
 
     useEffect(() => {
         if (selectedProvider) {
@@ -212,7 +239,8 @@ export function UniversalMatchModal({
         if (!txSearch.trim()) return;
         setTxLoading(true);
         try {
-            const params = new URLSearchParams({ search: txSearch, status: 'ALL', limit: '20', fromDate: '2026-01-01' });
+            const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+            const params = new URLSearchParams({ search: txSearch, status: 'ALL', limit: '50', fromDate: sixMonthsAgo.toISOString().split('T')[0], sortBy: 'date', order: 'desc' });
             const res = await authFetch(`${API_URL}/transactions?${params}`);
             if (res.ok) {
                 const data = await res.json();
@@ -535,6 +563,7 @@ export function UniversalMatchModal({
             if (res.ok) {
                 if (onRefresh) onRefresh();
                 setSelectedDtes([]);
+                onClose();
             } else {
                 alert('Error al rechazar sugerencia');
             }
@@ -548,14 +577,15 @@ export function UniversalMatchModal({
         
         setIsSaving(true);
         try {
-            const res = await authFetch(`${API_URL}/conciliacion/suggestions/${suggestionId}/status`, {
-                method: 'PATCH',
+            const res = await authFetch(`${API_URL}/conciliacion/suggestions/${suggestionId}/reject`, {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'REJECTED' }),
+                body: JSON.stringify({ reason: 'Rechazado por el usuario' }),
             });
             if (res.ok) {
                 if (onRefresh) onRefresh();
                 setSelectedDtes([]);
+                onClose();
             } else {
                 alert('Error al rechazar sugerencia');
             }
@@ -576,12 +606,16 @@ export function UniversalMatchModal({
             for (const dte of selectedDtes) {
                 const confirmedMatch = dte.matches?.find((m: any) => m.status === 'CONFIRMED');
                 if (confirmedMatch) {
-                    await fetch(`${API_URL}/conciliacion/matches/${confirmedMatch.id}`, { method: 'DELETE' });
+                    const delRes = await authFetch(`${API_URL}/conciliacion/matches/${confirmedMatch.id}`, { method: 'DELETE' });
+                    if (!delRes.ok && delRes.status !== 404) {
+                        const errText = await delRes.text().catch(() => '');
+                        throw new Error(`Error al eliminar match: ${errText}`);
+                    }
                 }
             }
             if (onRefresh) onRefresh();
             onClose();
-        } catch { alert('Error de conexión'); }
+        } catch (err: any) { alert(err?.message || 'Error de conexión'); }
         finally { setIsSaving(false); }
     };
 
@@ -797,7 +831,7 @@ export function UniversalMatchModal({
                         </div>
 
                         {pendingTxs.length > 0 && (
-                            <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 shadow-inner">
+                            <div className="shrink-0 max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 shadow-inner">
                                 {pendingTxs.map(tx => {
                                     const isSelected = selectedTxs.some(t => t.id === tx.id);
                                     return (
@@ -883,7 +917,7 @@ export function UniversalMatchModal({
                         </div>
 
                         {unpaidDtes.length > 0 && (
-                            <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 shadow-inner">
+                            <div className="shrink-0 max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 shadow-inner">
                                 {unpaidDtes.map(dte => {
                                     const isSelected = selectedDtes.some(d => d.id === dte.id);
                                     const isNC = dte.type === 61;

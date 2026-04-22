@@ -2593,7 +2593,8 @@ export default function CartolasPage() {
                                     setCorrectTypeSaving(true);
                                     try {
                                         const url = `${API_URL}/transactions/${txId}/type`;
-                                        const res = await fetch(url, {
+                                        const { authFetch } = await import('@/lib/auth');
+                                        const res = await authFetch(url, {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ type: 'CREDIT' }),
@@ -2630,7 +2631,8 @@ export default function CartolasPage() {
                                     setCorrectTypeSaving(true);
                                     try {
                                         const url = `${API_URL}/transactions/${txId}/type`;
-                                        const res = await fetch(url, {
+                                        const { authFetch: authFetch2 } = await import('@/lib/auth');
+                                        const res = await authFetch2(url, {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ type: 'DEBIT' }),
@@ -2725,7 +2727,8 @@ export default function CartolasPage() {
                                     try {
                                         const finalAmount = correctAmountTx.type === 'DEBIT' ? -parsed : parsed;
                                         const url = `${API_URL}/transactions/${txId}/amount`;
-                                        const res = await fetch(url, {
+                                        const { authFetch: authFetch3 } = await import('@/lib/auth');
+                                        const res = await authFetch3(url, {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ amount: finalAmount }),

@@ -1,7 +1,12 @@
-import { Controller, Get, Post, Body, Query, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Logger, UseGuards, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { ReportesService } from './reportes.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { OrganizationGuard } from '../../common/guards/organization.guard';
 
-@Controller('reportes')
+@UseGuards(JwtAuthGuard, RolesGuard, OrganizationGuard)
+@Controller(['reportes', 'reportes/-'])
 export class ReportesController {
     private readonly logger = new Logger(ReportesController.name);
 
@@ -14,11 +19,13 @@ export class ReportesController {
     @Post('verificar-folios')
     async verificarFolios(
         @Body() body: { folios: number[]; year: number; month: number },
+        @Req() req: Request,
     ) {
+        const organizationId = (req as any).organizationId;
         this.logger.log(
             `Verificando ${body.folios.length} folios para ${body.year}-${String(body.month).padStart(2, '0')}`,
         );
-        return this.reportesService.verificarFolios(body.folios, body.year, body.month);
+        return this.reportesService.verificarFolios(body.folios, body.year, body.month, organizationId);
     }
 
     /**
@@ -28,12 +35,14 @@ export class ReportesController {
     @Get('deuda-proveedores')
     async getDeudaPorProveedor(
         @Query('fromDate') fromDate?: string,
-        @Query('toDate') toDate?: string
+        @Query('toDate') toDate?: string,
+        @Req() req?: Request,
     ) {
+        const organizationId = (req as any)?.organizationId;
         this.logger.log(
             `Fetching debt by provider report (${fromDate} - ${toDate})`
         );
-        return this.reportesService.getDeudaPorProveedor(fromDate, toDate);
+        return this.reportesService.getDeudaPorProveedor(fromDate, toDate, organizationId);
     }
 
     /**
@@ -43,10 +52,12 @@ export class ReportesController {
     @Get('flujo-caja')
     async getFlujoCaja(
         @Query('fromDate') fromDate?: string,
-        @Query('toDate') toDate?: string
+        @Query('toDate') toDate?: string,
+        @Req() req?: Request,
     ) {
+        const organizationId = (req as any)?.organizationId;
         this.logger.log(`Fetching cash flow report (${fromDate} - ${toDate})`);
-        return this.reportesService.getFlujoCaja(fromDate, toDate);
+        return this.reportesService.getFlujoCaja(fromDate, toDate, organizationId);
     }
 
     /**
@@ -54,8 +65,9 @@ export class ReportesController {
      * Reporte de facturas vencidas
      */
     @Get('facturas-vencidas')
-    async getFacturasVencidas() {
+    async getFacturasVencidas(@Req() req?: Request) {
+        const organizationId = (req as any)?.organizationId;
         this.logger.log('Fetching overdue invoices report');
-        return this.reportesService.getFacturasVencidas();
+        return this.reportesService.getFacturasVencidas(organizationId);
     }
 }

@@ -150,12 +150,13 @@ export default function LibroResumenPage() {
     const handleExport = async () => {
         setExporting(true);
         try {
+            const { authFetch } = await import('@/lib/auth');
             const params = new URLSearchParams({
                 fromDate: dateRange.from,
                 toDate: dateRange.to,
                 type: 'TRANSACTIONS',
             });
-            const res = await fetch(`${API}/conciliacion/export?${params}`);
+            const res = await authFetch(`${API}/conciliacion/export?${params}`);
             if (!res.ok) throw new Error('Error al exportar');
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
@@ -411,7 +412,8 @@ function TransactionRow({ tx, onUpdated }: { tx: BankTransaction; onUpdated: () 
     const handleSave = async () => {
         setSaving(true);
         try {
-            await fetch(`${API}/transactions/${tx.id}/annotate`, {
+            const { authFetch } = await import('@/lib/auth');
+            await authFetch(`${API}/transactions/${tx.id}/annotate`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),

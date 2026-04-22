@@ -159,7 +159,15 @@ export class MatchManagementService {
                 let totalAvailable = transactions.reduce((acc, t) => acc + Math.abs(t.amount), 0);
                 const currentDtes = await prisma.dTE.findMany({ where: { id: { in: dteIds } }, orderBy: { issuedDate: 'asc' } });
                 
-                for (const dte of currentDtes) {
+                // Crear 1 match por DTE, distribuido entre las transacciones disponibles.
+                // Para SUM (N txs → 1 dte): todas las txs se vinculan al DTE con un match cada una.
+                // Para SPLIT (1 tx → N dtes): cada DTE se vincula a la transacción principal.
+                // Para N:M: cada DTE se vincula a una TX de forma round-robin para evitar el producto cartesiano.
+                const isSumMatch = txIds.length > 1 && currentDtes.length === 1;
+                
+                if (isSumMatch) {
+                    // SUM: Múltiples transacciones pagan 1 DTE — crear 1 match por TX
+                    const dte = currentDtes[0];
                     for (const tId of txIds) {
                         const created = await prisma.reconciliationMatch.create({
                             data: {
@@ -182,9 +190,7 @@ export class MatchManagementService {
 
                     if (body.action === 'PARTIAL') {
                         const paymentAmount = Math.min(dte.outstandingAmount, totalAvailable);
-                        totalAvailable -= paymentAmount;
-                        const newOutstanding = Number((dte.outstandingAmount - paymentAmount).toFixed(0)); // Fix floats
-                        
+                        const newOutstanding = Number((dte.outstandingAmount - paymentAmount).toFixed(0));
                         await prisma.dTE.update({
                             where: { id: dte.id },
                             data: { 
@@ -198,8 +204,53 @@ export class MatchManagementService {
                             data: { paymentStatus: 'PAID', outstandingAmount: 0 },
                         });
                     }
+                } else {
+                    // SPLIT o 1:1 — cada DTE se vincula a la TX principal (primera) o round-robin
+                    const primaryTxId = txIds[0];
+                    for (let i = 0; i < currentDtes.length; i++) {
+                        const dte = currentDtes[i];
+                        // Round-robin: distribuir DTEs entre las transacciones disponibles
+                        const assignedTxId = txIds.length > 1 ? txIds[i % txIds.length] : primaryTxId;
+                        
+                        const created = await prisma.reconciliationMatch.create({
+                            data: {
+                                transactionId: assignedTxId,
+                                dteId: dte.id,
+                                paymentId: body.paymentId || null,
+                                origin: 'MANUAL',
+                                status: 'CONFIRMED',
+                                confidence: 1.0,
+                                ruleApplied: 'MANUAL_USER',
+                                notes: body.notes || null,
+                                createdBy: userId,
+                                confirmedAt: new Date(),
+                                confirmedBy: userId,
+                                organizationId,
+                            },
+                        });
+                        createdMatches.push(created);
+
+                        if (body.action === 'PARTIAL') {
+                            const paymentAmount = Math.min(dte.outstandingAmount, totalAvailable);
+                            totalAvailable -= paymentAmount;
+                            const newOutstanding = Number((dte.outstandingAmount - paymentAmount).toFixed(0));
+                            await prisma.dTE.update({
+                                where: { id: dte.id },
+                                data: { 
+                                    outstandingAmount: newOutstanding,
+                                    paymentStatus: newOutstanding > 0 ? 'PARTIAL' : 'PAID'
+                                }
+                            });
+                        } else {
+                            await prisma.dTE.update({
+                                where: { id: dte.id },
+                                data: { paymentStatus: 'PAID', outstandingAmount: 0 },
+                            });
+                        }
+                    }
                 }
                 
+                // Marcar TODAS las transacciones como MATCHED
                 for (const tId of txIds) {
                     await prisma.bankTransaction.update({
                         where: { id: tId },
@@ -235,7 +286,7 @@ export class MatchManagementService {
             }
 
             // Clean up any pending suggestions that involve these transactions or DTEs
-            const pendingSuggestions = await prisma.matchSuggestion.findMany({ where: { status: 'PENDING' } });
+            const pendingSuggestions = await prisma.matchSuggestion.findMany({ where: { status: 'PENDING', organizationId } });
             const sIdsToDelete = pendingSuggestions.filter(s => {
                 if (dteIds.includes(s.dteId)) return true;
                 const sTxIds = (s.transactionIds as string[]) || [];

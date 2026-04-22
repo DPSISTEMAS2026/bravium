@@ -18,25 +18,26 @@ export class FinancialAlertService {
      * Main method to run all defined rules.
      * Can be scheduled via Cron or triggered manually before closing a period.
      */
-    async runAllChecks() {
+    async runAllChecks(organizationId?: string) {
         this.logger.log('Running Financial Alert Rules...');
 
-        await this.checkUnconciledOldTransactions(30); // 30 days old
-        await this.checkOverdueInvoices(5); // 5 days past due
+        await this.checkUnconciledOldTransactions(30, organizationId); // 30 days old
+        await this.checkOverdueInvoices(5, organizationId); // 5 days past due
         // Add more rules here
     }
 
     /**
      * Rule: Detect bank transactions older than N days that remain PENDING.
      */
-    private async checkUnconciledOldTransactions(daysInPast: number) {
+    private async checkUnconciledOldTransactions(daysInPast: number, organizationId?: string) {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - daysInPast);
 
         const staleTransactions = await this.prisma.bankTransaction.findMany({
             where: {
                 status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
-                date: { lt: cutoffDate }
+                date: { lt: cutoffDate },
+                ...(organizationId && { bankAccount: { organizationId } }),
             }
         });
 
@@ -56,7 +57,7 @@ export class FinancialAlertService {
      * Assuming standard credit days or checking overdue logic.
      * Simplified: Issued > N days ago and UNPAID.
      */
-    private async checkOverdueInvoices(daysOverdue: number) {
+    private async checkOverdueInvoices(daysOverdue: number, organizationId?: string) {
         // Logic: Find unpaid DTEs
         // Not strictly implementing specific net-30 logic here for brevity, 
         // assuming anything unpaid > 60 days is bad.
@@ -67,7 +68,7 @@ export class FinancialAlertService {
             where: {
                 paymentStatus: { not: DtePaymentStatus.PAID },
                 issuedDate: { lt: cutoffDate },
-                // filter out already alerted?
+                ...(organizationId && { organizationId }),
             }
         });
 

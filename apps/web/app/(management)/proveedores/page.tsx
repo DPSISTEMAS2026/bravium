@@ -156,7 +156,8 @@ export default function ProveedoresPage() {
                         onClick={async () => {
                         try {
                             const API_URL = getApiUrl();
-                            const res = await fetch(`${API_URL}/proveedores/export/pago-masivo`);
+                            const authFetch = (await import('@/lib/auth')).authFetch;
+                            const res = await authFetch(`${API_URL}/proveedores/export/pago-masivo`);
                             if (!res.ok) throw new Error('Error al exportar');
                             const blob = await res.blob();
                             const url = window.URL.createObjectURL(blob);

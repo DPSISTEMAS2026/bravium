@@ -230,9 +230,13 @@ export class MatchSuggestionsService {
         }
 
         await this.prisma.$transaction(async (prisma) => {
-            // Para cada transacción, crear un match con cada DTE (Muchos a Muchos)
-            for (const txId of txIds) {
-                for (const dId of dteIds) {
+            // Crear matches sin producto cartesiano — misma lógica que createManualMatch
+            const isSumMatch = txIds.length > 1 && dteIds.length === 1;
+            
+            if (isSumMatch) {
+                // SUM: Múltiples transacciones pagan 1 DTE — crear 1 match por TX
+                const dId = dteIds[0];
+                for (const txId of txIds) {
                     await prisma.reconciliationMatch.create({
                         data: {
                             transactionId: txId,
@@ -244,19 +248,48 @@ export class MatchSuggestionsService {
                             createdBy: userId,
                         },
                     });
+
+                    await prisma.bankTransaction.update({
+                        where: { id: txId },
+                        data: { status: TransactionStatus.MATCHED },
+                    });
                 }
 
-                await prisma.bankTransaction.update({
-                    where: { id: txId },
-                    data: { status: TransactionStatus.MATCHED },
-                });
-            }
-
-            for (const dId of dteIds) {
                 await prisma.dTE.update({
                     where: { id: dId },
                     data: { paymentStatus: 'PAID', outstandingAmount: 0 },
                 });
+            } else {
+                // SPLIT o 1:1: Cada DTE se vincula a una TX (round-robin)
+                const primaryTxId = txIds[0];
+                for (let i = 0; i < dteIds.length; i++) {
+                    const dId = dteIds[i];
+                    const assignedTxId = txIds.length > 1 ? txIds[i % txIds.length] : primaryTxId;
+
+                    await prisma.reconciliationMatch.create({
+                        data: {
+                            transactionId: assignedTxId,
+                            dteId: dId,
+                            origin: 'MANUAL',
+                            status: MatchStatus.CONFIRMED,
+                            confidence: suggestion.confidence,
+                            ruleApplied: overrides ? `ManualOverride (sugerencia ${suggestion.id})` : `SuggestionAccept (sugerencia ${suggestion.id})`,
+                            createdBy: userId,
+                        },
+                    });
+
+                    await prisma.dTE.update({
+                        where: { id: dId },
+                        data: { paymentStatus: 'PAID', outstandingAmount: 0 },
+                    });
+                }
+
+                for (const txId of txIds) {
+                    await prisma.bankTransaction.update({
+                        where: { id: txId },
+                        data: { status: TransactionStatus.MATCHED },
+                    });
+                }
             }
 
             await prisma.matchSuggestion.update({

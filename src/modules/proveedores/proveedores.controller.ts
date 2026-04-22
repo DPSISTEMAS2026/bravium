@@ -127,10 +127,12 @@ export class ProveedoresController {
             boardReview?: boolean;
             favorableBalance?: number;
         },
+        @Req() req: Request,
     ) {
+        const organizationId = (req as any).user?.organizationId;
         this.logger.log(`Updating provider ${id}: ${JSON.stringify(body)}`);
         try {
-            return await this.proveedoresService.updateProvider(id, body);
+            return await this.proveedoresService.updateProvider(id, body, organizationId);
         } catch (err) {
             throw new NotFoundException('Proveedor no encontrado');
         }

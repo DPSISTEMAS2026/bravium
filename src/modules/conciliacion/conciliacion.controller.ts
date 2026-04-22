@@ -115,13 +115,15 @@ export class ConciliacionController {
     }
 
     @Get('files')
-    async getFiles() {
-        return this.conciliacionService.getIngestedFiles();
+    async getFiles(@Req() req: Request) {
+        const organizationId = (req as any).user?.organizationId;
+        return this.conciliacionService.getIngestedFiles(organizationId);
     }
 
     @Get('overview')
-    async getOverview(@Query('filename') filename?: string) {
-        return this.conciliacionService.getOverview(100, filename);
+    async getOverview(@Query('filename') filename?: string, @Req() req?: Request) {
+        const organizationId = (req as any)?.user?.organizationId;
+        return this.conciliacionService.getOverview(100, filename, organizationId);
     }
 
     @Post('run-auto-match')

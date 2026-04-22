@@ -431,12 +431,14 @@ export class DtesService {
     }
 
     /**
-     * Obtener un DTE por su ID (Asegurar que sea verificado por org más arriba, o lo ideal es pasarlo)
+     * Obtener un DTE por su ID, validando que pertenezca a la organización.
      */
     async getDteById(id: string, organizationId?: string) {
-        return this.prisma.dTE.findUnique({
-            where: { id },
-            // Opcional: Para mayor seguridad se requeriría findFirst { where: { id, organizationId } } 
+        const where: any = { id };
+        if (organizationId) where.organizationId = organizationId;
+        
+        return this.prisma.dTE.findFirst({
+            where,
             include: { provider: true },
         });
     }

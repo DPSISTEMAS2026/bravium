@@ -1,6 +1,11 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Logger, UseGuards, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { PaymentRecordsService, CreatePaymentRecordDto, ImportExcelRowDto } from './payment-records.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { OrganizationGuard } from '../../common/guards/organization.guard';
 
+@UseGuards(JwtAuthGuard, RolesGuard, OrganizationGuard)
 @Controller('payment-records')
 export class PaymentRecordsController {
     private readonly logger = new Logger(PaymentRecordsController.name);

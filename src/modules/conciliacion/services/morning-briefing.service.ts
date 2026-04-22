@@ -118,7 +118,15 @@ export class MorningBriefingService {
             },
         });
 
-        const totalAmount = matches.reduce((sum, m) => sum + Math.abs(m.transaction?.amount || 0), 0);
+        // Sum ALL draft match amounts (not just the top 10 preview)
+        const allDraftTxAmounts = await this.prisma.reconciliationMatch.findMany({
+            where: {
+                status: 'DRAFT',
+                transaction: { bankAccount: { organizationId }, ...dateFilter },
+            },
+            select: { transaction: { select: { amount: true } } },
+        });
+        const totalAmount = allDraftTxAmounts.reduce((sum, m) => sum + Math.abs(m.transaction?.amount || 0), 0);
 
         return {
             count: totalCount,

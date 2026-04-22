@@ -78,6 +78,7 @@ export default function RegistroPagosPage() {
     const loadRecords = useCallback(async () => {
         setLoading(true);
         try {
+            const { authFetch } = await import('@/lib/auth');
             const params = new URLSearchParams();
             if (mesFilter) params.set('mes', mesFilter);
             if (empresaFilter) params.set('empresa', empresaFilter);
@@ -86,8 +87,8 @@ export default function RegistroPagosPage() {
             params.set('limit', '30');
 
             const [listRes, summaryRes] = await Promise.all([
-                fetch(`${API}/payment-records?${params}`),
-                fetch(`${API}/payment-records/summary`),
+                authFetch(`${API}/payment-records?${params}`),
+                authFetch(`${API}/payment-records/summary`),
             ]);
             const listData = await listRes.json();
             const summaryData = await summaryRes.json();
@@ -107,7 +108,8 @@ export default function RegistroPagosPage() {
 
     const handleDelete = async (id: string) => {
         if (!confirm('Eliminar este registro?')) return;
-        await fetch(`${API}/payment-records/${id}`, { method: 'DELETE' });
+        const { authFetch } = await import('@/lib/auth');
+        await authFetch(`${API}/payment-records/${id}`, { method: 'DELETE' });
         loadRecords();
     };
 
@@ -304,7 +306,8 @@ function AnotarMasivoForm({ onSaved, onCancel }: { onSaved: () => void; onCancel
         if (!comentario.trim()) return;
         setSaving(true);
         try {
-            const res = await fetch(`${API}/payment-records`, {
+            const { authFetch } = await import('@/lib/auth');
+            const res = await authFetch(`${API}/payment-records`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -379,7 +382,8 @@ function NewPaymentForm({ onSaved, onCancel, formatCurrency }: {
         if (!form.empresa || !form.monto || !form.fechaPago) return;
         setSaving(true);
         try {
-            const res = await fetch(`${API}/payment-records`, {
+            const { authFetch } = await import('@/lib/auth');
+            const res = await authFetch(`${API}/payment-records`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

@@ -14,8 +14,9 @@ export class ReportesService {
     /**
      * Reporte de deuda por proveedor
      */
-    async getDeudaPorProveedor(fromDate?: string, toDate?: string) {
+    async getDeudaPorProveedor(fromDate?: string, toDate?: string, organizationId?: string) {
         const where: any = {};
+        if (organizationId) where.organizationId = organizationId;
         const minDate = this.visibility.applyMinDate(
             fromDate ? new Date(fromDate) : undefined,
         );
@@ -98,8 +99,9 @@ export class ReportesService {
     /**
      * Reporte de flujo de caja
      */
-    async getFlujoCaja(fromDate?: string, toDate?: string) {
+    async getFlujoCaja(fromDate?: string, toDate?: string, organizationId?: string) {
         const where: any = {};
+        if (organizationId) where.bankAccount = { organizationId };
         const minDate = this.visibility.applyMinDate(
             fromDate ? new Date(fromDate) : undefined,
         );
@@ -187,7 +189,7 @@ export class ReportesService {
     /**
      * Reporte de facturas vencidas
      */
-    async getFacturasVencidas() {
+    async getFacturasVencidas(organizationId?: string) {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         const minDate = this.visibility.getVisibleFromDate();
@@ -197,6 +199,7 @@ export class ReportesService {
                 paymentStatus: {
                     in: ['UNPAID', 'PARTIAL'],
                 },
+                ...(organizationId && { organizationId }),
                 issuedDate: {
                     lte: thirtyDaysAgo,
                     ...(minDate && { gte: minDate }),
@@ -251,7 +254,7 @@ export class ReportesService {
     /**
      * Verifica el estado de match de una lista de folios para un mes/año dado
      */
-    async verificarFolios(folios: number[], year: number, month: number) {
+    async verificarFolios(folios: number[], year: number, month: number, organizationId?: string) {
         const uniqueFolios = [...new Set(folios)].sort((a, b) => a - b);
         const fromDate = new Date(year, month - 1, 1);
         const toDate = new Date(year, month, 1);
@@ -261,6 +264,7 @@ export class ReportesService {
             where: {
                 folio: { in: uniqueFolios },
                 issuedDate: { gte: fromDate, lt: toDate },
+                ...(organizationId && { organizationId }),
             },
             include: {
                 matches: {

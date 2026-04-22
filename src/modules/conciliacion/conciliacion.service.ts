@@ -333,10 +333,13 @@ export class ConciliacionService {
         }
     }
 
-    async getIngestedFiles() {
+    async getIngestedFiles(organizationId?: string) {
         // Fetch minimal data to group by file
+        const where: any = { origin: 'N8N_AUTOMATION' };
+        if (organizationId) where.bankAccount = { organizationId };
+        
         const txs = await this.prisma.bankTransaction.findMany({
-            where: { origin: 'N8N_AUTOMATION' },
+            where,
             select: {
                 id: true,
                 date: true,
@@ -378,7 +381,7 @@ export class ConciliacionService {
         return Object.values(groups);
     }
 
-    async getOverview(limit = 100, filename?: string) {
+    async getOverview(limit = 100, filename?: string, organizationId?: string) {
         const where: any = {};
 
         if (filename) {
@@ -387,6 +390,10 @@ export class ConciliacionService {
                 path: ['sourceFile'],
                 equals: filename
             };
+        }
+        
+        if (organizationId) {
+            where.bankAccount = { organizationId };
         }
 
         return this.prisma.bankTransaction.findMany({
@@ -540,21 +547,25 @@ export class ConciliacionService {
         this.logger.log(`Match ${status} for Tx ${tx.id} (score: ${candidate.score})`);
     }
 
-    async cleanAllMatches() {
-        this.logger.warn('⚠️ CLEANING ALL RECONCILIATION MATCHES');
+    async cleanAllMatches(organizationId?: string) {
+        this.logger.warn('⚠️ CLEANING ALL RECONCILIATION MATCHES' + (organizationId ? ` for org ${organizationId}` : ' (ALL ORGS!)'));
 
-        // Delete all matches
-        const result = await this.prisma.reconciliationMatch.deleteMany({});
+        const matchWhere: any = organizationId ? { organizationId } : {};
+        const txWhere: any = organizationId ? { bankAccount: { organizationId } } : {};
 
-        // Reset all transaction statuses to PENDING
+        // Delete matches
+        const result = await this.prisma.reconciliationMatch.deleteMany({ where: matchWhere });
+
+        // Reset transaction statuses to PENDING
         const updated = await this.prisma.bankTransaction.updateMany({
+            where: txWhere,
             data: { status: TransactionStatus.PENDING }
         });
 
         return {
             deletedMatches: result.count,
             transactionsReset: updated.count,
-            message: 'All matches deleted and transactions reset to PENDING'
+            message: 'Matches deleted and transactions reset to PENDING'
         };
     }
 }

@@ -48,8 +48,9 @@ export default function ConciliacionPage() {
         else setIsRefreshing(true);
         setError(null);
         try {
+            const { authFetch } = await import('@/lib/auth');
             const params = new URLSearchParams({ fromDate: dateRange.from, toDate: dateRange.to });
-            const response = await fetch(`${API}/conciliacion/dashboard?${params}`);
+            const response = await authFetch(`${API}/conciliacion/dashboard?${params}`);
             if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
             setDashboardData(await response.json());
             setLastUpdated(new Date().toLocaleTimeString('es-CL'));
@@ -67,7 +68,8 @@ export default function ConciliacionPage() {
         setIsRefreshing(true);
         setMatchProgress('Iniciando motor de conciliación...');
         try {
-            const response = await fetch(`${API}/conciliacion/run-auto-match`, {
+            const { authFetch } = await import('@/lib/auth');
+            const response = await authFetch(`${API}/conciliacion/run-auto-match`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fromDate: dateRange.from, toDate: dateRange.to, syncFromSources: true }),
@@ -344,7 +346,8 @@ function SuggestionsSection({ onRefresh }: { onRefresh: () => void }) {
 
     const load = useCallback(async () => {
         try {
-            const res = await fetch(`${API}/conciliacion/suggestions?status=PENDING`);
+            const { authFetch } = await import('@/lib/auth');
+            const res = await authFetch(`${API}/conciliacion/suggestions?status=PENDING`);
             if (res.ok) setSuggestions(await res.json());
         } catch { /* ignore */ }
         finally { setLoading(false); }
@@ -355,7 +358,8 @@ function SuggestionsSection({ onRefresh }: { onRefresh: () => void }) {
     const handleAccept = async (id: string) => {
         setBusy(id);
         try {
-            const res = await fetch(`${API}/conciliacion/suggestions/${id}/accept`, { method: 'POST' });
+            const { authFetch } = await import('@/lib/auth');
+            const res = await authFetch(`${API}/conciliacion/suggestions/${id}/accept`, { method: 'POST' });
             if (res.ok) { await load(); onRefresh(); }
         } finally { setBusy(null); }
     };
@@ -370,7 +374,8 @@ function SuggestionsSection({ onRefresh }: { onRefresh: () => void }) {
         setRejectModal({ id: '', open: false });
         setBusy(id);
         try {
-            const res = await fetch(`${API}/conciliacion/suggestions/${id}/reject`, {
+            const { authFetch } = await import('@/lib/auth');
+            const res = await authFetch(`${API}/conciliacion/suggestions/${id}/reject`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ reason: rejectReason || 'Rechazada por usuario' }),
@@ -639,7 +644,8 @@ function MatchCard({ match, onRefresh }: { match: any; onRefresh: () => void }) 
     const apiCall = async (url: string, opts: RequestInit) => {
         setBusy(true);
         try {
-            const res = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', ...opts.headers } });
+            const { authFetch } = await import('@/lib/auth');
+            const res = await authFetch(url, { ...opts, headers: { 'Content-Type': 'application/json', ...opts.headers } });
             if (!res.ok) return null;
             return await res.json();
         } finally { setBusy(false); }
@@ -850,8 +856,9 @@ function ManualMatchSection({ onRefresh }: { onRefresh: () => void }) {
         if (!txSearch.trim()) return;
         setTxLoading(true);
         try {
+            const { authFetch } = await import('@/lib/auth');
             const params = new URLSearchParams({ search: txSearch, statusFilter: 'PENDING', limit: '20' });
-            const res = await fetch(`${API}/transactions?${params}`);
+            const res = await authFetch(`${API}/transactions?${params}`);
             if (res.ok) {
                 const data = await res.json();
                 setPendingTxs(Array.isArray(data) ? data : data.data || []);
@@ -864,8 +871,9 @@ function ManualMatchSection({ onRefresh }: { onRefresh: () => void }) {
         if (!dteSearch.trim()) return;
         setDteLoading(true);
         try {
+            const { authFetch } = await import('@/lib/auth');
             const params = new URLSearchParams({ search: dteSearch, paymentStatus: 'UNPAID', limit: '20' });
-            const res = await fetch(`${API}/dtes?${params}`);
+            const res = await authFetch(`${API}/dtes?${params}`);
             if (res.ok) {
                 const data = await res.json();
                 setUnpaidDtes(Array.isArray(data) ? data : data.data || []);
@@ -878,7 +886,8 @@ function ManualMatchSection({ onRefresh }: { onRefresh: () => void }) {
         if (!selectedTx || !selectedDte) return;
         setCreating(true);
         try {
-            const res = await fetch(`${API}/conciliacion/matches/manual`, {
+            const { authFetch } = await import('@/lib/auth');
+            const res = await authFetch(`${API}/conciliacion/matches/manual`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ transactionId: selectedTx.id, dteId: selectedDte.id }),
