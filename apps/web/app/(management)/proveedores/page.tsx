@@ -90,7 +90,7 @@ export default function ProveedoresPage() {
         if (!newProviderName.trim()) return;
         setIsCreating(true);
         try {
-            const authFetch = (await import('@/lib/auth')).authFetch;
+            const authFetch = (await import('@/lib/api')).authFetch;
             const res = await authFetch(`${API_URL}/proveedores`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -156,7 +156,7 @@ export default function ProveedoresPage() {
                         onClick={async () => {
                         try {
                             const API_URL = getApiUrl();
-                            const authFetch = (await import('@/lib/auth')).authFetch;
+                            const authFetch = (await import('@/lib/api')).authFetch;
                             const res = await authFetch(`${API_URL}/proveedores/export/pago-masivo`);
                             if (!res.ok) throw new Error('Error al exportar');
                             const blob = await res.blob();

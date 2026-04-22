@@ -2593,7 +2593,7 @@ export default function CartolasPage() {
                                     setCorrectTypeSaving(true);
                                     try {
                                         const url = `${API_URL}/transactions/${txId}/type`;
-                                        const { authFetch } = await import('@/lib/auth');
+                                        const { authFetch } = await import('@/lib/api');
                                         const res = await authFetch(url, {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },
@@ -2631,7 +2631,7 @@ export default function CartolasPage() {
                                     setCorrectTypeSaving(true);
                                     try {
                                         const url = `${API_URL}/transactions/${txId}/type`;
-                                        const { authFetch: authFetch2 } = await import('@/lib/auth');
+                                        const { authFetch: authFetch2 } = await import('@/lib/api');
                                         const res = await authFetch2(url, {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },
@@ -2727,7 +2727,7 @@ export default function CartolasPage() {
                                     try {
                                         const finalAmount = correctAmountTx.type === 'DEBIT' ? -parsed : parsed;
                                         const url = `${API_URL}/transactions/${txId}/amount`;
-                                        const { authFetch: authFetch3 } = await import('@/lib/auth');
+                                        const { authFetch: authFetch3 } = await import('@/lib/api');
                                         const res = await authFetch3(url, {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },

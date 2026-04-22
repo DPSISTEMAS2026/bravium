@@ -115,7 +115,7 @@ export default function VerificarFoliosPage() {
         setError(null);
         setResult(null);
         try {
-            const authFetch = (await import('@/lib/auth')).authFetch;
+            const authFetch = (await import('@/lib/api')).authFetch;
             const res = await authFetch(`${API_URL}/reportes/verificar-folios`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

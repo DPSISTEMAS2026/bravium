@@ -150,7 +150,7 @@ export default function LibroResumenPage() {
     const handleExport = async () => {
         setExporting(true);
         try {
-            const { authFetch } = await import('@/lib/auth');
+            const { authFetch } = await import('@/lib/api');
             const params = new URLSearchParams({
                 fromDate: dateRange.from,
                 toDate: dateRange.to,
@@ -412,7 +412,7 @@ function TransactionRow({ tx, onUpdated }: { tx: BankTransaction; onUpdated: () 
     const handleSave = async () => {
         setSaving(true);
         try {
-            const { authFetch } = await import('@/lib/auth');
+            const { authFetch } = await import('@/lib/api');
             await authFetch(`${API}/transactions/${tx.id}/annotate`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },

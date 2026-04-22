@@ -68,7 +68,7 @@ export default function ReportesPage() {
 
     const exportToExcel = async () => {
         try {
-            const authFetch = (await import('@/lib/auth')).authFetch;
+            const authFetch = (await import('@/lib/api')).authFetch;
             const response = await authFetch(
                 `${getApiUrl()}/conciliacion/export/excel?type=all`
             );
