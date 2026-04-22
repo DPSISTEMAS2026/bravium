@@ -106,8 +106,8 @@ export default function FacturasPage() {
     });
     const [toDate, setToDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
     const [reviewModal, setReviewModal] = useState<{ dte: DTE; match: DTEMatch } | null>(null);
-    const [sortBy, setSortBy] = useState<string>('issuedDate');
-    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+    const [sortBy, setSortBy] = useState<string>('folio');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
     const [hasPdfFilter, setHasPdfFilter] = useState<string>('ALL');
     
     // Modal Match Manual desde Facturas

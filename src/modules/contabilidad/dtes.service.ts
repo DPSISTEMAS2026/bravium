@@ -156,7 +156,7 @@ export class DtesService {
         const page = filters.page ? parseInt(filters.page.toString(), 10) : undefined;
         const limit = filters.limit ? parseInt(filters.limit.toString(), 10) : undefined;
 
-        let orderBy: any = { issuedDate: 'asc' };
+        let orderBy: any = { folio: 'desc' };
         if (filters.sortBy) {
             const order = filters.sortOrder || 'asc';
             if (filters.sortBy === 'folio') orderBy = { folio: order };
