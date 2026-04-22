@@ -224,35 +224,10 @@ export class SchedulerService implements OnModuleInit {
     private async processTenantAutomation(org: any) {
         // 0. Extraer archivos de Banca desde Google Drive
         const folderId = org.googleDriveFolderId;
+        // ⛔ DESACTIVADO: Google Drive Ingest — Fintoc cubre la ingesta de transacciones bancarias.
+        // Se desactiva para evitar duplicidad de datos. Reactivar cuando se necesite.
         if (folderId) {
-            this.logger.log(`🏦 [${org.slug}] Pulling bank statements from folder: ${folderId}`);
-            try {
-                const driveFiles = await this.googleDriveService.downloadFolderContents(folderId);
-
-                let processed = 0, skipped = 0;
-                for (const file of driveFiles) {
-                    const alreadyDone = await this.driveIngestService.isFileAlreadyProcessed(file.name);
-                    if (alreadyDone) {
-                        skipped++;
-                        continue;
-                    }
-                    this.logger.log(`🧬 [${org.slug}] Ingesting NEW file: ${file.name}`);
-                    const bankInfo = this.detectBankFromFilename(file.name);
-                    await this.driveIngestService.processDriveFile({
-                        bank: bankInfo.bank,
-                        account: bankInfo.account,
-                        fileContentBase64: file.contentBase64,
-                        organizationId: org.id,
-                        metadata: { filename: file.name, source: 'GOOGLE_DRIVE_CRON', mimeType: file.mimeType }
-                    });
-                    processed++;
-                }
-                this.logger.log(`📊 [${org.slug}] Drive sync: ${processed} nuevos, ${skipped} ya existentes de ${driveFiles.length} total`);
-            } catch (e) {
-                this.logger.error(`[${org.slug}] Error processing Google Drive`, e);
-            }
-        } else {
-            this.logger.log(`[${org.slug}] No Google Drive folder configured.`);
+            this.logger.log(`⏭️ [${org.slug}] Google Drive ingest DISABLED — skipping folder: ${folderId}`);
         }
 
         // 0.5. Sync Bank via Fintoc API

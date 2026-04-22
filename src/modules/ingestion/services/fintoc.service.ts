@@ -120,7 +120,24 @@ export class FintocService {
                 continue;
             }
 
+            // Fallback dedup: Fintoc genera IDs diferentes para el mismo movimiento en cada paginación.
+            // Verificar por (cuenta + fecha + monto + descripción) para evitar duplicados.
             const rawDateStr = mov.post_date || mov.created_at;
+            const checkDate = rawDateStr ? new Date(rawDateStr) : new Date();
+            const duplicateByContent = await this.prisma.bankTransaction.findFirst({
+                where: {
+                    bankAccountId: bankAccount.id,
+                    amount: mov.amount,
+                    description: mov.description || 'Movimiento Fintoc',
+                    date: checkDate,
+                }
+            });
+
+            if (duplicateByContent) {
+                existing++;
+                continue;
+            }
+
             let finalDate = new Date(rawDateStr);
             // Fix timezone discrepancy for dates retrieved at midnight UTC
             if (rawDateStr && typeof rawDateStr === 'string' && rawDateStr.includes('T00:00:00Z')) {
