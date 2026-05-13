@@ -42,14 +42,14 @@ export class MatchSuggestionsService {
                     ? await this.prisma.bankTransaction.findMany({
                         where: { 
                             id: { in: txIds },
-                            status: { in: ['PENDING', 'PARTIALLY_MATCHED', 'UNMATCHED'] }
+                            status: { in: ['PENDING', 'PARTIALLY_MATCHED'] }  // UNMATCHED = revisado, no mostrar
                         },
                         select: { id: true, date: true, description: true, amount: true, type: true, status: true },
                         orderBy: { date: 'asc' },
                     })
                     : [];
 
-                // Si alguna TX ya fue MATCHED (confirmada definitivamente), la sugerencia es obsoleta
+                // Si alguna TX ya fue MATCHED o UNMATCHED (cerrada), la sugerencia es obsoleta
                 if (transactions.length !== txIds.length) {
 
                     return null;
