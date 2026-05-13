@@ -25,7 +25,14 @@ async function main() {
     console.log(`✅ Reset: ${resetPartial.count} PARTIALLY_MATCHED → PENDING`);
     console.log(`   (UNMATCHED no se tocan — tienen anotación manual)`);
 
-    // 3. Ejecutar motor (desde 2026-01-01, fijo en el engine)
+    // 3. Eliminar sugerencias PENDING (SUM/SPLIT) — se regeneran con el motor actualizado
+    const deletedSug = await p.matchSuggestion.deleteMany({
+        where: { status: 'PENDING', organizationId: org.id }
+    });
+    console.log(`✅ ${deletedSug.count} sugerencias PENDING eliminadas (se regenerarán)`);
+
+
+    // 4. Ejecutar motor (desde 2026-01-01, fijo en el engine)
     console.log('\nEjecutando motor canónico (desde 2026-01-01)...');
     const engine = new ReconciliationEngine(p);
     const result = await engine.run({
