@@ -17,6 +17,8 @@ import { SumMatchStrategy } from './strategies/sum-match.strategy';
 import { SplitPaymentMatchStrategy } from './strategies/split-payment-match.strategy';
 import { MatchingStrategy } from './domain/matching.interfaces';
 import { RulesEngineService } from './services/rules-engine.service';
+import { ReconciliationEngine } from './engine/reconciliation.engine';
+
 
 @Injectable()
 export class ConciliacionService {
@@ -55,294 +57,51 @@ export class ConciliacionService {
 
         this.isRunning = true;
         this.fileLog(`STARTING: cycle for ${fromDate} to ${toDate}`);
-        this.logger.log('Starting Reconciliation Cycle (Optimized)...');
-
-        // Solo los CONFIRMED bloquean; consideramos PENDING y PARTIALLY_MATCHED (DRAFT) para re-buscar la mejor opción
-        const whereClause: any = {
-            status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
-            type: TransactionType.DEBIT // Excluir Abonos para no matchearlos con facturas
-        };
-        
-        if (organizationId) {
-            whereClause.bankAccount = { organizationId };
-        }
-        const minDate = this.visibility.applyMinDate(
-            fromDate ? new Date(fromDate) : undefined,
-        );
-        if (minDate || toDate) {
-            whereClause.date = {};
-            if (minDate) whereClause.date.gte = minDate;
-            if (toDate) whereClause.date.lte = new Date(toDate);
-        }
-
-        // Incluir DTEs desde N días antes del inicio del período (ej. movimientos ene 2026 pueden matchear facturas nov/dic 2025)
-        const lookbackRaw = process.env.MATCH_DTE_LOOKBACK_DAYS;
-        const dteLookbackDays = lookbackRaw && Number(lookbackRaw) >= 0 ? Number(lookbackRaw) : 90;
-        const dteMinDate = minDate
-            ? new Date(minDate.getTime() - dteLookbackDays * 24 * 60 * 60 * 1000)
-            : undefined;
+        this.logger.log('Starting Reconciliation Cycle (Cascade Engine v2)...');
 
         try {
-            // 1. Fetch EVERYTHING needed once to avoid N+1 queries
-            this.fileLog('FETCHING: Transactions, DTEs and Payments...');
-            const [pendingTransactions, allUnpaidDtes, allRecentPayments, allProviders] = await Promise.all([
-                this.prisma.bankTransaction.findMany({
-                    where: whereClause,
-                    orderBy: { date: 'asc' },
-                    include: { bankAccount: { select: { bankName: true, accountNumber: true, organizationId: true } } },
-                }),
-                this.prisma.dTE.findMany({
-                    where: {
-                        paymentStatus: 'UNPAID',
-                        ...(organizationId && { provider: { organizationId } }),
-                        ...(dteMinDate && { issuedDate: { gte: dteMinDate } }),
-                    },
-                    include: { provider: { select: { name: true, rut: true } } }
-                }),
-                this.prisma.payment.findMany({
-                    where: {
-                        ...(organizationId && { provider: { organizationId } }),
-                        paymentDate: {
-                            gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)
-                        }
-                    }
-                }),
-                this.prisma.provider.findMany({
-                    where: organizationId ? { organizationId } : {},
-                    select: { id: true, name: true, rut: true },
-                }),
-            ]);
-
-            const byAccount = new Map<string, number>();
-            for (const tx of pendingTransactions) {
-                const key = `${tx.bankAccount?.bankName ?? '?'} - ${tx.bankAccount?.accountNumber ?? '?'}`;
-                byAccount.set(key, (byAccount.get(key) ?? 0) + 1);
-            }
-            this.fileLog(`FOUND: ${pendingTransactions.length} pending tx, ${allUnpaidDtes.length} unpaid DTEs, ${allRecentPayments.length} payments.`);
-            this.fileLog(`BY ACCOUNT: ${[...byAccount.entries()].map(([k, n]) => `${k}=${n}`).join(', ')}`);
-
-            // Quitar DRAFT previos para que el motor vuelva a asignar la mejor opción (solo CONFIRMED bloquean)
-            const txIds = pendingTransactions.map((t) => t.id);
-            const deletedDraft = await this.prisma.reconciliationMatch.deleteMany({
-                where: {
-                    transactionId: { in: txIds },
-                    status: MatchStatus.DRAFT,
-                },
-            });
-            if (deletedDraft.count > 0) {
-                this.fileLog(`CLEARED ${deletedDraft.count} DRAFT matches to re-run best assignment.`);
+            // Resolver organización
+            let resolvedOrgId = organizationId;
+            if (!resolvedOrgId) {
+                const org = await this.prisma.organization.findFirst({ where: { isActive: true } });
+                if (!org) throw new Error('No se encontró organización activa.');
+                resolvedOrgId = org.id;
             }
 
-            const usedDteIds = new Set<string>();
-            const usedTxIds = new Set<string>();
-            const usedPaymentIds = new Set<string>();
-            let matchCount = 0;
+            // Calcular ventana de búsqueda desde fromDate
+            const minDate = this.visibility.applyMinDate(fromDate ? new Date(fromDate) : undefined);
+            const lookbackDays = minDate
+                ? Math.ceil((Date.now() - minDate.getTime()) / 86400000)
+                : 120;
 
-            // ================================================================
-            // PASS 0: RUT-FIRST CASCADE
-            // Si la TX tiene providerRut en metadata → buscar proveedor exacto
-            // → intentar 1:1 (monto+fecha) luego 1:N (combinación de DTEs)
-            // ================================================================
-            this.fileLog('PASS 0 (RUT-First): iniciando cascade por providerRut...');
-            const pass0Count = await this.passRutFirst(
-                pendingTransactions, allUnpaidDtes, allProviders,
-                usedTxIds, usedDteIds, organizationId
-            );
-            matchCount += pass0Count;
-            this.fileLog(`PASS 0 completado: ${pass0Count} DRAFTs creados via RUT-First.`);
-
-            // === 1.5 Auto-Amortizar Notas de Crédito (NC) contra Facturas de igual monto ===
-            this.fileLog('AUTO-AMORTIZING: 1:1 Credit Notes against Invoices...');
-            
-            // Consultar Notas de Crédito (tipo 61) directamente para traer también las que estén 'PAID'
-            const creditNotes = await this.prisma.dTE.findMany({
-                where: {
-                    type: 61,
-                    ...(organizationId && { provider: { organizationId } }),
-                    ...(dteMinDate && { issuedDate: { gte: dteMinDate } }),
-                }
-            });
-            const invoices = allUnpaidDtes.filter(d => d.type !== 61);
-
-            for (const cn of creditNotes) {
-                const match = invoices.find(inv => 
-                    inv.providerId === cn.providerId && 
-                    inv.totalAmount === cn.totalAmount && 
-                    !usedDteIds.has(inv.id)
-                );
-                if (match) {
-                    await this.prisma.$transaction(async (prisma) => {
-                        await prisma.dTE.update({
-                            where: { id: match.id },
-                            data: { 
-                                paymentStatus: 'PAID', 
-                                outstandingAmount: 0,
-                                metadata: {
-                                    ...(match.metadata as any || {}),
-                                    reconciliationComment: `Neteado contra NC ${cn.folio}`
-                                }
-                            }
-                        });
-                        // Asegurar que ambas estén PAID
-                        await prisma.dTE.update({
-                            where: { id: cn.id },
-                            data: { 
-                                paymentStatus: 'PAID', 
-                                outstandingAmount: 0,
-                                metadata: {
-                                    ...(cn.metadata as any || {}),
-                                    reconciliationComment: `Amortizado contra Factura ${match.folio}`
-                                }
-                            }
-                        });
-                    });
-                    usedDteIds.add(match.id);
-                    usedDteIds.add(cn.id);
-                    this.fileLog(`NC AUTONULLED: NC ${cn.folio} nulled Invoice ${match.folio} (Amt: ${cn.totalAmount})`);
-                }
-            }
-
-            // ================================================================
-            // PASS 1: MONTO EXACTO 1:1 (sin filtro de proveedor)
-            // Cascade: monto exacto primero → dentro del mismo tier, fecha más cercana gana
-            // ================================================================
-            type Pair = { tx: BankTransaction; dte: DTE & { provider?: { name: string; rut?: string } | null }; score: number; reason: string; strategyName: string; dateDiffDays: number; amountDiff: number };
-            const allPairs: Pair[] = [];
-
-            for (const tx of pendingTransactions) {
-                if (usedTxIds.has(tx.id)) continue; // ya matcheado en Pass 0
-                const result = await this.getBestCandidatesForTransaction(tx, allRecentPayments, allUnpaidDtes);
-                if (!result || result.candidates.length === 0) continue;
-                const strategyName = result.strategyName;
-                for (const c of result.candidates) {
-                    if (!c.dte) continue;
-                    if (usedDteIds.has(c.dte.id)) continue;
-                    const dateDiffDays = Math.abs(Math.round((new Date(tx.date).getTime() - new Date(c.dte.issuedDate).getTime()) / 86400000));
-                    const amountDiff = Math.abs(Math.abs(tx.amount) - Math.abs(c.dte.totalAmount));
-                    allPairs.push({ tx, dte: c.dte, score: c.score, reason: c.reason, strategyName, dateDiffDays, amountDiff });
-                }
-            }
-
-            // CASCADA DE SORT:
-            // Tier 0 = monto exacto (amountDiff = 0)  → prioridad máxima
-            // Tier 1 = monto dentro de tolerancia      → prioridad media
-            // Dentro de cada tier: fecha más cercana gana; score como desempate final
-            allPairs.sort((a, b) => {
-                const aTier = a.amountDiff === 0 ? 0 : 1;
-                const bTier = b.amountDiff === 0 ? 0 : 1;
-                if (aTier !== bTier) return aTier - bTier;
-                if (a.dateDiffDays !== b.dateDiffDays) return a.dateDiffDays - b.dateDiffDays;
-                return b.score - a.score;
+            // Motor canónico único
+            const engine = new ReconciliationEngine(this.prisma);
+            const result = await engine.run({
+                organizationId: resolvedOrgId,
+                dryRun: false,
+                lookbackDays,
+                amountTolerance: 1000,
+                dateWindowDays: 90,
             });
 
-            for (const pair of allPairs) {
-                if (usedTxIds.has(pair.tx.id) || usedDteIds.has(pair.dte.id)) continue;
-                if (pair.score >= 0.55) {
-                    await this.createMatch(pair.tx, { dte: pair.dte, score: pair.score, reason: pair.reason }, pair.strategyName, MatchStatus.DRAFT);
-                    matchCount++;
-                    usedTxIds.add(pair.tx.id);
-                    usedDteIds.add(pair.dte.id);
-                    this.fileLog(`PASS1 DRAFT (amt±${pair.amountDiff} ${pair.dateDiffDays}d): ${pair.tx.description} | ${pair.tx.amount} -> ${pair.reason}`);
-                }
-            }
-
-            // Segunda pasada: matches contra Payment (1:1, sin conflicto de “quién se queda el DTE”)
-            for (const tx of pendingTransactions) {
-                if (usedTxIds.has(tx.id)) continue;
-                const currentDtes = allUnpaidDtes.filter(d => !usedDteIds.has(d.id));
-                const result = await this.tryMatchTransaction(tx, allRecentPayments, currentDtes);
-                if (result) {
-                    this.fileLog(`MATCH (2ª pasada): ${tx.description} | ${tx.amount} -> ${result.reason}`);
-                    matchCount++;
-                    usedTxIds.add(tx.id);
-                    if (result.dteId) usedDteIds.add(result.dteId);
-                    if (result.paymentId) usedPaymentIds.add(result.paymentId);
-                }
-            }
-
-            // === Segunda pasada: SumMatchStrategy (N:1) === (mismo rango de fechas que la primera, con visibility)
-            let suggestionsCount = 0;
-            let sumAutoConfirmed = 0;
-            try {
-                const sumWhere: any = {
-                    status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
-                    type: TransactionType.DEBIT
-                };
-                if (organizationId) sumWhere.bankAccount = { organizationId };
-                if (minDate || toDate) {
-                    sumWhere.date = {};
-                    if (minDate) sumWhere.date.gte = minDate;
-                    if (toDate) sumWhere.date.lte = new Date(toDate);
-                }
-                const remainingTx = await this.prisma.bankTransaction.findMany({
-                    where: sumWhere,
-                });
-                const remainingDtes = await this.prisma.dTE.findMany({
-                    where: {
-                        paymentStatus: 'UNPAID',
-                        ...(organizationId && { provider: { organizationId } }),
-                    },
-                    include: { provider: { select: { name: true } } },
-                });
-                const suggestions = await this.sumMatchStrategy.findSumSuggestions(remainingTx, remainingDtes);
-                const sumResult = await this.sumMatchStrategy.persistSuggestions(suggestions, organizationId);
-                suggestionsCount = sumResult.suggestions;
-                sumAutoConfirmed = sumResult.autoConfirmed;
-                this.fileLog(`SUM MATCH: ${sumAutoConfirmed} auto-confirmed, ${suggestionsCount} suggestions created.`);
-            } catch (sumErr) {
-                this.fileLog(`SUM STRATEGY ERROR: ${sumErr.message}`);
-                this.logger.warn(`SumMatchStrategy error: ${sumErr.message}`);
-            }
-
-            // === Tercera pasada: SplitPaymentMatch (1:N) === (mismo rango de fechas)
-            let splitSuggestions = 0;
-            let splitAutoConfirmed = 0;
-            try {
-                const splitWhere: any = {
-                    status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
-                    type: TransactionType.DEBIT
-                };
-                if (organizationId) splitWhere.bankAccount = { organizationId };
-                if (minDate || toDate) {
-                    splitWhere.date = {};
-                    if (minDate) splitWhere.date.gte = minDate;
-                    if (toDate) splitWhere.date.lte = new Date(toDate);
-                }
-                const remainingTx2 = await this.prisma.bankTransaction.findMany({
-                    where: splitWhere,
-                });
-                const remainingDtes2 = await this.prisma.dTE.findMany({
-                    where: {
-                        paymentStatus: 'UNPAID',
-                        ...(organizationId && { provider: { organizationId } }),
-                    },
-                    include: { provider: { select: { name: true } } },
-                });
-                const splits = await this.splitPaymentStrategy.findSplitPaymentSuggestions(remainingTx2, remainingDtes2);
-                const splitResult = await this.splitPaymentStrategy.persistSuggestions(splits, organizationId);
-                splitSuggestions = splitResult.suggestions;
-                splitAutoConfirmed = splitResult.autoConfirmed;
-                this.fileLog(`SPLIT PAYMENT: ${splitAutoConfirmed} auto-confirmed, ${splitSuggestions} suggestions created.`);
-            } catch (splitErr) {
-                this.fileLog(`SPLIT STRATEGY ERROR: ${splitErr.message}`);
-                this.logger.warn(`SplitPaymentMatchStrategy error: ${splitErr.message}`);
-            }
-
-            // === Cuarta pasada (Opcional): Auto-Categorización de Gastos Fijos ===
-            const rulesResult = await this.rulesEngine.executeAutoCategoryRules(organizationId);
+            // Auto-categorización complementaria por palabras clave
+            const rulesResult = await this.rulesEngine.executeAutoCategoryRules(resolvedOrgId);
             if (rulesResult.categorized > 0) {
-                this.fileLog(`AUTO-CATEGORIZED: ${rulesResult.categorized} pending transactions via rule engine.`);
+                this.fileLog(`AUTO-CATEGORIZED: ${rulesResult.categorized} via rules engine.`);
             }
 
-            const totalAutoMatches = matchCount + sumAutoConfirmed + splitAutoConfirmed;
-            const totalSuggestions = suggestionsCount + splitSuggestions;
-            this.fileLog(`COMPLETED: ${totalAutoMatches} total auto-matches, ${totalSuggestions} suggestions. Pass0(RUT)=${pass0Count}, Pass1(Amt)=${matchCount - pass0Count}. Auto-Categorized: ${rulesResult.categorized}`);
+            this.fileLog(
+                `COMPLETED: P0=${result.pass0Rut} P1=${result.pass1Exact} ` +
+                `P2=${result.pass2RutAmount} P3=${result.pass3Alias} P4=${result.pass4Fuzzy} ` +
+                `SUM=${result.pass5Sum} SPLIT=${result.pass6Split} Rules=${rulesResult.categorized}`
+            );
+
             return {
-                processed: pendingTransactions.length,
-                matches: totalAutoMatches,
-                suggestions: totalSuggestions,
+                processed: result.processed,
+                matches: result.totalDrafts,
+                suggestions: result.totalSuggestions,
                 autoCategorized: rulesResult.categorized,
-                detail: { pass0Rut: pass0Count, pass1Amount: matchCount - pass0Count, sumAuto: sumAutoConfirmed, splitAuto: splitAutoConfirmed, sumSuggestions: suggestionsCount, splitSuggestions },
+                detail: result,
             };
         } catch (err) {
             this.fileLog(`ERROR: ${err.message}`);
@@ -352,6 +111,7 @@ export class ConciliacionService {
             this.isRunning = false;
         }
     }
+
 
     async getIngestedFiles(organizationId?: string) {
         // Fetch minimal data to group by file
@@ -573,7 +333,10 @@ export class ConciliacionService {
         const matchWhere: any = organizationId ? { organizationId } : {};
         const txWhere: any = organizationId ? { bankAccount: { organizationId } } : {};
 
+        // Delete matches
         const result = await this.prisma.reconciliationMatch.deleteMany({ where: matchWhere });
+
+        // Reset transaction statuses to PENDING
         const updated = await this.prisma.bankTransaction.updateMany({
             where: txWhere,
             data: { status: TransactionStatus.PENDING }
@@ -585,112 +348,4 @@ export class ConciliacionService {
             message: 'Matches deleted and transactions reset to PENDING'
         };
     }
-
-    // ================================================================
-    // PASS 0: RUT-FIRST — busca proveedor por RUT, luego 1:1 / 1:N
-    // ================================================================
-    private async passRutFirst(
-        pendingTxs: any[],
-        allUnpaidDtes: any[],
-        allProviders: { id: string; name: string; rut: string | null }[],
-        usedTxIds: Set<string>,
-        usedDteIds: Set<string>,
-        organizationId?: string,
-    ): Promise<number> {
-        const AMOUNT_TOLERANCE = 1000;
-        const MAX_COMBO = 5;
-        let matchCount = 0;
-
-        for (const tx of pendingTxs) {
-            if (usedTxIds.has(tx.id)) continue;
-
-            const providerRut: string | undefined = (tx.metadata as any)?.providerRut;
-            if (!providerRut) continue;
-
-            // Normalizar RUT: quitar puntos, espacios — conservar dígito verificador
-            const cleanTxRut = providerRut.replace(/[.\s]/g, '').toUpperCase();
-
-            // Buscar proveedor cuyo RUT normalizado coincida
-            const provider = allProviders.find(p => {
-                if (!p.rut) return false;
-                const cleanProv = p.rut.replace(/[.\s]/g, '').toUpperCase();
-                return cleanProv === cleanTxRut;
-            });
-
-            if (!provider) {
-                this.fileLog(`PASS0: RUT ${providerRut} no encontrado en proveedores.`);
-                continue;
-            }
-
-            // DTEs disponibles de ese proveedor
-            const provDtes = allUnpaidDtes.filter(d => d.providerId === provider.id && !usedDteIds.has(d.id));
-            if (provDtes.length === 0) {
-                this.fileLog(`PASS0: ${provider.name} (${providerRut}) no tiene DTEs pendientes.`);
-                continue;
-            }
-
-            const txAbs = Math.abs(tx.amount);
-
-            // --- Sub-pass A: 1:1 ---
-            const candidates = provDtes
-                .map(d => ({
-                    dte: d,
-                    amountDiff: Math.abs(Math.abs(d.totalAmount) - txAbs),
-                    dateDiffDays: Math.abs(new Date(tx.date).getTime() - new Date(d.issuedDate).getTime()) / 86400000,
-                }))
-                .filter(c => c.amountDiff <= AMOUNT_TOLERANCE)
-                .sort((a, b) => a.amountDiff - b.amountDiff || a.dateDiffDays - b.dateDiffDays);
-
-            if (candidates.length > 0) {
-                const best = candidates[0];
-                const score = best.amountDiff === 0 ? 0.95 : 0.85;
-                const reason = `[P0-RUT 1:1] ${provider.name} (${providerRut}) | ±$${best.amountDiff} | ${Math.round(best.dateDiffDays)}d`;
-                await this.createMatch(tx, { dte: best.dte, score, reason }, 'Cascade-RutFirst-1:1', MatchStatus.DRAFT);
-                usedTxIds.add(tx.id);
-                usedDteIds.add(best.dte.id);
-                matchCount++;
-                this.fileLog(`PASS0 1:1: TX ${tx.amount} -> DTE ${best.dte.totalAmount} | ${provider.name}`);
-                continue;
-            }
-
-            // --- Sub-pass B: 1:N (TX paga varios DTEs del mismo proveedor) ---
-            const smallerDtes = provDtes.filter(d => Math.abs(d.totalAmount) < txAbs - AMOUNT_TOLERANCE);
-            if (smallerDtes.length >= 2) {
-                const amounts = smallerDtes.map(d => Math.abs(d.totalAmount));
-                const comboIdx = this.findSubsetSum(amounts, txAbs, AMOUNT_TOLERANCE, MAX_COMBO);
-                if (comboIdx) {
-                    const comboDtes = comboIdx.map(i => smallerDtes[i]);
-                    const total = comboDtes.reduce((s, d) => s + Math.abs(d.totalAmount), 0);
-                    for (const dte of comboDtes) {
-                        const daysDiff = Math.round(Math.abs(new Date(tx.date).getTime() - new Date(dte.issuedDate).getTime()) / 86400000);
-                        const reason = `[P0-RUT 1:N] ${provider.name} (${providerRut}) | ${comboDtes.length} DTEs = $${total.toLocaleString('es-CL')} | ${daysDiff}d`;
-                        await this.createMatch(tx, { dte, score: 0.88, reason }, 'Cascade-RutFirst-1:N', MatchStatus.DRAFT);
-                        usedDteIds.add(dte.id);
-                    }
-                    usedTxIds.add(tx.id);
-                    matchCount += comboDtes.length;
-                    this.fileLog(`PASS0 1:N: TX ${tx.amount} -> ${comboDtes.length} DTEs suman $${total} | ${provider.name}`);
-                }
-            }
-        }
-
-        return matchCount;
-    }
-
-    // Subset sum: retorna índices de amounts[] que sumen ≈ target (±tolerance)
-    private findSubsetSum(amounts: number[], target: number, tolerance: number, maxLen: number): number[] | null {
-        const search = (start: number, chosen: number[], current: number): number[] | null => {
-            if (chosen.length >= 2 && Math.abs(current - target) <= tolerance) return [...chosen];
-            if (chosen.length >= maxLen || current > target + tolerance) return null;
-            for (let i = start; i < amounts.length; i++) {
-                chosen.push(i);
-                const result = search(i + 1, chosen, current + amounts[i]);
-                if (result) return result;
-                chosen.pop();
-            }
-            return null;
-        };
-        return search(0, [], 0);
-    }
 }
-
