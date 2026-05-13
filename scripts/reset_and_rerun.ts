@@ -1,6 +1,7 @@
 /**
  * reset_and_rerun.ts
- * Limpia DRAFTs, resetea UNMATCHED y re-ejecuta el motor con lookback de 180 días.
+ * Limpia DRAFTs, resetea solo PARTIALLY_MATCHED y re-ejecuta el motor (desde 2026-01-01).
+ * NO toca UNMATCHED — esas fueron revisadas manualmente y no deben volver al motor.
  */
 import { PrismaClient } from '@prisma/client';
 import { ReconciliationEngine } from '../src/modules/conciliacion/engine/reconciliation.engine';
@@ -8,7 +9,7 @@ import { ReconciliationEngine } from '../src/modules/conciliacion/engine/reconci
 const p = new PrismaClient();
 
 async function main() {
-    console.log('=== RESET + RE-RUN (180d) ===\n');
+    console.log('=== RESET + RE-RUN (2026) ===\n');
     const org = await p.organization.findFirst({ where: { isActive: true } });
     if (!org) throw new Error('No hay organización activa');
 
@@ -16,24 +17,20 @@ async function main() {
     const deleted = await p.reconciliationMatch.deleteMany({ where: { status: 'DRAFT', organizationId: org.id } });
     console.log(`✅ ${deleted.count} DRAFTs eliminados`);
 
-    // 2. Reset PARTIALLY_MATCHED y UNMATCHED a PENDING (no tocar CONFIRMED ni MATCHED)
+    // 2. Reset SOLO PARTIALLY_MATCHED → PENDING (NO tocar UNMATCHED: tienen anotación manual)
     const resetPartial = await p.bankTransaction.updateMany({
         where: { status: 'PARTIALLY_MATCHED', bankAccount: { organizationId: org.id } },
         data: { status: 'PENDING' }
     });
-    const resetUnmatched = await p.bankTransaction.updateMany({
-        where: { status: 'UNMATCHED', bankAccount: { organizationId: org.id } },
-        data: { status: 'PENDING' }
-    });
-    console.log(`✅ Reset: ${resetPartial.count} PARTIALLY_MATCHED + ${resetUnmatched.count} UNMATCHED → PENDING`);
+    console.log(`✅ Reset: ${resetPartial.count} PARTIALLY_MATCHED → PENDING`);
+    console.log(`   (UNMATCHED no se tocan — tienen anotación manual)`);
 
-    // 3. Ejecutar motor (180 días lookback por defecto)
-    console.log('\nEjecutando motor canónico (180d)...');
+    // 3. Ejecutar motor (desde 2026-01-01, fijo en el engine)
+    console.log('\nEjecutando motor canónico (desde 2026-01-01)...');
     const engine = new ReconciliationEngine(p);
     const result = await engine.run({
         organizationId: org.id,
         dryRun: false,
-        lookbackDays: 180,
         amountTolerance: 1000,
         dateWindowDays: 90,
     });
@@ -45,7 +42,7 @@ async function main() {
     console.log(`  ✅ P2  RUT+Monto:   ${result.pass2RutAmount}`);
     console.log(`  ✅ P3  Alias:        ${result.pass3Alias}`);
     console.log(`  ✅ P4  FuzzyName:   ${result.pass4Fuzzy}`);
-    console.log(`  💡 P5  SUM N:1:     ${result.pass5Sum}`);
+    console.log(`  💡 P5  SUM N:M:     ${result.pass5Sum}`);
     console.log(`  💡 P6  SPLIT 1:N:   ${result.pass6Split}`);
     console.log(`  ─────────────────────────────────`);
     console.log(`  ✅ Total DRAFTs:    ${result.totalDrafts}`);

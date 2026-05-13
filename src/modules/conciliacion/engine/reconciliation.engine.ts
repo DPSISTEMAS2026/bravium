@@ -122,13 +122,12 @@ export class ReconciliationEngine {
         const {
             organizationId,
             dryRun = false,
-            lookbackDays = 180,
             amountTolerance = 1000,
             dateWindowDays = 90,
         } = opts;
 
-        const lookbackDate = new Date();
-        lookbackDate.setDate(lookbackDate.getDate() - lookbackDays);
+        // Siempre desde el 1 de enero 2026 — KPIs y conciliacion son anuales
+        const lookbackDate = new Date('2026-01-01T00:00:00.000Z');
 
         // ── 1. Cargar datos ──────────────────────────────────────────────────
         const [pendingTxs, unpaidDtes, allProviders, providerAliases, autoCatRules] = await Promise.all([
@@ -452,44 +451,74 @@ export class ReconciliationEngine {
             txProviderIdCache.set(tx.id, resolvedId);
         }
 
+        // SUM tolerance 2% (antes 1%) y hasta 3 TXs (antes solo 2)
+        const SUM_TOLERANCE = 0.02;
+
         for (const dte of remDtes) {
             if (usedDteIds.has(dte.id)) continue;
             const target = dte.totalAmount;
             const dteProvId = dte.provider?.id || null;
 
-            for (let i = 0; i < remTxs.length; i++) {
-                if (usedTxIds.has(remTxs[i].id)) continue;
-                const txiProvId = txProviderIdCache.get(remTxs[i].id);
+            // Candidatas: solo TXs no usadas cuyo proveedor coincida (o es desconocido)
+            const candidates = remTxs.filter(tx => {
+                if (usedTxIds.has(tx.id)) return false;
+                const txProvId = txProviderIdCache.get(tx.id);
+                if (txProvId && dteProvId && txProvId !== dteProvId) return false;
+                return true;
+            });
 
-                // Si la TX tiene proveedor identificado y no coincide con el DTE → skip
-                if (txiProvId && dteProvId && txiProvId !== dteProvId) continue;
+            let found = false;
 
-                const a = Math.abs(remTxs[i].amount);
-                for (let j = i + 1; j < remTxs.length; j++) {
-                    if (usedTxIds.has(remTxs[j].id)) continue;
-                    const txjProvId = txProviderIdCache.get(remTxs[j].id);
-
-                    // Si la TX j tiene proveedor identificado y no coincide → skip
-                    if (txjProvId && dteProvId && txjProvId !== dteProvId) continue;
-
-                    // Si las dos TXs tienen proveedores distintos entre sí → skip
+            // ── Intento 1: par de 2 TXs ──────────────────────────────────
+            outer2:
+            for (let i = 0; i < candidates.length && !found; i++) {
+                const a = Math.abs(candidates[i].amount);
+                for (let j = i + 1; j < candidates.length && !found; j++) {
+                    const txjProvId = txProviderIdCache.get(candidates[j].id);
+                    const txiProvId = txProviderIdCache.get(candidates[i].id);
                     if (txiProvId && txjProvId && txiProvId !== txjProvId) continue;
-
-                    const b = Math.abs(remTxs[j].amount);
-                    if (Math.abs(a + b - target) / target > 0.01) continue;
-                    const dd1 = dateDiffDays(remTxs[i].date, dte.issuedDate);
-                    const dd2 = dateDiffDays(remTxs[j].date, dte.issuedDate);
+                    const b = Math.abs(candidates[j].amount);
+                    if (Math.abs(a + b - target) / target > SUM_TOLERANCE) continue;
+                    const dd1 = dateDiffDays(candidates[i].date, dte.issuedDate);
+                    const dd2 = dateDiffDays(candidates[j].date, dte.issuedDate);
                     if (dd1 > 60 || dd2 > 60) continue;
-
-                    const reason = `[P5-SUM] $${a.toLocaleString('es-CL')}+$${b.toLocaleString('es-CL')}=$${(a+b).toLocaleString('es-CL')} ≈ F${dte.folio} (${dte.provider?.name || 'N/A'})`;
-                    await createSuggestion('SUM', dte.id, [remTxs[i].id, remTxs[j].id], [], a + b, 0.78, reason);
-                    usedTxIds.add(remTxs[i].id);
-                    usedTxIds.add(remTxs[j].id);
-                    usedDteIds.add(dte.id);
-                    p5++;
-                    break;
+                    const reason = `[P5-SUM2] $${a.toLocaleString('es-CL')}+$${b.toLocaleString('es-CL')}=$${(a+b).toLocaleString('es-CL')} ≈ F${dte.folio} (${dte.provider?.name || 'N/A'})`;
+                    await createSuggestion('SUM', dte.id, [candidates[i].id, candidates[j].id], [], a + b, 0.78, reason);
+                    usedTxIds.add(candidates[i].id); usedTxIds.add(candidates[j].id);
+                    usedDteIds.add(dte.id); p5++; found = true;
                 }
-                if (usedDteIds.has(dte.id)) break;
+            }
+
+            // ── Intento 2: trío de 3 TXs (si no se resolvió con par) ─────
+            if (!found) {
+                const notUsed = candidates.filter(t => !usedTxIds.has(t.id));
+                outer3:
+                for (let i = 0; i < notUsed.length && !found; i++) {
+                    const a = Math.abs(notUsed[i].amount);
+                    if (a > target) continue;
+                    for (let j = i + 1; j < notUsed.length && !found; j++) {
+                        const b = Math.abs(notUsed[j].amount);
+                        if (a + b > target * (1 + SUM_TOLERANCE)) continue;
+                        const txjProvId = txProviderIdCache.get(notUsed[j].id);
+                        const txiProvId = txProviderIdCache.get(notUsed[i].id);
+                        if (txiProvId && txjProvId && txiProvId !== txjProvId) continue;
+                        for (let k = j + 1; k < notUsed.length && !found; k++) {
+                            const c = Math.abs(notUsed[k].amount);
+                            if (Math.abs(a + b + c - target) / target > SUM_TOLERANCE) continue;
+                            const txkProvId = txProviderIdCache.get(notUsed[k].id);
+                            if (txiProvId && txkProvId && txiProvId !== txkProvId) continue;
+                            if (txjProvId && txkProvId && txjProvId !== txkProvId) continue;
+                            const dd1 = dateDiffDays(notUsed[i].date, dte.issuedDate);
+                            const dd2 = dateDiffDays(notUsed[j].date, dte.issuedDate);
+                            const dd3 = dateDiffDays(notUsed[k].date, dte.issuedDate);
+                            if (dd1 > 60 || dd2 > 60 || dd3 > 60) continue;
+                            const reason = `[P5-SUM3] $${a.toLocaleString('es-CL')}+$${b.toLocaleString('es-CL')}+$${c.toLocaleString('es-CL')}=$${(a+b+c).toLocaleString('es-CL')} ≈ F${dte.folio} (${dte.provider?.name || 'N/A'})`;
+                            await createSuggestion('SUM', dte.id, [notUsed[i].id, notUsed[j].id, notUsed[k].id], [], a + b + c, 0.72, reason);
+                            usedTxIds.add(notUsed[i].id); usedTxIds.add(notUsed[j].id); usedTxIds.add(notUsed[k].id);
+                            usedDteIds.add(dte.id); p5++; found = true;
+                        }
+                    }
+                }
             }
         }
 
