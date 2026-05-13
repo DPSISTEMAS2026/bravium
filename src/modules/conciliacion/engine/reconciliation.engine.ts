@@ -137,7 +137,6 @@ export class ReconciliationEngine {
                     status: { in: [
                         TransactionStatus.PENDING,
                         TransactionStatus.PARTIALLY_MATCHED,
-                        TransactionStatus.UNMATCHED,
                     ] },
                     type: 'DEBIT',
                     date: { gte: lookbackDate },
@@ -146,6 +145,7 @@ export class ReconciliationEngine {
                 include: { bankAccount: { select: { bankName: true, accountNumber: true, organizationId: true } } },
                 orderBy: { date: 'asc' },
             }),
+
             this.prisma.dTE.findMany({
                 where: {
                     paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
