@@ -22,7 +22,7 @@ import { PrismaClient, MatchStatus, TransactionStatus } from '@prisma/client';
 export interface EngineOptions {
     organizationId: string;
     dryRun?: boolean;
-    lookbackDays?: number;       // default 120
+    lookbackDays?: number;       // default 180
     amountTolerance?: number;    // CLP, default 1000
     dateWindowDays?: number;     // default 90
 }
@@ -122,7 +122,7 @@ export class ReconciliationEngine {
         const {
             organizationId,
             dryRun = false,
-            lookbackDays = 120,
+            lookbackDays = 180,
             amountTolerance = 1000,
             dateWindowDays = 90,
         } = opts;
@@ -134,7 +134,11 @@ export class ReconciliationEngine {
         const [pendingTxs, unpaidDtes, allProviders, providerAliases, autoCatRules] = await Promise.all([
             this.prisma.bankTransaction.findMany({
                 where: {
-                    status: { in: [TransactionStatus.PENDING, TransactionStatus.PARTIALLY_MATCHED] },
+                    status: { in: [
+                        TransactionStatus.PENDING,
+                        TransactionStatus.PARTIALLY_MATCHED,
+                        TransactionStatus.UNMATCHED,
+                    ] },
                     type: 'DEBIT',
                     date: { gte: lookbackDate },
                     bankAccount: { organizationId },
