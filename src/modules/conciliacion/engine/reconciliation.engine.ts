@@ -214,8 +214,17 @@ export class ReconciliationEngine {
 
         // Alias map: normalized description → providerId
         const aliasMap = new Map<string, string>();
+        // RUT alias map: normalized rut → providerId (para P5 coherencia)
+        const rutAliasMap = new Map<string, string>();
+        // Providers with known RUT aliases (set of providerIds)
+        const providersWithRutAliases = new Set<string>();
         for (const a of providerAliases) {
-            aliasMap.set(normalize(a.description), a.providerId);
+            if (a.description) aliasMap.set(normalize(a.description), a.providerId);
+            if ((a as any).rut) {
+                const rutKey = (a as any).rut.replace(/\./g, '').replace(/-/g, '').toUpperCase();
+                rutAliasMap.set(rutKey, a.providerId);
+                providersWithRutAliases.add(a.providerId);
+            }
         }
 
         // AutoCategory rules: keyword → providerId
@@ -435,17 +444,16 @@ export class ReconciliationEngine {
             if (metaRut) {
                 const wd = metaRut.replace(/\./g, '').toUpperCase();
                 const wod = wd.replace(/-/g, '');
-                const prov = provByRut.get(wd) || provByRut.get(wod);
-                if (prov) resolvedId = prov.id;
+                resolvedId = (provByRut.get(wd) || provByRut.get(wod))?.id
+                    || rutAliasMap.get(wd) || rutAliasMap.get(wod) || null;
             }
-            // 2. RUT en descripción
+            // 2. RUT en descripción — buscar en provByRut Y en rutAliasMap
             if (!resolvedId) {
                 const descRut = extractRutFromDesc(tx.description || '');
                 if (descRut) {
-                    const wd = descRut.toUpperCase();
-                    const wod = wd.replace(/-/g, '');
-                    const prov = provByRut.get(wd) || provByRut.get(wod);
-                    if (prov) resolvedId = prov.id;
+                    const wd = descRut.replace(/\./g, '').replace(/-/g, '').toUpperCase();
+                    resolvedId = (provByRut.get(wd) || provByRut.get(descRut.toUpperCase()))?.id
+                        || rutAliasMap.get(wd) || null;
                 }
             }
             txProviderIdCache.set(tx.id, resolvedId);
@@ -460,10 +468,16 @@ export class ReconciliationEngine {
             const dteProvId = dte.provider?.id || null;
 
             // Candidatas: solo TXs no usadas cuyo proveedor coincida (o es desconocido)
+            // Modo ESTRICTO: si el proveedor del DTE tiene aliases de RUT conocidos,
+            // la TX DEBE tener ese proveedor identificado (null = desconocido → excluir).
+            const dteHasRutAliases = dteProvId ? providersWithRutAliases.has(dteProvId) : false;
             const candidates = remTxs.filter(tx => {
                 if (usedTxIds.has(tx.id)) return false;
                 const txProvId = txProviderIdCache.get(tx.id);
+                // Si la TX apunta a un proveedor diferente → excluir siempre
                 if (txProvId && dteProvId && txProvId !== dteProvId) return false;
+                // Modo estricto: si el DTE tiene RUT aliases, la TX sin proveedor identificado → excluir
+                if (dteHasRutAliases && !txProvId) return false;
                 return true;
             });
 
