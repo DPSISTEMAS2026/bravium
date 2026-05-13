@@ -117,6 +117,10 @@ export class DriveIngestService {
         // 4. Process Rows — OCCURRENCE-BASED DEDUPLICATION
         let insertedCount = 0;
         let skippedCount = 0;
+
+        // Regex para extraer RUT chileno de una glosa bancaria
+        // Ej: "TransfInternet a 76.794.035-1", "PAGO PROVEEDOR 12.345.678-9"
+        const RUT_REGEX = /(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])/i;
         const fileOccurrenceCounter = new Map<string, number>();
 
         for (const row of normalizedRows) {
@@ -177,6 +181,14 @@ export class DriveIngestService {
 
             const type: TransactionType = amount >= 0 ? 'CREDIT' : 'DEBIT';
 
+            // Extraer RUT del destinatario: primero desde OpenAI (que vio el contexto completo),
+            // luego como fallback desde la regex sobre la descripción.
+            const rutMatch = description.match(RUT_REGEX);
+            const providerRut: string | undefined =
+                (row['providerRut'] && typeof row['providerRut'] === 'string' && row['providerRut'].trim() !== '')
+                    ? row['providerRut'].trim()
+                    : rutMatch ? rutMatch[1] : undefined;
+
             await this.prisma.bankTransaction.create({
                 data: {
                     bankAccountId: bankAccount.id,
@@ -190,9 +202,13 @@ export class DriveIngestService {
                         sourceFile: dto.metadata?.filename,
                         rawRow: row,
                         ingestionId: Date.now(),
+                        ...(providerRut && { providerRut }),
                     }
                 }
             });
+            if (providerRut) {
+                this.logger.debug(`RUT extraído de glosa: "${description}" → ${providerRut}`);
+            }
             insertedCount++;
         }
 

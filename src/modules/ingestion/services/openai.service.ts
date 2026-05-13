@@ -32,6 +32,7 @@ export class OpenAiService {
                 "description": "Descripción limpia del movimiento",
                 "amount": 1000,
                 "reference": "Número de operación si existe",
+                "providerRut": "76.794.035-1",
                 "cuotaNumero": 1,
                 "cuotaTotal": 12,
                 "montoOrigen": 1060530
@@ -58,6 +59,7 @@ export class OpenAiService {
                - Incluye movimientos con "CANCELADO", "ANULADO" o "DEVOLUCIÓN" como transacciones válidas.
             9. CUOTAS: Si la fila es un cargo en cuotas, incluye cuotaNumero, cuotaTotal y montoOrigen.
             10. REGLA DE ORO: NO TE SALTES NINGÚN MOVIMIENTO. Si el archivo tiene 10 movimientos, tu respuesta DEBE tener 10 objetos. Extrae el 100% de los datos.
+            11. RUT DEL PROVEEDOR: Si la descripción contiene un RUT chileno (ej: "TransfInternet a 76.794.035-1", "PAGO A 12.345.678-9"), extrae ese RUT y ponlo en el campo "providerRut" con formato XX.XXX.XXX-X. Si no hay RUT en la descripción, omite el campo.
 
             DATOS ENTRANTE (JSON o Texto PDF):
             ${JSON.stringify(rawRows).substring(0, 50000)}

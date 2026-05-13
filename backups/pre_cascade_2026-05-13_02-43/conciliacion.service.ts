@@ -85,7 +85,7 @@ export class ConciliacionService {
         try {
             // 1. Fetch EVERYTHING needed once to avoid N+1 queries
             this.fileLog('FETCHING: Transactions, DTEs and Payments...');
-            const [pendingTransactions, allUnpaidDtes, allRecentPayments, allProviders] = await Promise.all([
+            const [pendingTransactions, allUnpaidDtes, allRecentPayments] = await Promise.all([
                 this.prisma.bankTransaction.findMany({
                     where: whereClause,
                     orderBy: { date: 'asc' },
@@ -97,7 +97,7 @@ export class ConciliacionService {
                         ...(organizationId && { provider: { organizationId } }),
                         ...(dteMinDate && { issuedDate: { gte: dteMinDate } }),
                     },
-                    include: { provider: { select: { name: true, rut: true } } }
+                    include: { provider: { select: { name: true } } }
                 }),
                 this.prisma.payment.findMany({
                     where: {
@@ -106,11 +106,7 @@ export class ConciliacionService {
                             gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)
                         }
                     }
-                }),
-                this.prisma.provider.findMany({
-                    where: organizationId ? { organizationId } : {},
-                    select: { id: true, name: true, rut: true },
-                }),
+                })
             ]);
 
             const byAccount = new Map<string, number>();
@@ -137,19 +133,6 @@ export class ConciliacionService {
             const usedTxIds = new Set<string>();
             const usedPaymentIds = new Set<string>();
             let matchCount = 0;
-
-            // ================================================================
-            // PASS 0: RUT-FIRST CASCADE
-            // Si la TX tiene providerRut en metadata → buscar proveedor exacto
-            // → intentar 1:1 (monto+fecha) luego 1:N (combinación de DTEs)
-            // ================================================================
-            this.fileLog('PASS 0 (RUT-First): iniciando cascade por providerRut...');
-            const pass0Count = await this.passRutFirst(
-                pendingTransactions, allUnpaidDtes, allProviders,
-                usedTxIds, usedDteIds, organizationId
-            );
-            matchCount += pass0Count;
-            this.fileLog(`PASS 0 completado: ${pass0Count} DRAFTs creados via RUT-First.`);
 
             // === 1.5 Auto-Amortizar Notas de Crédito (NC) contra Facturas de igual monto ===
             this.fileLog('AUTO-AMORTIZING: 1:1 Credit Notes against Invoices...');
@@ -202,47 +185,44 @@ export class ConciliacionService {
                 }
             }
 
-            // ================================================================
-            // PASS 1: MONTO EXACTO 1:1 (sin filtro de proveedor)
-            // Cascade: monto exacto primero → dentro del mismo tier, fecha más cercana gana
-            // ================================================================
-            type Pair = { tx: BankTransaction; dte: DTE & { provider?: { name: string; rut?: string } | null }; score: number; reason: string; strategyName: string; dateDiffDays: number; amountDiff: number };
+            // Recolectar todos los pares (TX, DTE) candidatos con diferencia de días para priorizar por fecha cercana
+            type Pair = { tx: BankTransaction; dte: DTE & { provider?: { name: string } | null }; score: number; reason: string; strategyName: string; dateDiffDays: number };
             const allPairs: Pair[] = [];
-
             for (const tx of pendingTransactions) {
-                if (usedTxIds.has(tx.id)) continue; // ya matcheado en Pass 0
                 const result = await this.getBestCandidatesForTransaction(tx, allRecentPayments, allUnpaidDtes);
                 if (!result || result.candidates.length === 0) continue;
                 const strategyName = result.strategyName;
                 for (const c of result.candidates) {
                     if (!c.dte) continue;
-                    if (usedDteIds.has(c.dte.id)) continue;
                     const dateDiffDays = Math.abs(Math.round((new Date(tx.date).getTime() - new Date(c.dte.issuedDate).getTime()) / 86400000));
-                    const amountDiff = Math.abs(Math.abs(tx.amount) - Math.abs(c.dte.totalAmount));
-                    allPairs.push({ tx, dte: c.dte, score: c.score, reason: c.reason, strategyName, dateDiffDays, amountDiff });
+                    allPairs.push({
+                        tx,
+                        dte: c.dte,
+                        score: c.score,
+                        reason: c.reason,
+                        strategyName,
+                        dateDiffDays,
+                    });
                 }
             }
 
-            // CASCADA DE SORT:
-            // Tier 0 = monto exacto (amountDiff = 0)  → prioridad máxima
-            // Tier 1 = monto dentro de tolerancia      → prioridad media
-            // Dentro de cada tier: fecha más cercana gana; score como desempate final
+            // Ordenar por proximidad de fecha (menor dateDiff primero) y luego por score descendente
             allPairs.sort((a, b) => {
-                const aTier = a.amountDiff === 0 ? 0 : 1;
-                const bTier = b.amountDiff === 0 ? 0 : 1;
-                if (aTier !== bTier) return aTier - bTier;
                 if (a.dateDiffDays !== b.dateDiffDays) return a.dateDiffDays - b.dateDiffDays;
                 return b.score - a.score;
             });
 
+            // Asignar en ese orden: el par más cercano en fecha tiene prioridad (no bloquea un match mejor)
+            // Todos los matches quedan en DRAFT hasta confirmación manual del usuario
             for (const pair of allPairs) {
                 if (usedTxIds.has(pair.tx.id) || usedDteIds.has(pair.dte.id)) continue;
+                const candidate = { dte: pair.dte, score: pair.score, reason: pair.reason };
                 if (pair.score >= 0.55) {
-                    await this.createMatch(pair.tx, { dte: pair.dte, score: pair.score, reason: pair.reason }, pair.strategyName, MatchStatus.DRAFT);
+                    await this.createMatch(pair.tx, candidate, pair.strategyName, MatchStatus.DRAFT);
                     matchCount++;
                     usedTxIds.add(pair.tx.id);
                     usedDteIds.add(pair.dte.id);
-                    this.fileLog(`PASS1 DRAFT (amt±${pair.amountDiff} ${pair.dateDiffDays}d): ${pair.tx.description} | ${pair.tx.amount} -> ${pair.reason}`);
+                    this.fileLog(`DRAFT (${pair.dateDiffDays}d): ${pair.tx.description} | ${pair.tx.amount} -> ${pair.reason}`);
                 }
             }
 
@@ -336,13 +316,13 @@ export class ConciliacionService {
 
             const totalAutoMatches = matchCount + sumAutoConfirmed + splitAutoConfirmed;
             const totalSuggestions = suggestionsCount + splitSuggestions;
-            this.fileLog(`COMPLETED: ${totalAutoMatches} total auto-matches, ${totalSuggestions} suggestions. Pass0(RUT)=${pass0Count}, Pass1(Amt)=${matchCount - pass0Count}. Auto-Categorized: ${rulesResult.categorized}`);
+            this.fileLog(`COMPLETED: ${totalAutoMatches} total auto-matches, ${totalSuggestions} suggestions. Auto-Categorized: ${rulesResult.categorized}`);
             return {
                 processed: pendingTransactions.length,
                 matches: totalAutoMatches,
                 suggestions: totalSuggestions,
                 autoCategorized: rulesResult.categorized,
-                detail: { pass0Rut: pass0Count, pass1Amount: matchCount - pass0Count, sumAuto: sumAutoConfirmed, splitAuto: splitAutoConfirmed, sumSuggestions: suggestionsCount, splitSuggestions },
+                detail: { exact: matchCount, sumAuto: sumAutoConfirmed, splitAuto: splitAutoConfirmed, sumSuggestions: suggestionsCount, splitSuggestions },
             };
         } catch (err) {
             this.fileLog(`ERROR: ${err.message}`);
@@ -573,7 +553,10 @@ export class ConciliacionService {
         const matchWhere: any = organizationId ? { organizationId } : {};
         const txWhere: any = organizationId ? { bankAccount: { organizationId } } : {};
 
+        // Delete matches
         const result = await this.prisma.reconciliationMatch.deleteMany({ where: matchWhere });
+
+        // Reset transaction statuses to PENDING
         const updated = await this.prisma.bankTransaction.updateMany({
             where: txWhere,
             data: { status: TransactionStatus.PENDING }
@@ -585,112 +568,4 @@ export class ConciliacionService {
             message: 'Matches deleted and transactions reset to PENDING'
         };
     }
-
-    // ================================================================
-    // PASS 0: RUT-FIRST — busca proveedor por RUT, luego 1:1 / 1:N
-    // ================================================================
-    private async passRutFirst(
-        pendingTxs: any[],
-        allUnpaidDtes: any[],
-        allProviders: { id: string; name: string; rut: string | null }[],
-        usedTxIds: Set<string>,
-        usedDteIds: Set<string>,
-        organizationId?: string,
-    ): Promise<number> {
-        const AMOUNT_TOLERANCE = 1000;
-        const MAX_COMBO = 5;
-        let matchCount = 0;
-
-        for (const tx of pendingTxs) {
-            if (usedTxIds.has(tx.id)) continue;
-
-            const providerRut: string | undefined = (tx.metadata as any)?.providerRut;
-            if (!providerRut) continue;
-
-            // Normalizar RUT: quitar puntos, espacios — conservar dígito verificador
-            const cleanTxRut = providerRut.replace(/[.\s]/g, '').toUpperCase();
-
-            // Buscar proveedor cuyo RUT normalizado coincida
-            const provider = allProviders.find(p => {
-                if (!p.rut) return false;
-                const cleanProv = p.rut.replace(/[.\s]/g, '').toUpperCase();
-                return cleanProv === cleanTxRut;
-            });
-
-            if (!provider) {
-                this.fileLog(`PASS0: RUT ${providerRut} no encontrado en proveedores.`);
-                continue;
-            }
-
-            // DTEs disponibles de ese proveedor
-            const provDtes = allUnpaidDtes.filter(d => d.providerId === provider.id && !usedDteIds.has(d.id));
-            if (provDtes.length === 0) {
-                this.fileLog(`PASS0: ${provider.name} (${providerRut}) no tiene DTEs pendientes.`);
-                continue;
-            }
-
-            const txAbs = Math.abs(tx.amount);
-
-            // --- Sub-pass A: 1:1 ---
-            const candidates = provDtes
-                .map(d => ({
-                    dte: d,
-                    amountDiff: Math.abs(Math.abs(d.totalAmount) - txAbs),
-                    dateDiffDays: Math.abs(new Date(tx.date).getTime() - new Date(d.issuedDate).getTime()) / 86400000,
-                }))
-                .filter(c => c.amountDiff <= AMOUNT_TOLERANCE)
-                .sort((a, b) => a.amountDiff - b.amountDiff || a.dateDiffDays - b.dateDiffDays);
-
-            if (candidates.length > 0) {
-                const best = candidates[0];
-                const score = best.amountDiff === 0 ? 0.95 : 0.85;
-                const reason = `[P0-RUT 1:1] ${provider.name} (${providerRut}) | ±$${best.amountDiff} | ${Math.round(best.dateDiffDays)}d`;
-                await this.createMatch(tx, { dte: best.dte, score, reason }, 'Cascade-RutFirst-1:1', MatchStatus.DRAFT);
-                usedTxIds.add(tx.id);
-                usedDteIds.add(best.dte.id);
-                matchCount++;
-                this.fileLog(`PASS0 1:1: TX ${tx.amount} -> DTE ${best.dte.totalAmount} | ${provider.name}`);
-                continue;
-            }
-
-            // --- Sub-pass B: 1:N (TX paga varios DTEs del mismo proveedor) ---
-            const smallerDtes = provDtes.filter(d => Math.abs(d.totalAmount) < txAbs - AMOUNT_TOLERANCE);
-            if (smallerDtes.length >= 2) {
-                const amounts = smallerDtes.map(d => Math.abs(d.totalAmount));
-                const comboIdx = this.findSubsetSum(amounts, txAbs, AMOUNT_TOLERANCE, MAX_COMBO);
-                if (comboIdx) {
-                    const comboDtes = comboIdx.map(i => smallerDtes[i]);
-                    const total = comboDtes.reduce((s, d) => s + Math.abs(d.totalAmount), 0);
-                    for (const dte of comboDtes) {
-                        const daysDiff = Math.round(Math.abs(new Date(tx.date).getTime() - new Date(dte.issuedDate).getTime()) / 86400000);
-                        const reason = `[P0-RUT 1:N] ${provider.name} (${providerRut}) | ${comboDtes.length} DTEs = $${total.toLocaleString('es-CL')} | ${daysDiff}d`;
-                        await this.createMatch(tx, { dte, score: 0.88, reason }, 'Cascade-RutFirst-1:N', MatchStatus.DRAFT);
-                        usedDteIds.add(dte.id);
-                    }
-                    usedTxIds.add(tx.id);
-                    matchCount += comboDtes.length;
-                    this.fileLog(`PASS0 1:N: TX ${tx.amount} -> ${comboDtes.length} DTEs suman $${total} | ${provider.name}`);
-                }
-            }
-        }
-
-        return matchCount;
-    }
-
-    // Subset sum: retorna índices de amounts[] que sumen ≈ target (±tolerance)
-    private findSubsetSum(amounts: number[], target: number, tolerance: number, maxLen: number): number[] | null {
-        const search = (start: number, chosen: number[], current: number): number[] | null => {
-            if (chosen.length >= 2 && Math.abs(current - target) <= tolerance) return [...chosen];
-            if (chosen.length >= maxLen || current > target + tolerance) return null;
-            for (let i = start; i < amounts.length; i++) {
-                chosen.push(i);
-                const result = search(i + 1, chosen, current + amounts[i]);
-                if (result) return result;
-                chosen.pop();
-            }
-            return null;
-        };
-        return search(0, [], 0);
-    }
 }
-
