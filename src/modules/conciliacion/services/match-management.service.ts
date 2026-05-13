@@ -12,6 +12,55 @@ export class MatchManagementService {
         private audit: AuditService,
     ) {}
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // PROVIDER ALIAS LEARNING
+    // Al confirmar un match, si la TX contiene un RUT y hay un proveedor en el
+    // DTE, guardamos ese RUT como alias para que el motor lo capture en P3.
+    // ─────────────────────────────────────────────────────────────────────────
+    private extractRut(desc: string): string | null {
+        if (!desc) return null;
+        const m1 = desc.match(/\b(0\d{9})\b/);
+        if (m1) return m1[1];
+        const m2 = desc.match(/\b(\d{1,2}\.\d{3}\.\d{3}-[\dkK])\b/);
+        if (m2) return m2[1].replace(/\./g, '').replace(/-/g, '').toUpperCase();
+        const m3 = desc.match(/\b(\d{7,8}-[\dkK])\b/);
+        if (m3) return m3[1].replace('-', '').toUpperCase();
+        return null;
+    }
+
+    private async learnProviderAlias(
+        txDescription: string | null,
+        providerId: string | null,
+        providerRut: string | null,
+    ): Promise<void> {
+        if (!txDescription || !providerId) return;
+        const rut = this.extractRut(txDescription);
+        if (!rut) return;
+        // Skip if same as provider's own RUT
+        const rutNorm = rut.replace(/\./g, '').replace(/-/g, '').toUpperCase();
+        const provNorm = (providerRut || '').replace(/\./g, '').replace(/-/g, '').toUpperCase();
+        if (rutNorm === provNorm) return;
+        // Create alias if it doesn't exist yet
+        try {
+            const existing = await this.prisma.providerAlias.findFirst({
+                where: { rut: rutNorm, providerId }
+            });
+            if (!existing) {
+                await this.prisma.providerAlias.create({
+                    data: {
+                        rut: rutNorm,
+                        description: txDescription.slice(0, 100),
+                        providerId,
+                        source: 'CONFIRMED_MATCH',
+                    }
+                });
+                this.logger.log(`[Alias] RUT ${rutNorm} → provider ${providerId} (aprendido al confirmar)`);
+            }
+        } catch (e: any) {
+            if (e.code !== 'P2002') this.logger.warn(`learnProviderAlias error: ${e.message}`);
+        }
+    }
+
     async updateMatchStatus(matchId: string, newStatus: 'CONFIRMED' | 'REJECTED', userId: string, reason?: string) {
         const match = await this.prisma.reconciliationMatch.findUnique({
             where: { id: matchId },
@@ -76,6 +125,21 @@ export class MatchManagementService {
                 newValue: { status: newStatus, reason },
             },
         );
+
+        // Aprender alias RUT → proveedor si hay DTE con proveedor
+        if (newStatus === 'CONFIRMED' && match.dteId) {
+            const dte = await this.prisma.dTE.findUnique({
+                where: { id: match.dteId },
+                include: { provider: true }
+            });
+            if (dte?.provider) {
+                await this.learnProviderAlias(
+                    match.transaction?.description || null,
+                    dte.provider.id,
+                    dte.provider.rut,
+                );
+            }
+        }
 
         return updated;
     }
@@ -299,6 +363,26 @@ export class MatchManagementService {
 
             return createdMatches[0];
         });
+
+        // ── Aprender alias RUT → proveedor ──────────────────────────────────
+        // Si hay exactamente 1 DTE con proveedor, aprendemos el alias para las TXs
+        if (dteIds.length >= 1) {
+            const dtesWithProvider = await this.prisma.dTE.findMany({
+                where: { id: { in: dteIds } },
+                include: { provider: true },
+            });
+            const firstWithProvider = dtesWithProvider.find(d => d.provider);
+            if (firstWithProvider?.provider) {
+                for (const tx of transactions) {
+                    await this.learnProviderAlias(
+                        tx.description,
+                        firstWithProvider.provider.id,
+                        firstWithProvider.provider.rut,
+                    );
+                }
+            }
+        }
+        // ────────────────────────────────────────────────────────────────────
 
         await this.audit.logAction(
             { userId },

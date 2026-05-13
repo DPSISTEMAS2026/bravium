@@ -298,6 +298,49 @@ export class MatchSuggestionsService {
                 data: { status: 'ACCEPTED' },
             });
         });
+
+        // Aprender alias RUT → proveedor para futuros matches del motor
+        const firstDteWithProvider = dtes.find(d => d.provider);
+        if (firstDteWithProvider?.provider) {
+            const txs = await this.prisma.bankTransaction.findMany({
+                where: { id: { in: txIds } },
+                select: { description: true },
+            });
+            for (const tx of txs) {
+                await this.learnAlias(tx.description, firstDteWithProvider.provider.id, firstDteWithProvider.provider.rut);
+            }
+        }
+    }
+
+    private extractRutFromDesc(desc: string): string | null {
+        if (!desc) return null;
+        const m1 = desc.match(/\b(0\d{9})\b/);
+        if (m1) return m1[1];
+        const m2 = desc.match(/\b(\d{1,2}\.\d{3}\.\d{3}-[\dkK])\b/);
+        if (m2) return m2[1].replace(/\./g, '').replace(/-/g, '').toUpperCase();
+        const m3 = desc.match(/\b(\d{7,8}-[\dkK])\b/);
+        if (m3) return m3[1].replace('-', '').toUpperCase();
+        return null;
+    }
+
+    private async learnAlias(desc: string | null, providerId: string, providerRut: string): Promise<void> {
+        if (!desc || !providerId) return;
+        const rut = this.extractRutFromDesc(desc);
+        if (!rut) return;
+        const rutNorm = rut.replace(/\./g, '').replace(/-/g, '').toUpperCase();
+        const provNorm = (providerRut || '').replace(/\./g, '').replace(/-/g, '').toUpperCase();
+        if (rutNorm === provNorm) return;
+        try {
+            const existing = await this.prisma.providerAlias.findFirst({ where: { rut: rutNorm, providerId } });
+            if (!existing) {
+                await this.prisma.providerAlias.create({
+                    data: { rut: rutNorm, description: desc.slice(0, 100), providerId, source: 'CONFIRMED_MATCH' }
+                });
+                this.logger.log(`[Alias] RUT ${rutNorm} → provider ${providerId} (aprendido al aceptar sugerencia)`);
+            }
+        } catch (e: any) {
+            if (e.code !== 'P2002') this.logger.warn(`learnAlias error: ${e.message}`);
+        }
     }
 
     /**

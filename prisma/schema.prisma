@@ -123,12 +123,15 @@ model Provider {
 
 model ProviderAlias {
   id          String   @id @default(uuid())
-  description String // Glosa del banco (ej. "Transf a AVILA RAMIREZ")
+  description String?  // Glosa del banco (ej. "Transf a AVILA RAMIREZ") — opcional si hay RUT
+  rut         String?  // RUT extraído de la TX (ej. "0160314249") — para P0/P2 lookup
+  source      String   @default("MANUAL") // MANUAL | CONFIRMED_MATCH | RETROACTIVE
   providerId  String
   provider    Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
 
   @@unique([description, providerId])
+  @@index([rut])
   @@map("provider_aliases")
 }
 
