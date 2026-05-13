@@ -421,18 +421,60 @@ export class ReconciliationEngine {
 
         // ════════════════════════════════════════════════════════════════════
         // PASS 5: SUM N:1 — 2 TXs suman ≈ 1 DTE (tolerancia 1%)
+        // Regla de coherencia: si una TX tiene RUT conocido (metadata o descripción),
+        // SOLO puede participar en un SUM con DTEs de ese mismo proveedor.
         // ════════════════════════════════════════════════════════════════════
         const remDtes = (unpaidDtes as DteRow[]).filter(d => !usedDteIds.has(d.id));
-        const remTxs = (pendingTxs as TxRow[]).filter(t => !usedTxIds.has(t.id));
+        const remTxs  = (pendingTxs as TxRow[]).filter(t => !usedTxIds.has(t.id));
+
+        // Precalcular el providerId asociado a cada TX (si tiene RUT identificado)
+        const txProviderIdCache = new Map<string, string | null>();
+        for (const tx of remTxs) {
+            // 1. metadata.providerRut
+            const metaRut = tx.metadata?.providerRut as string | undefined;
+            let resolvedId: string | null = null;
+            if (metaRut) {
+                const wd = metaRut.replace(/\./g, '').toUpperCase();
+                const wod = wd.replace(/-/g, '');
+                const prov = provByRut.get(wd) || provByRut.get(wod);
+                if (prov) resolvedId = prov.id;
+            }
+            // 2. RUT en descripción
+            if (!resolvedId) {
+                const descRut = extractRutFromDesc(tx.description || '');
+                if (descRut) {
+                    const wd = descRut.toUpperCase();
+                    const wod = wd.replace(/-/g, '');
+                    const prov = provByRut.get(wd) || provByRut.get(wod);
+                    if (prov) resolvedId = prov.id;
+                }
+            }
+            txProviderIdCache.set(tx.id, resolvedId);
+        }
 
         for (const dte of remDtes) {
             if (usedDteIds.has(dte.id)) continue;
             const target = dte.totalAmount;
+            const dteProvId = dte.provider?.id || null;
+
             for (let i = 0; i < remTxs.length; i++) {
                 if (usedTxIds.has(remTxs[i].id)) continue;
+                const txiProvId = txProviderIdCache.get(remTxs[i].id);
+
+                // Si la TX tiene proveedor identificado y no coincide con el DTE → skip
+                if (txiProvId && dteProvId && txiProvId !== dteProvId) continue;
+
                 const a = Math.abs(remTxs[i].amount);
                 for (let j = i + 1; j < remTxs.length; j++) {
                     if (usedTxIds.has(remTxs[j].id)) continue;
+                    const txjProvId = txProviderIdCache.get(remTxs[j].id);
+
+                    // Si la TX j tiene proveedor identificado y no coincide → skip
+                    if (txjProvId && dteProvId && txjProvId !== dteProvId) continue;
+
+                    // Si las dos TXs tienen proveedores distintos entre sí → skip
+                    if (txiProvId && txjProvId && txiProvId !== txjProvId) continue;
+
                     const b = Math.abs(remTxs[j].amount);
                     if (Math.abs(a + b - target) / target > 0.01) continue;
                     const dd1 = dateDiffDays(remTxs[i].date, dte.issuedDate);
@@ -450,6 +492,7 @@ export class ReconciliationEngine {
                 if (usedDteIds.has(dte.id)) break;
             }
         }
+
 
         // ════════════════════════════════════════════════════════════════════
         // PASS 6: SPLIT 1:N — 1 TX paga 2 DTEs del mismo proveedor por RUT
