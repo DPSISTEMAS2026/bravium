@@ -73,9 +73,16 @@ function normalize(str: string): string {
 }
 
 function extractRutFromDesc(desc: string): string | null {
-    const m = desc.match(/(\d{1,2}[.\d]*\d-[\dkK])/);
-    if (!m) return null;
-    return m[1].replace(/\./g, '');
+    // Formato 1: XX.XXX.XXX-K o XX.XXX.XXX-0 (con puntos y guión)
+    const m1 = desc.match(/(\d{1,2}[.\d]*\d-[\dkK])/);
+    if (m1) return m1[1].replace(/\./g, '');
+
+    // Formato 2: 0XXXXXXXX al inicio (RUT pegado sin puntos, con cero líder bancario, ej: 0167511600)
+    // Normaliza quitando el cero líder y el último dígito es el verificador
+    const m2 = desc.match(/^0(\d{7,8})(\d)/);
+    if (m2) return `${m2[1]}-${m2[2]}`;
+
+    return null;
 }
 
 function dateDiffDays(a: Date, b: Date): number {
@@ -189,10 +196,17 @@ export class ReconciliationEngine {
         }
 
         // Índice de proveedores por RUT normalizado (sin puntos)
+        // Se registran múltiples formas para máxima cobertura:
+        //   - Con guión:    16751160-0
+        //   - Sin guión:    167511600
+        //   - Sin guión UP: 167511600
         const provByRut = new Map<string, { id: string; name: string }>();
         for (const p of allProviders) {
-            if (!p.rut) continue;
-            provByRut.set(p.rut.replace(/\./g, '').toUpperCase(), p);
+            if (!p.rut || p.rut.startsWith('AUTO-')) continue;
+            const withDash = p.rut.replace(/\./g, '').toUpperCase();          // 16751160-0
+            const withoutDash = withDash.replace(/-/g, '');                    // 167511600
+            provByRut.set(withDash, p);
+            provByRut.set(withoutDash, p);
         }
 
         // Alias map: normalized description → providerId
@@ -254,8 +268,10 @@ export class ReconciliationEngine {
             const metaRut: string | undefined = tx.metadata?.providerRut;
             if (!metaRut) continue;
 
-            const cleanRut = metaRut.replace(/\./g, '').toUpperCase();
-            const provider = provByRut.get(cleanRut);
+            // Intentar con y sin guión
+            const withDash = metaRut.replace(/\./g, '').toUpperCase();
+            const withoutDash = withDash.replace(/-/g, '');
+            const provider = provByRut.get(withDash) || provByRut.get(withoutDash);
             if (!provider) continue;
 
             const provDtes = (dteByProvId.get(provider.id) || []).filter(d => !usedDteIds.has(d.id));
