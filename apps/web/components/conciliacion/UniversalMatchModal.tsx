@@ -779,8 +779,22 @@ export function UniversalMatchModal({
                                         )}
                                     </div>
                                     {selectedProvider && (
-                                        <div className="mt-2 flex items-center gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
-                                            <CheckCircleIcon className="h-3.5 w-3.5" /> Proveedor Asociado: {selectedProvider.name}
+                                        <div className="mt-2 flex items-center justify-between gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
+                                            <span className="flex items-center gap-1">
+                                                <CheckCircleIcon className="h-3.5 w-3.5" /> Proveedor Asociado: {selectedProvider.name}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                title="Quitar proveedor"
+                                                onClick={() => {
+                                                    setSelectedProvider(null);
+                                                    setProviderSearch('');
+                                                    setProviderResults([]);
+                                                }}
+                                                className="ml-1 p-0.5 rounded hover:bg-emerald-100 text-emerald-500 hover:text-red-500 transition-colors"
+                                            >
+                                                <XMarkIcon className="h-3.5 w-3.5" />
+                                            </button>
                                         </div>
                                     )}
                                     {selectedProvider && (

@@ -791,6 +791,10 @@ export class TransactionsService {
                 meta.providerId = finalProviderId;
                 meta.providerName = provider.name;
             }
+        } else {
+            // Si no se especificó proveedor, limpiar la asociación existente del metadata
+            delete meta.providerId;
+            delete meta.providerName;
         }
 
         const result = await this.prisma.bankTransaction.update({

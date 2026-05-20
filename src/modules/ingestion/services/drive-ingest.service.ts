@@ -96,14 +96,17 @@ export class DriveIngestService {
             });
         }
 
-        // Get the latest transaction date for this account to optimize skipping
+        // Get the latest CREDIT transaction date for this account to optimize skipping (ultimo ingreso de dinero)
         const latestTx = await this.prisma.bankTransaction.findFirst({
-            where: { bankAccountId: bankAccount.id },
+            where: { 
+                bankAccountId: bankAccount.id,
+                type: 'CREDIT',
+            },
             orderBy: { date: 'desc' },
         });
         const latestDate = latestTx ? new Date(latestTx.date) : null;
 
-        this.logger.log(`Processing Ingestion: ${bankAccount.bankName} (${bankAccount.accountNumber}). Latest movement: ${latestDate ? latestDate.toISOString().split('T')[0] : 'None'}`);
+        this.logger.log(`Processing Ingestion: ${bankAccount.bankName} (${bankAccount.accountNumber}). Latest income movement (CREDIT): ${latestDate ? latestDate.toISOString().split('T')[0] : 'None'}`);
 
         if (rows.length === 0) {
             this.logger.warn('No rows to process');
@@ -141,6 +144,12 @@ export class DriveIngestService {
             // Skip invalid rows
             if (!date || isNaN(amount) || amount === 0) {
                 this.logger.debug(`SKIP invalid row: date=${date}, amount=${amount}`);
+                continue;
+            }
+
+            // Skip transactions strictly older than the latest income (CREDIT) in database for this account
+            if (latestDate && date < latestDate) {
+                skippedCount++;
                 continue;
             }
 

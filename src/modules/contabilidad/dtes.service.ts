@@ -65,6 +65,13 @@ export class DtesService {
                 { type: { not: 61 }, paymentStatus: 'UNPAID' },
                 { type: 61 }
             ];
+        } else if (filters.includeMatched) {
+            // Cuando se busca para reasignar (modal de conciliación), incluir también NCs
+            // que no tengan match CONFIRMED (aunque estén marcadas PAID sin match real)
+            where.OR = [
+                { type: { not: 61 } },
+                { type: 61, matches: { none: { status: 'CONFIRMED' } } },
+            ];
         } else {
             // Excluir Notas de Crédito del listado normal (son abonos, no deudas)
             where.type = { not: 61 };
