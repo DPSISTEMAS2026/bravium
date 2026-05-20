@@ -19,12 +19,19 @@ export class MatchManagementService {
     // ─────────────────────────────────────────────────────────────────────────
     private extractRut(desc: string): string | null {
         if (!desc) return null;
-        const m1 = desc.match(/\b(0\d{9})\b/);
-        if (m1) return m1[1];
-        const m2 = desc.match(/\b(\d{1,2}\.\d{3}\.\d{3}-[\dkK])\b/);
-        if (m2) return m2[1].replace(/\./g, '').replace(/-/g, '').toUpperCase();
-        const m3 = desc.match(/\b(\d{7,8}-[\dkK])\b/);
-        if (m3) return m3[1].replace('-', '').toUpperCase();
+        // 1. Formato con puntos y/o guión en cualquier parte (ej: 76.123.456-7, 76123456-7, 12.345.678-K, 12345678-0)
+        const m1 = desc.match(/(\d{1,2}(?:\.?\d{3}){2}-?[\dkK])\b/i);
+        if (m1) {
+            const clean = m1[1].replace(/\./g, '').replace(/-/g, '').toUpperCase();
+            return `${clean.slice(0, -1)}-${clean.slice(-1)}`;
+        }
+
+        // 2. Formato con cero líder o números de 8-9 dígitos continuos sin guión (ej: 0761234560, 167511600)
+        const m2 = desc.match(/\b0?(\d{7,8})(\d)\b/);
+        if (m2) {
+            return `${m2[1]}-${m2[2]}`;
+        }
+
         return null;
     }
 

@@ -73,14 +73,19 @@ function normalize(str: string): string {
 }
 
 function extractRutFromDesc(desc: string): string | null {
-    // Formato 1: XX.XXX.XXX-K o XX.XXX.XXX-0 (con puntos y guión)
-    const m1 = desc.match(/(\d{1,2}[.\d]*\d-[\dkK])/);
-    if (m1) return m1[1].replace(/\./g, '');
+    if (!desc) return null;
+    // 1. Formato con puntos y/o guión en cualquier parte (ej: 76.123.456-7, 76123456-7, 12.345.678-K, 12345678-0)
+    const m1 = desc.match(/(\d{1,2}(?:\.?\d{3}){2}-?[\dkK])\b/i);
+    if (m1) {
+        const clean = m1[1].replace(/\./g, '').replace(/-/g, '').toUpperCase();
+        return `${clean.slice(0, -1)}-${clean.slice(-1)}`;
+    }
 
-    // Formato 2: 0XXXXXXXX al inicio (RUT pegado sin puntos, con cero líder bancario, ej: 0167511600)
-    // Normaliza quitando el cero líder y el último dígito es el verificador
-    const m2 = desc.match(/^0(\d{7,8})(\d)/);
-    if (m2) return `${m2[1]}-${m2[2]}`;
+    // 2. Formato con cero líder o números de 8-9 dígitos continuos sin guión (ej: 0761234560, 167511600)
+    const m2 = desc.match(/\b0?(\d{7,8})(\d)\b/);
+    if (m2) {
+        return `${m2[1]}-${m2[2]}`;
+    }
 
     return null;
 }
