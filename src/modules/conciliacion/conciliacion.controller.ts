@@ -67,6 +67,15 @@ export class ConciliacionController {
     }
 
     /**
+     * Resumen agrupado por Proveedor / RUT / Patrón Recurrente
+     */
+    @Get('grouped-summary')
+    async getGroupedSummary(@Query() filters: DashboardFiltersDto, @Req() req: Request) {
+        filters.organizationId = filters.organizationId || (req as any).user?.organizationId;
+        return this.dashboardService.getGroupedSummary(filters);
+    }
+
+    /**
      * Exportar datos a Excel
      * Tipos: transactions, dtes, matches, all
      */

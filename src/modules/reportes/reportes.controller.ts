@@ -70,4 +70,26 @@ export class ReportesController {
         this.logger.log('Fetching overdue invoices report');
         return this.reportesService.getFacturasVencidas(organizationId);
     }
+
+    /**
+     * GET /reportes/resumen-mensual
+     * Resumen consolidado mensual
+     */
+    @Get('resumen-mensual')
+    async getResumenMensual(
+        @Query('year') yearStr: string,
+        @Query('month') monthStr: string,
+        @Req() req: Request
+    ) {
+        const organizationId = (req as any)?.organizationId;
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10);
+
+        if (isNaN(year) || isNaN(month)) {
+            return { error: 'Parámetros year y month son requeridos y deben ser numéricos.' };
+        }
+
+        this.logger.log(`Obteniendo resumen mensual para ${year}-${month}`);
+        return this.reportesService.getResumenMensual(year, month, organizationId);
+    }
 }

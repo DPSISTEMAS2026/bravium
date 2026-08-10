@@ -116,6 +116,30 @@ export class MatchManagementService {
                             data: { paymentStatus: 'UNPAID', outstandingAmount: dte.totalAmount },
                         });
                     }
+                    // Negative Learning: registrar par rechazado
+                    try {
+                        await tx.rejectedMatchPair.upsert({
+                            where: {
+                                transactionId_dteId: {
+                                    transactionId: match.transactionId,
+                                    dteId: match.dteId,
+                                }
+                            },
+                            create: {
+                                transactionId: match.transactionId,
+                                dteId: match.dteId,
+                                rejectedBy: userId,
+                                reason: reason || 'Rechazado manualmente por el usuario',
+                            },
+                            update: {
+                                rejectedBy: userId,
+                                rejectedAt: new Date(),
+                                reason: reason || 'Rechazado manualmente por el usuario',
+                            }
+                        });
+                    } catch (e: any) {
+                        this.logger.warn(`Failed to record RejectedMatchPair: ${e.message}`);
+                    }
                 }
             }
 
@@ -219,15 +243,45 @@ export class MatchManagementService {
         const dteIds = body.dteIds && body.dteIds.length > 0 ? body.dteIds : body.dteId ? [body.dteId] : [];
 
         if (dteIds.length > 0) {
-            const dtes = await this.prisma.dTE.findMany({ where: { id: { in: dteIds } } });
+            const dtes = await this.prisma.dTE.findMany({ 
+                where: { id: { in: dteIds } },
+                include: { provider: true }
+            });
             if (dtes.length !== dteIds.length) throw new NotFoundException('Uno o más DTEs no encontrados');
+
+            let totalAvailable = transactions.reduce((acc, t) => acc + Math.abs(t.amount), 0);
+            let totalDteOutstanding = dtes.reduce((acc, d) => acc + d.outstandingAmount, 0);
+
+            // Regla 2: Zero Forced Approvals
+            if (totalAvailable !== totalDteOutstanding) {
+                throw new BadRequestException(`No se permiten Aprobaciones Forzadas. La suma de transacciones ($${totalAvailable}) debe ser exactamente igual a la suma de la deuda ($${totalDteOutstanding}).`);
+            }
+
+            for (const dte of dtes) {
+                // Regla 5: Notas de Crédito
+                if (dte.type === 61) {
+                    throw new BadRequestException('Las Notas de Crédito (Tipo 61) no pueden matchearse contra transacciones bancarias (Regla 5).');
+                }
+                // Regla 4: Proveedores de liquidación
+                if (dte.provider?.name?.toLowerCase().includes('gopoint')) {
+                    throw new BadRequestException('Facturas de proveedores de liquidación no pueden matchearse directamente (Regla 4).');
+                }
+                // Regla 3: Restricción Inviolable de Dirección Financiera
+                for (const tx of transactions) {
+                    if ((dte.type === 33 || dte.type === 34) && tx.amount > 0) {
+                        throw new BadRequestException('Facturas de Compra (33/34) solo pueden matchearse contra Egresos (Regla 3).');
+                    }
+                    if (dte.type === 39 && tx.amount < 0) { // Facturas de Venta/Boletas
+                        throw new BadRequestException('Facturas de Venta solo pueden matchearse contra Abonos (Regla 3).');
+                    }
+                }
+            }
         }
 
         const matchResult = await this.prisma.$transaction(async (prisma) => {
             const createdMatches = [];
             
             if (dteIds.length > 0) {
-                let totalAvailable = transactions.reduce((acc, t) => acc + Math.abs(t.amount), 0);
                 const currentDtes = await prisma.dTE.findMany({ where: { id: { in: dteIds } }, orderBy: { issuedDate: 'asc' } });
                 
                 // Crear 1 match por DTE, distribuido entre las transacciones disponibles.
@@ -259,22 +313,10 @@ export class MatchManagementService {
                         createdMatches.push(created);
                     }
 
-                    if (body.action === 'PARTIAL') {
-                        const paymentAmount = Math.min(dte.outstandingAmount, totalAvailable);
-                        const newOutstanding = Number((dte.outstandingAmount - paymentAmount).toFixed(0));
-                        await prisma.dTE.update({
-                            where: { id: dte.id },
-                            data: { 
-                                outstandingAmount: newOutstanding,
-                                paymentStatus: newOutstanding > 0 ? 'PARTIAL' : 'PAID'
-                            }
-                        });
-                    } else {
-                        await prisma.dTE.update({
-                            where: { id: dte.id },
-                            data: { paymentStatus: 'PAID', outstandingAmount: 0 },
-                        });
-                    }
+                    await prisma.dTE.update({
+                        where: { id: dte.id },
+                        data: { paymentStatus: 'PAID', outstandingAmount: 0 },
+                    });
                 } else {
                     // SPLIT o 1:1 — cada DTE se vincula a la TX principal (primera) o round-robin
                     const primaryTxId = txIds[0];
@@ -301,23 +343,10 @@ export class MatchManagementService {
                         });
                         createdMatches.push(created);
 
-                        if (body.action === 'PARTIAL') {
-                            const paymentAmount = Math.min(dte.outstandingAmount, totalAvailable);
-                            totalAvailable -= paymentAmount;
-                            const newOutstanding = Number((dte.outstandingAmount - paymentAmount).toFixed(0));
-                            await prisma.dTE.update({
-                                where: { id: dte.id },
-                                data: { 
-                                    outstandingAmount: newOutstanding,
-                                    paymentStatus: newOutstanding > 0 ? 'PARTIAL' : 'PAID'
-                                }
-                            });
-                        } else {
-                            await prisma.dTE.update({
-                                where: { id: dte.id },
-                                data: { paymentStatus: 'PAID', outstandingAmount: 0 },
-                            });
-                        }
+                        await prisma.dTE.update({
+                            where: { id: dte.id },
+                            data: { paymentStatus: 'PAID', outstandingAmount: 0 },
+                        });
                     }
                 }
                 
@@ -428,6 +457,31 @@ export class MatchManagementService {
                     where: { id: match.dteId },
                     data: { paymentStatus: 'UNPAID', outstandingAmount: match.dte.totalAmount },
                 });
+
+                // Negative Learning: registrar par como rechazado al eliminar match
+                try {
+                    await tx.rejectedMatchPair.upsert({
+                        where: {
+                            transactionId_dteId: {
+                                transactionId: match.transactionId,
+                                dteId: match.dteId,
+                            }
+                        },
+                        create: {
+                            transactionId: match.transactionId,
+                            dteId: match.dteId,
+                            rejectedBy: userId,
+                            reason: 'Match desvinculado / eliminado por el usuario',
+                        },
+                        update: {
+                            rejectedBy: userId,
+                            rejectedAt: new Date(),
+                            reason: 'Match desvinculado / eliminado por el usuario',
+                        }
+                    });
+                } catch (e: any) {
+                    this.logger.warn(`Failed to record RejectedMatchPair on delete: ${e.message}`);
+                }
             }
 
             await tx.reconciliationMatch.delete({ where: { id: matchId } });

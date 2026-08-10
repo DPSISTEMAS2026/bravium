@@ -78,14 +78,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [startRefreshTimer, stopRefreshTimer]);
 
     const login = async (email: string, pass: string) => {
-        const res = await fetch(`${API_URL}/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password: pass }),
-        });
+        let res: Response;
+        try {
+            res = await fetch(`${API_URL}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password: pass }),
+            });
+        } catch (fetchErr: any) {
+            throw new Error(`Error de conexión con el servidor API (${API_URL}). Asegúrate de que el backend esté en ejecución.`);
+        }
 
-        const data = await res.json();
-        if (data.access_token) {
+        let data: any = {};
+        try {
+            data = await res.json();
+        } catch {
+            throw new Error('Respuesta inválida del servidor API.');
+        }
+
+        if (res.ok && data.access_token) {
             localStorage.setItem('bravium_token', data.access_token);
             localStorage.setItem('bravium_refresh_token', data.refresh_token);
             localStorage.setItem('bravium_user', JSON.stringify(data.user));
@@ -95,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
             router.push(isMobile ? '/busqueda' : '/');
         } else {
-            throw new Error(data.error || 'Login failed');
+            throw new Error(data.message || data.error || 'Credenciales inválidas o error de inicio de sesión');
         }
     };
 

@@ -4,6 +4,7 @@ import { DataOrigin, TransactionType } from '@prisma/client';
 import { OpenAiService } from './openai.service';
 import { TransactionsService } from '../../bancos/transactions.service';
 
+
 export interface DriveIngestDto {
     // Standard Fields (Preferred)
     bank?: string;
@@ -73,26 +74,75 @@ export class DriveIngestService {
         const accountNumber = dto.account || dto.metadata?.account || 'UNKNOWN';
         const currency = dto.currency || 'CLP';
 
+        // PRE-EXTRACCIÓN: Para archivos Santander, extraer n\u00famero de cuenta del header ANTES del lookup
+        const filename2 = dto.metadata?.filename || '';
+        if (filename2.includes('CartolaHistCtaCte') && dto.fileContentBase64) {
+            try {
+                const XLSX2 = require('xlsx');
+                const wb2 = XLSX2.read(Buffer.from(dto.fileContentBase64, 'base64'), { type: 'buffer' });
+                const rawD = XLSX2.utils.sheet_to_json(wb2.Sheets[wb2.SheetNames[0]], { header: 1 }) as any[];
+                const cRow = rawD.find((r: any) => Array.isArray(r) && typeof r[0] === 'string' && r[0].includes('Cuenta Corriente'));
+                if (cRow) {
+                    const mC = String(cRow[0]).match(/N[°º]?:?\s*([\d\-]+)/);
+                    if (mC) {
+                        const num = mC[1].replace(/[-\s]/g, '').replace(/^0+/, '');
+                        if (num && num.length >= 5) {
+                            (dto as any)._extractedAccountNumber = num;
+                            this.logger.log(`[PRE-EXTRACCIÓN] Número de cuenta Santander: ${num}`);
+                        }
+                    }
+                }
+            } catch (e) { /* ignorar si falla */ }
+        }
+
         // 1.5 Resolve Bank Account Early
         let bankAccount;
         if (dto.bankAccountId) {
             bankAccount = await this.prisma.bankAccount.findUnique({ where: { id: dto.bankAccountId } });
             if (!bankAccount) throw new Error('Bank Account not found: ' + dto.bankAccountId);
         } else {
-            // ... existing findFirst logic ...
-            bankAccount = await this.prisma.bankAccount.findFirst({
-                where: {
-                    bankName: { equals: bankName, mode: 'insensitive' },
-                    accountNumber: accountNumber !== 'UNKNOWN' ? accountNumber : undefined,
-                    organizationId: dto.organizationId,
-                }
-            });
+            const extractedNum = (dto as any)._extractedAccountNumber;
+            // Primero intentar con número exacto extraído del header
+            if (extractedNum) {
+                bankAccount = await this.prisma.bankAccount.findFirst({
+                    where: {
+                        accountNumber: { contains: extractedNum },
+                        organizationId: dto.organizationId,
+                    }
+                });
+                if (bankAccount) this.logger.log(`Cuenta encontrada por número de header: ${bankAccount.bankName} ${bankAccount.accountNumber}`);
+            }
+            // Fallback: buscar por nombre de banco
+            if (!bankAccount) {
+                bankAccount = await this.prisma.bankAccount.findFirst({
+                    where: {
+                        bankName: { equals: bankName, mode: 'insensitive' },
+                        accountNumber: accountNumber !== 'UNKNOWN' ? accountNumber : undefined,
+                        organizationId: dto.organizationId,
+                    }
+                });
+            }
+        }
+
+
+        if (!bankAccount) {
+            // Buscar por número de cuenta extraído del header Santander
+            const extractedAccNum = (dto as any)._extractedAccountNumber;
+            if (extractedAccNum) {
+                bankAccount = await this.prisma.bankAccount.findFirst({
+                    where: {
+                        accountNumber: { contains: extractedAccNum },
+                        organizationId: dto.organizationId,
+                    }
+                });
+                if (bankAccount) this.logger.log(`Cuenta encontrada por número extraído del header: ${bankAccount.bankName} ${bankAccount.accountNumber}`);
+            }
         }
 
         if (!bankAccount) {
             // Create default if not found (legacy behavior)
             bankAccount = await this.prisma.bankAccount.create({
-                data: { bankName, accountNumber, currency: 'CLP', rutHolder: 'AUTO', organizationId: dto.organizationId }
+                data: { bankName, accountNumber: (dto as any)._extractedAccountNumber || accountNumber, currency: 'CLP', rutHolder: 'AUTO', organizationId: dto.organizationId }
             });
         }
 
@@ -113,9 +163,136 @@ export class DriveIngestService {
             return { status: 'warning', message: 'No rows found', insertedRows: 0 };
         }
 
-        // 3. Normalize rows via OpenAI (extracts ALL transactions from the file)
-        const normalizedRows = await this.openai.normalizeBankRows(rows);
-        this.logger.log(`OpenAI returned ${normalizedRows.length} normalized rows.`);
+        // FASE DE EXTRACCIÓN NATIVA (Fast-Path para Santander e Itaú)
+        let normalizedRows: any[] = [];
+        let controlSums: any = undefined;
+
+        // Intentar detectar formato Santander (CartolaHistCtaCte)
+        const isSantander = filename && filename.includes('CartolaHistCtaCte');
+        if (isSantander && dto.fileContentBase64) {
+            this.logger.log('Detectado formato Santander nativo. Omitiendo OpenAI.');
+            const XLSX = require('xlsx');
+            const wb = XLSX.read(Buffer.from(dto.fileContentBase64, 'base64'), { type: 'buffer' });
+            const rawData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }) as any[];
+            
+            // Buscar control sums y número de cuenta del header
+            const sumRowIdx = rawData.findIndex(r => Array.isArray(r) && r[0] === 'SALDO INICIAL' && r[1] === 'DEPÓSITOS');
+            if (sumRowIdx !== -1 && rawData[sumRowIdx + 1]) {
+                const sums = rawData[sumRowIdx + 1];
+                controlSums = {
+                    totalAbonos: (Number(sums[1]) || 0) + (Number(sums[2]) || 0),
+                    totalCargos: Math.abs((Number(sums[3]) || 0) + (Number(sums[4]) || 0) + (Number(sums[5]) || 0))
+                };
+            }
+
+            // Extraer número de cuenta del header (fila con "Cuenta Corriente N°:")
+            const cuentaRow = rawData.find(r => Array.isArray(r) && typeof r[0] === 'string' && r[0].includes('Cuenta Corriente N°:'));
+            if (cuentaRow) {
+                const rawCuenta = String(cuentaRow[0]);
+                const m = rawCuenta.match(/N[°º]?:\s*([\d\-]+)/);
+                if (m) {
+                    // Normalizar: '0-000-9219882-0' → '92198820'
+                    const extracted = m[1].replace(/[-\s]/g, '').replace(/^0+/, '');
+                    if (extracted && extracted.length >= 5) {
+                        this.logger.log(`Número de cuenta extraído del header Santander: ${extracted}`);
+                        // Sobreescribir para que el lookup de cuenta use este número
+                        (dto as any)._extractedAccountNumber = extracted;
+                    }
+                }
+            }
+
+            // Buscar header de movimientos
+            const headerIdx = rawData.findIndex(r => Array.isArray(r) && r[0] === 'MONTO' && r[3] === 'FECHA');
+            if (headerIdx !== -1) {
+                for (let i = headerIdx + 1; i < rawData.length; i++) {
+                    const r = rawData[i];
+                    if (!r || !r[3] || String(r[3]).trim() === '') continue; // Fin de datos o fila vacía
+                    
+                    const dateStr = String(r[3]).trim(); // DD/MM/YYYY
+                    if (dateStr.length < 8) continue;
+                    
+                    const parts = dateStr.split('/');
+                    let isoDate = dateStr;
+                    if (parts.length === 3) isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+
+                    const rawAmount = Number(r[0]);
+                    if (isNaN(rawAmount) || rawAmount % 1 !== 0) continue; // Ignorar ghost rows de Santander con decimales (ej: -11.723)
+                    
+                    const amount = Math.abs(rawAmount);
+                    const typeChar = String(r[7]).trim().toUpperCase();
+                    
+                    let credit, debit;
+                    if (typeChar === 'A') credit = amount;
+                    else if (typeChar === 'C') debit = amount;
+                    else continue;
+
+                    normalizedRows.push({
+                        date: isoDate,
+                        reference: String(r[4] || '').trim(),
+                        description: String(r[1] || '').trim(),
+                        amount: amount,
+                        credit: credit,
+                        debit: debit
+                    });
+                }
+            }
+        } else {
+            // FASE AI (Fallback)
+            const BATCH_SIZE = 50;
+            for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+                const batchRows = rows.slice(i, i + BATCH_SIZE);
+                this.logger.log(`OpenAI: Procesando batch ${i / BATCH_SIZE + 1} de ${Math.ceil(rows.length / BATCH_SIZE)} (tamaño: ${batchRows.length} filas)...`);
+                const aiResult = await this.openai.normalizeBankRows(batchRows, filename);
+                normalizedRows = normalizedRows.concat(aiResult.transactions || []);
+                if (aiResult.controlSums && !controlSums) controlSums = aiResult.controlSums;
+            }
+            this.logger.log(`OpenAI returned ${normalizedRows.length} total normalized rows.`);
+        }
+
+        // 3.5 FASE DE GUILLOTINA: Validación Matemática (Ley Sagrada)
+        if (controlSums) {
+            let sumAbonos = 0;
+            let sumCargos = 0;
+            
+            for (const row of normalizedRows) {
+                let amt = 0;
+                
+                // Si existe type = 'debit' o 'credit' explícito
+                if (row['type'] === 'debit') amt = -Math.abs(Number(row['amount'] || 0));
+                else if (row['type'] === 'credit') amt = Math.abs(Number(row['amount'] || 0));
+                // Si existen campos credit o debit independientes
+                else if (row['credit'] !== undefined || row['debit'] !== undefined) {
+                    const credit = Number(row['credit'] || 0);
+                    const debit = Number(row['debit'] || 0);
+                    if (credit > 0) amt = credit;
+                    else if (debit > 0) amt = -debit;
+                }
+                // Fallback al signo del campo amount
+                else if (row['amount'] !== undefined) amt = Number(row['amount']);
+                else if (row['monto'] !== undefined) amt = Number(row['monto']);
+                
+                if (dto.metadata?.invertAmountSign) {
+                    amt = -amt;
+                }
+
+                if (amt > 0) sumAbonos += amt;
+                else if (amt < 0) sumCargos += Math.abs(amt);
+            }
+            
+            if (controlSums.totalAbonos !== undefined && sumAbonos !== controlSums.totalAbonos) {
+                const msg = `Ingreso Abortado: Descalce matemático detectado en Abonos. El archivo indica ${controlSums.totalAbonos}, pero la suma de filas es ${sumAbonos}.`;
+                this.logger.error(msg);
+                throw new Error(msg);
+            }
+            if (controlSums.totalCargos !== undefined && sumCargos !== controlSums.totalCargos) {
+                const msg = `Ingreso Abortado: Descalce matemático detectado en Cargos. El archivo indica ${controlSums.totalCargos}, pero la suma de filas es ${sumCargos}.`;
+                this.logger.error(msg);
+                throw new Error(msg);
+            }
+            this.logger.log(`Ley Sagrada Validada: Abonos=${sumAbonos} / Cargos=${sumCargos}`);
+        } else {
+            this.logger.warn('No se encontraron sumas de control explícitas en el documento. Se omitió la validación de la Ley Sagrada.');
+        }
 
         // 4. Process Rows — OCCURRENCE-BASED DEDUPLICATION
         let insertedCount = 0;
@@ -132,13 +309,34 @@ export class DriveIngestService {
             const reference = row['reference'] ? String(row['reference']) : null;
 
             let amount = 0;
-            if (row['amount'] !== undefined) amount = Number(row['amount']);
-            else if (row['monto'] !== undefined) amount = Number(row['monto']);
-            else {
+            // CRÍTICO: verificar credit/debit ANTES que amount genérico.
+            // El parser nativo de Santander siempre setea amount=Math.abs (>0), pero también credit o debit.
+            // Si usamos amount primero, todos quedan como CREDIT (positivo). Hay que priorizar credit/debit.
+            if (row['credit'] !== undefined || row['debit'] !== undefined) {
                 const credit = Number(row['credit'] || row['Abono'] || 0);
                 const debit = Number(row['debit'] || row['Cargo'] || 0);
                 if (credit > 0) amount = credit;
                 else if (debit > 0) amount = -debit;
+            } else if (row['amount'] !== undefined) amount = Number(row['amount']);
+            else if (row['monto'] !== undefined) amount = Number(row['monto']);
+
+            // Filter out summary/balance lines and section headers based on document layout
+            const upperDesc = (description || '').toUpperCase();
+            if (
+                upperDesc.includes('SALDO AL') ||
+                upperDesc.includes('SALDO INICIAL') ||
+                upperDesc.includes('SALDO FINAL') ||
+                upperDesc.includes('SALDO DEL DIA') ||
+                upperDesc.includes('SALDO DISPONIBLE') ||
+                upperDesc.includes('SALDO EN CUENTA') ||
+                upperDesc.includes('RESUMEN DE') ||
+                upperDesc.includes('TOTAL CARGOS') ||
+                upperDesc.includes('TOTAL ABONOS') ||
+                upperDesc.includes('MOVIMIENTO SANTANDER') ||
+                upperDesc.includes('MOVIMIENTO ITAÚ')
+            ) {
+                this.logger.debug(`SKIP summary/balance section header: "${description}"`);
+                continue;
             }
 
             // Skip invalid rows
@@ -153,10 +351,19 @@ export class DriveIngestService {
                 continue;
             }
 
-            // 1. Check by Reference (Strongest Unique Key)
-            if (reference) {
+            // 1. Check by Reference + Amount + Description (clave compuesta)
+            // NOTA: Santander reutiliza el mismo N° documento para múltiples pagos batch distintos.
+            // Por eso la unicidad es (referencia + monto + descripción), NO solo referencia.
+            const isDummyRef = reference && /^0+$/.test(reference.toString().trim());
+            
+            if (reference && !isDummyRef) {
                 const existingByRef = await this.prisma.bankTransaction.findFirst({
-                    where: { bankAccountId: bankAccount.id, reference },
+                    where: { 
+                        bankAccountId: bankAccount.id, 
+                        reference,
+                        amount: amount,
+                        description: description,
+                    },
                     select: { id: true }
                 });
                 if (existingByRef) {
@@ -165,7 +372,8 @@ export class DriveIngestService {
                 }
             }
 
-            // 2. Check by Occurrence Index (For identical movements without reference)
+
+            // 2. Check by Occurrence Index (For identical movements without valid reference)
             const key = `${date.toISOString()}_${amount}_${description}`;
             const occurrenceInFile = (fileOccurrenceCounter.get(key) || 0) + 1;
             fileOccurrenceCounter.set(key, occurrenceInFile);
@@ -227,7 +435,7 @@ export class DriveIngestService {
             status: 'ok',
             bank: bankAccount.bankName,
             account: bankAccount.accountNumber,
-            insertedRows: insertedCount
+            insertedRows: insertedCount,
         };
     }
 

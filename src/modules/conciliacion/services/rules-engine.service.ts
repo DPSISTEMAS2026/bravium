@@ -16,15 +16,20 @@ export class RulesEngineService {
         try {
             // Fetch all active rules
             const rulesWhere: any = { isActive: true };
+            const providerWhere: any = {};
             if (organizationId) {
                 rulesWhere['organizationId'] = organizationId;
+                providerWhere['organizationId'] = organizationId;
             }
             const rules = await this.prisma.autoCategoryRule.findMany({
                 where: rulesWhere,
                 include: { provider: true } // Need this to optionally link the tx to a provider
             });
 
-            if (rules.length === 0) return { categorized: 0 };
+            const providers = await this.prisma.provider.findMany({
+                where: providerWhere,
+                include: { aliases: true }
+            });
 
             // Fetch pending transactions
             const txWhere: Prisma.BankTransactionWhereInput = { status: TransactionStatus.PENDING };
@@ -38,12 +43,53 @@ export class RulesEngineService {
             if (pendingTx.length === 0) return { categorized: 0 };
 
             let categorizedCount = 0;
+            const cleanRut = (rut: string) => rut.replace(/\./g, '').toUpperCase();
 
             // Iterate over transactions and apply rules
             for (const tx of pendingTx) {
                 const desc = tx.description.toLowerCase();
+                const descUpper = tx.description.toUpperCase();
+                let matchedProvider = false;
+
+                // 1. Buscar Proveedor por RUT o Alias en la glosa
+                for (const provider of providers) {
+                    const pRut = cleanRut(provider.rut);
+                    const pRutNoDv = pRut.split('-')[0];
+                    let hasRut = false;
+                    const cleanPRutNoDv = pRutNoDv.replace(/[^0-9K]/g, '');
+                    
+                    if (cleanPRutNoDv.length >= 6 && cleanPRutNoDv !== '000000') {
+                        const cleanDesc = descUpper.replace(/[^0-9K]/g, '');
+                        hasRut = cleanDesc.includes(cleanPRutNoDv);
+                    }
+                    
+                    const hasAlias = provider.aliases.some(alias => 
+                        alias.description && descUpper.includes(alias.description.toUpperCase())
+                    );
+
+                    if (hasRut || hasAlias) {
+                        await this.prisma.bankTransaction.update({
+                            where: { id: tx.id },
+                            data: {
+                                status: TransactionStatus.PENDING, // Mantiene PENDING para asignación masiva
+                                metadata: {
+                                    ...(typeof tx.metadata === 'object' && tx.metadata ? tx.metadata : {}),
+                                    identifiedProviderId: provider.id,
+                                    identifiedProviderName: provider.name,
+                                    autoCategorized: false
+                                }
+                            }
+                        });
+                        this.logger.log(`Identified Provider for TX ${tx.id} via RUT/Alias: ${provider.name}`);
+                        matchedProvider = true;
+                        categorizedCount++;
+                        break;
+                    }
+                }
+
+                if (matchedProvider) continue; // Ya se identificó para masiva, no aplicar reglas de gasto fijo
                 
-                // Find first matching rule
+                // 2. Find first matching Gasto Fijo rule
                 const matchedRule = rules.find(r => desc.includes(r.keywordMatch.toLowerCase()));
                 
                 if (matchedRule) {

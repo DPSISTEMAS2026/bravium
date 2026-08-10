@@ -222,24 +222,8 @@ export class SchedulerService implements OnModuleInit {
     }
 
     private async processTenantAutomation(org: any) {
-        // 0. Extraer archivos de Banca desde Google Drive
-        const folderId = org.googleDriveFolderId;
-        // ⛔ DESACTIVADO: Google Drive Ingest — Fintoc cubre la ingesta de transacciones bancarias.
-        // Se desactiva para evitar duplicidad de datos. Reactivar cuando se necesite.
-        if (folderId) {
-            this.logger.log(`⏭️ [${org.slug}] Google Drive ingest DISABLED — skipping folder: ${folderId}`);
-        }
-
-        // 0.5. Sync Bank via Fintoc API
-        if (org.fintocApiKey) {
-            this.logger.log(`🔌 [${org.slug}] Syncing via Fintoc API...`);
-            try {
-                const fintocResult = await this.fintocService.syncTransactions(org.id, org.fintocApiKey, org.fintocLinkToken);
-                this.logger.log(`✅ [${org.slug}] Fintoc: ${fintocResult.created} nuevos, ${fintocResult.existing} ya existentes`);
-            } catch (e) {
-                this.logger.error(`[${org.slug}] Error syncing Fintoc API`, e);
-            }
-        }
+        // 0. Extraer archivos de Banca desde Google Drive (DESACTIVADO POR REGLA DE PROYECTO)
+        this.logger.log(`⏭️ [${org.slug}] Google Drive & Fintoc automated background sync DEPRECATED — using official local Excel ingestion.`);
 
         // 1. Sync DTEs via LibreDTE
         if (org.libreDteApiKey && org.libreDteRut) {

@@ -254,6 +254,7 @@ export default function ProveedoresPage() {
                             className="px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-medium"
                         >
                             <option value="ALL">Todo el Año</option>
+                            <option value="CURRENT_WEEK" className="font-bold text-indigo-600">Semana Actual (Lun - Vie)</option>
                             <option value="1">Enero</option>
                             <option value="2">Febrero</option>
                             <option value="3">Marzo</option>

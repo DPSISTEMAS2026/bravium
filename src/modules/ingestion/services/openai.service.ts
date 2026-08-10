@@ -10,58 +10,56 @@ export class OpenAiService {
      * @param rawRows Filas crudas del Excel/CSV (máximo 50 por lote para eficiencia)
      * @returns Filas normalizadas en un esquema estándar
      */
-    async normalizeBankRows(rawRows: any[]): Promise<any[]> {
+    async normalizeBankRows(rawRows: any[], filename?: string): Promise<{ controlSums?: { totalAbonos: number, totalCargos: number }, transactions: any[] }> {
         const apiKey = process.env.OPENAI_API_KEY;
 
         if (!apiKey) {
             this.logger.warn('OPENAI_API_KEY no encontrada. Usando parseo heurístico básico.');
-            return rawRows; // Fallback al parseo manual
+            return { transactions: rawRows }; // Fallback al parseo manual
         }
 
         this.logger.log(`Normalizando Batch de ${rawRows.length} filas mediante OpenAI...`);
 
         try {
             const prompt = `
-            Eres un experto contable chileno. Tu tarea es extraer TODAS las transacciones de los datos proporcionados.
+            Eres un experto contable chileno. Tu tarea es extraer TODAS las transacciones de los datos proporcionados, y ADEMÁS extraer las sumas de control del documento.
             Los datos pueden ser un objeto JSON crudo de Excel o texto plano extraído de un PDF de una cartola bancaria o estado de cuenta de tarjeta de crédito.
             
-            ESQUEMA DE SALIDA (JSON Array):
-            [
-              {
-                "date": "YYYY-MM-DD",
-                "description": "Descripción limpia del movimiento",
-                "amount": 1000,
-                "reference": "Número de operación si existe",
-                "providerRut": "76.794.035-1",
-                "cuotaNumero": 1,
-                "cuotaTotal": 12,
-                "montoOrigen": 1060530
-              }
-            ]
+            ESQUEMA DE SALIDA (JSON Object):
+            {
+              "controlSums": {
+                "totalAbonos": 1500000, 
+                "totalCargos": 350000
+              },
+              "transactions": [
+                {
+                  "date": "YYYY-MM-DD",
+                  "description": "Descripción limpia del movimiento",
+                  "amount": 1000,
+                  "reference": "Número de operación si existe",
+                  "providerRut": "76.794.035-1",
+                  "cuotaNumero": 1,
+                  "cuotaTotal": 12,
+                  "montoOrigen": 1060530
+                }
+              ]
+            }
 
             REGLAS:
-            1. Analiza los datos de entrada. Identifica cuál es la fecha, cuál el monto y cuál la descripción para cada fila.
+            1. Analiza los datos de entrada. Busca explícitamente los totales de "OTROS ABONOS", "DEPÓSITOS", "OTROS CARGOS", "CHEQUES", etc. en el encabezado o pie del documento. Suma los conceptos de abonos para "totalAbonos" y los de cargos (en valor absoluto positivo) para "totalCargos". Si no encuentras estos totales explícitos en el documento, deja "controlSums" con los valores que tú calcules sumando las transacciones.
             2. CONVENCIÓN DE SIGNOS: positivo = abono/depósito (CREDIT), negativo = cargo/cobro/comisión (DEBIT). Si el banco usa convención inversa, invierte el signo.
             3. Si el monto viene en dos columnas (Abono/Cargo), únelas en "amount" (Abonos positivos, Cargos negativos).
-            4. Ignora solo líneas que sean encabezados de tabla o totales de saldo. TODO lo demás que tenga fecha y monto DEBE incluirse.
-            5. Responde ÚNICAMENTE con el formato JSON array, sin texto adicional.
-            6. IMPORTANTE SOBRE FECHAS:
-               - Convierte a formato YYYY-MM-DD.
-               - Si una fecha viene como número serial de Excel (ej: 46054), conviértelo usando (número - 25569) * 86400000 ms desde epoch Unix.
-               - Las fechas son de Chile (UTC-3). Preserva el día exacto que aparece en los datos.
-               - REGLA CONTINUACIÓN: Si una fila de transacción no tiene fecha, HEREDA la fecha de la fila inmediatamente anterior. No descartes filas por no tener fecha repetida.
-            7. ESTADOS DE CUENTA DE TARJETA DE CRÉDITO:
-               - Si hay dos secciones "PERÍODO ANTERIOR" y "PERÍODO ACTUAL", IGNORA solo el "PERÍODO ANTERIOR".
-               - Solo extrae las transacciones de la sección "PERÍODO ACTUAL".
-            8. DEDUPLICACIÓN MÍNIMA:
-               - Si hay dos transacciones con mismo monto Y descripción pero FECHAS DIFERENTES entre secciones distintas, conserva solo la más reciente.
-               - NO dedupliques cuando el mismo monto y descripción aparecen en la MISMA FECHA: pueden ser compras distintas. Incluye todas.
-               - Incluye movimientos con "CANCELADO", "ANULADO" o "DEVOLUCIÓN" como transacciones válidas.
-            9. CUOTAS: Si la fila es un cargo en cuotas, incluye cuotaNumero, cuotaTotal y montoOrigen.
-            10. REGLA DE ORO: NO TE SALTES NINGÚN MOVIMIENTO. Si el archivo tiene 10 movimientos, tu respuesta DEBE tener 10 objetos. Extrae el 100% de los datos.
-            11. RUT DEL PROVEEDOR: Si la descripción contiene un RUT chileno (ej: "TransfInternet a 76.794.035-1", "PAGO A 12.345.678-9"), extrae ese RUT y ponlo en el campo "providerRut" con formato XX.XXX.XXX-X. Si no hay RUT en la descripción, omite el campo.
+            4. Ignora líneas que sean encabezados de tabla o totales de saldo EN LA LISTA DE TRANSACCIONES, pero USA los totales para llenar "controlSums".
+            5. Responde ÚNICAMENTE con el formato JSON object solicitado, sin texto adicional.
+            6. IMPORTANTE SOBRE FECHAS: Convierte a formato YYYY-MM-DD. Si no hay fecha en una fila, HEREDA la fecha anterior.
+            7. ESTADOS DE CUENTA DE TC: Si hay "PERÍODO ANTERIOR" y "PERÍODO ACTUAL", ignora el anterior.
+            8. DEDUPLICACIÓN: NO dedupliques misma fecha, mismo monto.
+            9. CUOTAS: Extrae datos de cuotas si aplica.
+            10. REGLA DE ORO: NO TE SALTES NINGÚN MOVIMIENTO. Extrae el 100% de los datos a "transactions".
+            11. RUT DEL PROVEEDOR: Extrae el RUT chileno de la descripción a "providerRut" si existe.
+            12. AÑO DE FECHAS: Si la fecha en la fila no contiene el año, DEDÚCELO del nombre de archivo. Ejemplo, si el nombre de archivo dice 2026, asume el año 2026 para todas las fechas en formato YYYY-MM-DD.
 
-            DATOS ENTRANTE (JSON o Texto PDF):
+            DATOS ENTRANTE (Nombre Archivo: ${filename || 'Desconocido'}):
             ${JSON.stringify(rawRows).substring(0, 50000)}
             `;
 
@@ -72,7 +70,7 @@ export class OpenAiService {
                     'Authorization': `Bearer ${apiKey}`
                 },
                 body: JSON.stringify({
-                    model: 'gpt-4o-mini', // Económico y rápido para este caso
+                    model: 'gpt-4o', // Usar gpt-4o para mayor precisión en sumas
                     messages: [{ role: 'user', content: prompt }],
                     temperature: 0,
                     response_format: { type: 'json_object' }
@@ -86,17 +84,22 @@ export class OpenAiService {
             const result = await response.json();
             const content = JSON.parse(result.choices[0].message.content);
 
-            // Validar que la respuesta sea un array o tenga un array adentro
-            if (Array.isArray(content)) return content;
-            if (content.transactions && Array.isArray(content.transactions)) return content.transactions;
-            if (content.data && Array.isArray(content.data)) return content.data;
+            // Validar que la respuesta sea el objeto esperado
+            if (content.transactions && Array.isArray(content.transactions)) {
+                return content;
+            }
+            if (content.data && Array.isArray(content.data)) {
+                return { controlSums: content.controlSums, transactions: content.data };
+            }
+            if (Array.isArray(content)) {
+                return { transactions: content };
+            }
 
-            // Si es un objeto único que no es array, lo envolvemos en uno
-            return [content];
+            return { transactions: [content] };
 
         } catch (error) {
             this.logger.error('Error normalizando con AI, usando fallback heurístico:', error);
-            return rawRows;
+            return { transactions: rawRows };
         }
     }
 }

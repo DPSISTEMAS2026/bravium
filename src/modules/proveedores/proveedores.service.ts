@@ -42,9 +42,24 @@ export class ProveedoresService {
             let maxDate: Date | undefined = undefined;
      
             if (year && month && month !== 'ALL') {
-                const m = parseInt(month, 10);
-                minDate = new Date(parseInt(year, 10), m - 1, 1);
-                maxDate = new Date(parseInt(year, 10), m, 0, 23, 59, 59, 999);
+                if (month === 'CURRENT_WEEK') {
+                    const now = new Date();
+                    const day = now.getDay();
+                    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Monday
+                    const monday = new Date(now.setDate(diff));
+                    monday.setHours(0, 0, 0, 0);
+                    
+                    const friday = new Date(monday);
+                    friday.setDate(monday.getDate() + 4);
+                    friday.setHours(23, 59, 59, 999);
+                    
+                    minDate = monday;
+                    maxDate = friday;
+                } else {
+                    const m = parseInt(month, 10);
+                    minDate = new Date(parseInt(year, 10), m - 1, 1);
+                    maxDate = new Date(parseInt(year, 10), m, 0, 23, 59, 59, 999);
+                }
             } else if (year) {
                 minDate = new Date(`${year}-01-01`);
                 maxDate = new Date(`${year}-12-31T23:59:59.999Z`);

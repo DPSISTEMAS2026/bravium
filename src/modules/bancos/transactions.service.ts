@@ -204,14 +204,42 @@ export class TransactionsService {
             }
         }
 
+        // Batch lookup de proveedores por RUT (para el tooltip de identificación de glosa)
+        const rutsEnGlosas = [...new Set(
+            transactions
+                .map(tx => (tx.metadata as any)?.providerRut)
+                .filter(Boolean)
+        )];
+        const providersByRut = new Map<string, string>();
+        if (rutsEnGlosas.length > 0) {
+            const normalizeRut = (r: string) => r.replace(/\./g, '').toLowerCase();
+            const providers = await this.prisma.provider.findMany({
+                where: { rut: { in: rutsEnGlosas.map(r => r.replace(/\./g, '')) } },
+                select: { rut: true, name: true }
+            });
+            for (const p of providers) {
+                providersByRut.set(normalizeRut(p.rut), p.name);
+            }
+        }
+
         const data = transactions.map((tx) => {
             const activeMatches = [...tx.matches].sort((a, b) => {
                 const order = (s: string) => (s === 'CONFIRMED' ? 0 : s === 'DRAFT' ? 1 : 2);
                 return order(a.status) - order(b.status) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
             });
             const pendingSuggestion = txIdToSuggestion.get(tx.id);
+
+            // Enriquecer metadata con nombre del proveedor si se encontró
+            const providerRut = (tx.metadata as any)?.providerRut;
+            const providerName = providerRut
+                ? providersByRut.get(providerRut.replace(/\./g, '').toLowerCase()) || null
+                : null;
+
             return {
                 ...tx,
+                metadata: providerName
+                    ? { ...(tx.metadata as any), providerName }
+                    : tx.metadata,
                 matches: activeMatches,
                 hasMatch: activeMatches.length > 0,
                 matchCount: activeMatches.length,
@@ -228,6 +256,7 @@ export class TransactionsService {
                     : undefined,
             };
         });
+
 
         if (page && limit) {
             return {

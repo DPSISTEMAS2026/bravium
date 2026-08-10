@@ -12,11 +12,11 @@ export class SearchController {
         if (!query || query.trim().length < 2) {
             return { proveedores: [], dtes: [], transacciones: [] };
         }
-        
+
         const q = query.trim();
         const orgId = req.user.organizationId;
 
-        // 1. Search Providers
+        // 1. Buscar Proveedores
         const proveedores = await this.prisma.provider.findMany({
             where: {
                 organizationId: orgId,
@@ -25,30 +25,42 @@ export class SearchController {
                     { rut: { contains: q, mode: 'insensitive' } },
                 ]
             },
-            take: 12
+            take: 15
         });
 
-        // 2. Search DTEs (Invoices)
+        // 2. Buscar DTEs (Facturas, Boletas BHE, Notas de Crédito 2020 - 2026)
         const folioNum = /^\d+$/.test(q) ? parseInt(q, 10) : NaN;
         const dtes = await this.prisma.dTE.findMany({
             where: {
-                provider: { organizationId: orgId },
+                organizationId: orgId,
                 OR: [
                     { rutIssuer: { contains: q, mode: 'insensitive' } },
+                    { provider: { name: { contains: q, mode: 'insensitive' } } },
                     ...(!isNaN(folioNum) ? [{ folio: folioNum }] : [])
                 ]
             },
-            include: { 
-                provider: { select: { name: true } },
+            include: {
+                provider: { select: { id: true, name: true, rut: true } },
                 matches: {
-                    include: { transaction: { select: { description: true, amount: true, metadata: true } } }
+                    include: {
+                        transaction: {
+                            select: {
+                                id: true,
+                                date: true,
+                                amount: true,
+                                description: true,
+                                reference: true,
+                                bankAccount: { select: { bankName: true, accountNumber: true } }
+                            }
+                        }
+                    }
                 }
             },
-            take: 12,
+            take: 25,
             orderBy: { issuedDate: 'desc' }
         });
 
-        // 3. Search Bank Transactions
+        // 3. Buscar Transacciones Bancarias (Cartolas)
         const transacciones = await this.prisma.bankTransaction.findMany({
             where: {
                 bankAccount: { organizationId: orgId },
@@ -57,13 +69,13 @@ export class SearchController {
                     { reference: { contains: q, mode: 'insensitive' } },
                 ]
             },
-            include: { 
+            include: {
                 bankAccount: { select: { bankName: true, accountNumber: true } },
                 matches: {
-                    include: { dte: { select: { folio: true, totalAmount: true } } }
+                    include: { dte: { select: { folio: true, totalAmount: true, rutIssuer: true, provider: { select: { name: true } } } } }
                 }
             },
-            take: 12,
+            take: 25,
             orderBy: { date: 'desc' }
         });
 

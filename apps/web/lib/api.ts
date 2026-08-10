@@ -6,9 +6,13 @@ const API_BASE = 'https://bravium-backend.onrender.com'; // Fallback production 
  */
 export function getApiUrl() {
   const env = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL;
-  const url = (env && env.trim() !== '') ? env.trim() : API_BASE;
-  if (url.includes(':8000') || !url.startsWith('http')) return API_BASE;
-  return url.replace(/\/$/, "");
+  if (env && env.trim() !== '' && !env.includes(':8000') && env.startsWith('http')) {
+    return env.trim().replace(/\/$/, "");
+  }
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return 'http://localhost:3000';
+  }
+  return API_BASE;
 }
 
 export const apiFetcher = async (url: string) => {

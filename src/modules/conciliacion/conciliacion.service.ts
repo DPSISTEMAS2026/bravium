@@ -70,18 +70,12 @@ export class ConciliacionService {
 
             // Calcular ventana de búsqueda desde fromDate
             const minDate = this.visibility.applyMinDate(fromDate ? new Date(fromDate) : undefined);
-            const lookbackDays = minDate
-                ? Math.ceil((Date.now() - minDate.getTime()) / 86400000)
-                : 120;
 
             // Motor canónico único
             const engine = new ReconciliationEngine(this.prisma);
             const result = await engine.run({
                 organizationId: resolvedOrgId,
                 dryRun: false,
-                lookbackDays,
-                amountTolerance: 1000,
-                dateWindowDays: 90,
             });
 
             // Auto-categorización complementaria por palabras clave
@@ -91,15 +85,13 @@ export class ConciliacionService {
             }
 
             this.fileLog(
-                `COMPLETED: P0=${result.pass0Rut} P1=${result.pass1Exact} ` +
-                `P2=${result.pass2RutAmount} P3=${result.pass3Alias} P4=${result.pass4Fuzzy} ` +
-                `SUM=${result.pass5Sum} SPLIT=${result.pass6Split} Rules=${rulesResult.categorized}`
+                `COMPLETED: P1=${result.pass1Exact} Drafts=${result.totalDrafts} Rules=${rulesResult.categorized}`
             );
 
             return {
                 processed: result.processed,
-                matches: result.totalDrafts,
-                suggestions: result.totalSuggestions,
+                matches: result.totalDrafts + result.pass1Exact,
+                suggestions: 0,
                 autoCategorized: rulesResult.categorized,
                 detail: result,
             };

@@ -388,4 +388,134 @@ export class ReportesService {
             notFoundDetails,
         };
     }
+
+    /**
+     * Resumen Mensual Consolidado
+     */
+    async getResumenMensual(year: number, month: number, organizationId?: string) {
+        const fromDate = new Date(year, month - 1, 1);
+        const toDate = new Date(year, month, 0, 23, 59, 59, 999);
+
+        // 1. Cartolas (Bank Transactions)
+        const txWhere = {
+            date: { gte: fromDate, lte: toDate },
+            ...(organizationId && { bankAccount: { organizationId } }),
+        };
+
+        const [txTotalCount, txPendingCount, txMatchedCount, txDebits, txCredits] = await Promise.all([
+            this.prisma.bankTransaction.count({ where: txWhere }),
+            this.prisma.bankTransaction.count({ where: { ...txWhere, status: 'PENDING' } }),
+            this.prisma.bankTransaction.count({ where: { ...txWhere, status: { in: ['MATCHED', 'PARTIALLY_MATCHED'] } } }),
+            this.prisma.bankTransaction.aggregate({ where: { ...txWhere, type: 'DEBIT' }, _sum: { amount: true } }),
+            this.prisma.bankTransaction.aggregate({ where: { ...txWhere, type: 'CREDIT' }, _sum: { amount: true } })
+        ]);
+
+        // 2. DTEs (Facturas)
+        const dteWhere = {
+            issuedDate: { gte: fromDate, lte: toDate },
+            ...(organizationId && { organizationId }),
+        };
+
+        // Facturas de Gasto (33, 34, etc)
+        const dteGastoWhere = { ...dteWhere, type: { in: [33, 34] } };
+        
+        const [dteTotalCount, dtePaidCount, dteUnpaidCount, dteGastoTotal, dteGastoPendiente] = await Promise.all([
+            this.prisma.dTE.count({ where: dteGastoWhere }),
+            this.prisma.dTE.count({ where: { ...dteGastoWhere, paymentStatus: 'PAID' } }),
+            this.prisma.dTE.count({ where: { ...dteGastoWhere, paymentStatus: 'UNPAID' } }),
+            this.prisma.dTE.aggregate({ where: dteGastoWhere, _sum: { totalAmount: true } }),
+            this.prisma.dTE.aggregate({ where: dteGastoWhere, _sum: { outstandingAmount: true } })
+        ]);
+
+        // 3. Gastos por Categoría y Proveedor
+        const dtesWithProvider = await this.prisma.dTE.findMany({
+            where: dteGastoWhere,
+            include: { provider: true }
+        });
+
+        const categoryMap = new Map<string, number>();
+        const providerMap = new Map<string, { id: string, rut: string, name: string, category: string, total: number }>();
+
+        dtesWithProvider.forEach(dte => {
+            const amount = dte.totalAmount || 0;
+            const category = dte.provider?.category || 'Sin Categoría';
+            const providerId = dte.provider?.id || dte.rutIssuer;
+            const providerName = dte.provider?.name || 'Desconocido';
+            const providerRut = dte.provider?.rut || dte.rutIssuer;
+
+            categoryMap.set(category, (categoryMap.get(category) || 0) + amount);
+
+            if (!providerMap.has(providerId)) {
+                providerMap.set(providerId, { id: providerId, rut: providerRut, name: providerName, category, total: 0 });
+            }
+            providerMap.get(providerId)!.total += amount;
+        });
+
+        const expensesByCategory = Array.from(categoryMap.entries())
+            .map(([category, amount]) => ({ category, amount }))
+            .sort((a, b) => b.amount - a.amount);
+
+        const topProviders = Array.from(providerMap.values())
+            .sort((a, b) => b.total - a.total)
+            .slice(0, 10);
+
+        // 4. Documentos de Cartolas Procesadas
+        const cartolasFiles = await this.prisma.$queryRawUnsafe<{ filename: string }[]>(
+            `SELECT DISTINCT bt.metadata->>'sourceFile' AS filename 
+             FROM bank_transactions bt 
+             JOIN bank_accounts ba ON ba.id = bt."bankAccountId" 
+             WHERE bt.date >= $1 AND bt.date <= $2 
+             ${organizationId ? `AND ba."organizationId" = '${organizationId}'` : ''}
+             AND (bt.metadata->>'sourceFile' IS NOT NULL AND bt.metadata->>'sourceFile' != '')
+             ORDER BY filename`,
+             fromDate,
+             toDate
+        );
+
+        // 5. Movimientos Detallados
+        const recentTransactions = await this.prisma.bankTransaction.findMany({
+            where: txWhere,
+            select: {
+                id: true,
+                date: true,
+                amount: true,
+                description: true,
+                type: true,
+                status: true,
+                metadata: true,
+            },
+            orderBy: { date: 'desc' },
+            take: 100 // Limitar a los más recientes para no sobrecargar
+        });
+
+        return {
+            period: { year, month },
+            bankTransactions: {
+                totalCount: txTotalCount,
+                pendingCount: txPendingCount,
+                matchedCount: txMatchedCount,
+                totalDebits: Math.abs(txDebits._sum.amount || 0),
+                totalCredits: txCredits._sum.amount || 0,
+            },
+            dtes: {
+                totalCount: dteTotalCount,
+                paidCount: dtePaidCount,
+                unpaidCount: dteUnpaidCount,
+                totalAmount: dteGastoTotal._sum.totalAmount || 0,
+                pendingAmount: dteGastoPendiente._sum.outstandingAmount || 0,
+            },
+            expensesByCategory,
+            topProviders,
+            cartolaFiles: cartolasFiles.map(f => f.filename),
+            recentTransactions: recentTransactions.map(tx => ({
+                id: tx.id,
+                date: tx.date,
+                amount: tx.amount,
+                description: tx.description,
+                type: tx.type,
+                status: tx.status,
+                sourceFile: (tx.metadata as any)?.sourceFile || 'Sin archivo'
+            }))
+        };
+    }
 }

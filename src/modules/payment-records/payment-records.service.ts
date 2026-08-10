@@ -31,13 +31,68 @@ export interface ImportExcelRowDto {
     mesOrigen?: string;
 }
 
+import { ExcelLiveSyncService } from './excel-live-sync.service';
+
 @Injectable()
 export class PaymentRecordsService {
     private readonly logger = new Logger(PaymentRecordsService.name);
 
-    constructor(private prisma: PrismaService) {}
+    constructor(
+        private prisma: PrismaService,
+        private excelLiveSync: ExcelLiveSyncService
+    ) {}
 
     async create(dto: CreatePaymentRecordDto, userId?: string) {
+        let transactionId: string | null = dto.transactionId || null;
+        let dteId: string | null = dto.dteId || null;
+        const fechaPago = new Date(dto.fechaPago);
+
+        // 1. Auto-link to DTE by folio if available
+        if (!dteId && dto.folioFactura) {
+            const folioNum = parseInt(dto.folioFactura.trim(), 10);
+            if (!isNaN(folioNum)) {
+                const dteMatch = await this.prisma.dTE.findFirst({
+                    where: { folio: folioNum },
+                    select: { id: true },
+                });
+                if (dteMatch) dteId = dteMatch.id;
+            }
+        }
+
+        // 2. Auto-link to DTE by provider name + amount if still unlinked
+        if (!dteId && dto.monto > 0) {
+            const dteMatch = await this.prisma.dTE.findFirst({
+                where: {
+                    totalAmount: Math.round(dto.monto),
+                    provider: {
+                        name: { contains: dto.empresa.trim(), mode: 'insensitive' },
+                    },
+                },
+                select: { id: true },
+            });
+            if (dteMatch) dteId = dteMatch.id;
+        }
+
+        // 3. Auto-link to BankTransaction by amount & date window (±3 days) if unlinked
+        if (!transactionId && dto.monto > 0 && !isNaN(fechaPago.getTime())) {
+            const absMonto = Math.abs(dto.monto);
+            const txMatch = await this.prisma.bankTransaction.findFirst({
+                where: {
+                    date: {
+                        gte: new Date(fechaPago.getTime() - 3 * 86400000),
+                        lte: new Date(fechaPago.getTime() + 3 * 86400000),
+                    },
+                    amount: {
+                        in: [Math.round(absMonto), Math.round(-absMonto)],
+                    },
+                },
+                select: { id: true },
+            });
+            if (txMatch) {
+                transactionId = txMatch.id;
+            }
+        }
+
         const record = await this.prisma.paymentRecord.create({
             data: {
                 empresa: dto.empresa,
@@ -46,16 +101,29 @@ export class PaymentRecordsService {
                 folioFactura: dto.folioFactura,
                 folioBoleta: dto.folioBoleta,
                 monto: dto.monto,
-                fechaPago: new Date(dto.fechaPago),
+                fechaPago,
                 medioPago: dto.medioPago,
                 comentario: dto.comentario,
                 autorizacion: dto.autorizacion,
-                transactionId: dto.transactionId || null,
-                dteId: dto.dteId || null,
+                transactionId,
+                dteId,
                 createdBy: userId,
             },
             include: { transaction: true, dte: true },
         });
+
+        // 4. Sincronizar automáticamente en la planilla Excel "Pagos CL 2026.xlsx"
+        this.excelLiveSync.appendPaymentToExcel({
+            empresa: dto.empresa,
+            detalle: dto.detalle,
+            tipoDocumento: dto.tipoDocumento,
+            folioFactura: dto.folioFactura,
+            monto: dto.monto,
+            fechaPago,
+            medioPago: dto.medioPago,
+            comentario: dto.comentario
+        }).catch(err => this.logger.error(`Error en async Excel Live Sync: ${err.message}`));
+
         return record;
     }
 

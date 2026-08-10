@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use, useMemo } from 'react';
 import PrintStatementModal from './PrintStatementModal';
-import { UniversalMatchModal } from '@/components/conciliacion/UniversalMatchModal';
+// Import UniversalMatchModal removed
 import {
     ArrowLeftIcon,
     DocumentTextIcon,
@@ -661,21 +661,6 @@ export default function ProviderDetailPage({ params }: { params: Promise<{ id: s
                 </div>
             </div>
         </div>
-        {isUniversalModalOpen && (
-            <UniversalMatchModal
-                isOpen={isUniversalModalOpen}
-                onClose={() => {
-                    setIsUniversalModalOpen(false);
-                    setSelectedUniversalDtes([]);
-                }}
-                API_URL={getApiUrl()}
-                onRefresh={loadProviderDetail}
-                initialDtes={selectedUniversalDtes}
-                initialTransactions={selectedUniversalTxs}
-                mode={universalModalMode}
-                reviewMatchId={universalReviewMatchId}
-            />
-        )}
 
 
 

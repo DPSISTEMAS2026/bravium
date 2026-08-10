@@ -13,75 +13,65 @@ export function MonthlyBreakdownGrid({ data }: { data: MonthlyStats[] }) {
   if (!data || data.length === 0) return null;
 
   return (
-    <div className="bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl overflow-hidden mt-8">
-      <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-        <h3 className="text-base font-semibold leading-7 text-gray-900">Métricas de Conciliación por Mes</h3>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-500">
-          Progreso mensual de cuadratura entre documentos recibidos y movimientos bancarios.
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50">
+        <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Desglose de Cuadratura Mensual</h3>
+        <p className="mt-0.5 text-xs text-slate-500 font-medium">
+          Progreso por periodo mensual entre facturas de compra y movimientos bancarios.
         </p>
       </div>
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <table className="w-full text-xs text-left">
+          <thead className="bg-slate-100/70 border-b border-slate-200">
             <tr>
-              <th scope="col" className="py-3.5 pl-6 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">Mes</th>
-              <th scope="col" className="px-3 py-3.5 text-center text-sm font-semibold text-gray-900" colSpan={3}>Facturas (Folios)</th>
-              <th scope="col" className="px-3 py-3.5 text-center text-sm font-semibold text-gray-900" colSpan={3}>Banco (Cartolas)</th>
+              <th scope="col" className="py-2.5 px-4 font-bold text-slate-700 uppercase tracking-wider">Mes</th>
+              <th scope="col" className="py-2.5 px-4 font-bold text-slate-700 uppercase tracking-wider text-center" colSpan={3}>Documentos DTE</th>
+              <th scope="col" className="py-2.5 px-4 font-bold text-slate-700 uppercase tracking-wider text-center" colSpan={3}>Cartolas Bancarias</th>
             </tr>
-            <tr className="bg-white border-b border-gray-200">
-              <th scope="col" className="py-2 pl-6 pr-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide"></th>
-              <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">Recibidas / Pagadas</th>
-              <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">Pendientes</th>
-              <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">Avance</th>
-              <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">Txs / Conciliadas</th>
-              <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">Sueltas</th>
-              <th scope="col" className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">Avance</th>
+            <tr className="bg-slate-50 text-[10px] text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
+              <th className="py-2 px-4">Periodo</th>
+              <th className="py-2 px-4 text-center">Recibidos / Pagados</th>
+              <th className="py-2 px-4 text-center">Impagos</th>
+              <th className="py-2 px-4 text-center">Avance</th>
+              <th className="py-2 px-4 text-center border-l border-slate-200">Total / Conciliados</th>
+              <th className="py-2 px-4 text-center">Pendientes</th>
+              <th className="py-2 px-4 text-center">Avance</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
+          <tbody className="divide-y divide-slate-100 bg-white">
             {data.map((m) => {
               const dtePct = parseFloat(m.dtes.payment_rate);
               const txPct = parseFloat(m.transactions.match_rate);
               return (
-                <tr key={`${m.month}-${m.year}`} className="hover:bg-gray-50 transition-colors">
-                  <td className="whitespace-nowrap py-4 pl-6 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+                <tr key={`${m.month}-${m.year}`} className="hover:bg-slate-50/80 transition-colors">
+                  <td className="py-3 px-4 font-bold text-slate-900">
                     {m.month} {m.year}
                   </td>
                   
-                  {/* Facturas */}
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-gray-600">
-                    <span className="font-medium text-gray-900">{m.dtes.total}</span> / <span className="text-emerald-600 font-medium">{m.dtes.paid}</span>
+                  {/* DTEs */}
+                  <td className="py-3 px-4 text-center font-mono text-slate-700">
+                    <span className="font-bold text-slate-900">{m.dtes.total}</span> / <span className="font-bold text-slate-900">{m.dtes.paid}</span>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${m.dtes.unpaid > 0 ? 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20' : 'bg-gray-50 text-gray-600 ring-1 ring-inset ring-gray-500/10'}`}>
-                      {m.dtes.unpaid} dtes
+                  <td className="py-3 px-4 text-center">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded font-mono font-semibold text-[11px] bg-slate-100 text-slate-700 border border-slate-200">
+                      {m.dtes.unpaid} DTEs
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                     <div className="flex items-center justify-center gap-2">
-                        <div className="w-16 bg-gray-200 rounded-full h-1.5 dark:bg-gray-200">
-                            <div className={`h-1.5 rounded-full ${dtePct >= 90 ? 'bg-emerald-500' : dtePct >= 50 ? 'bg-blue-500' : 'bg-red-500'}`} style={{ width: `${dtePct}%` }}></div>
-                        </div>
-                        <span className="text-xs font-medium text-gray-700 w-9">{m.dtes.payment_rate}</span>
-                     </div>
+                  <td className="py-3 px-4 text-center font-mono font-bold text-slate-800">
+                    {m.dtes.payment_rate}
                   </td>
 
                   {/* Banco */}
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-gray-600 border-l border-gray-100">
-                    <span className="font-medium text-gray-900">{m.transactions.total}</span> / <span className="text-blue-600 font-medium">{m.transactions.matched}</span>
+                  <td className="py-3 px-4 text-center font-mono text-slate-700 border-l border-slate-200">
+                    <span className="font-bold text-slate-900">{m.transactions.total}</span> / <span className="font-bold text-slate-900">{m.transactions.matched}</span>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${m.transactions.pending > 0 ? 'bg-pink-50 text-pink-700 ring-1 ring-inset ring-pink-600/20' : 'bg-gray-50 text-gray-600 ring-1 ring-inset ring-gray-500/10'}`}>
+                  <td className="py-3 px-4 text-center">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded font-mono font-semibold text-[11px] bg-slate-100 text-slate-700 border border-slate-200">
                       {m.transactions.pending} txs
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                     <div className="flex items-center justify-center gap-2">
-                        <div className="w-16 bg-gray-200 rounded-full h-1.5 dark:bg-gray-200">
-                            <div className={`h-1.5 rounded-full ${txPct >= 90 ? 'bg-emerald-500' : txPct >= 50 ? 'bg-blue-500' : 'bg-red-500'}`} style={{ width: `${txPct}%` }}></div>
-                        </div>
-                        <span className="text-xs font-medium text-gray-700 w-9">{m.transactions.match_rate}</span>
-                     </div>
+                  <td className="py-3 px-4 text-center font-mono font-bold text-slate-800">
+                    {m.transactions.match_rate}
                   </td>
                 </tr>
               );

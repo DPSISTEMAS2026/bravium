@@ -56,9 +56,11 @@ model BankTransaction {
 
   @@index([date])
   @@index([status])
+  @@index([amount])
   @@index([bankAccountId])
   @@index([date, status])
   @@index([bankAccountId, date])
+  @@index([amount, date])
   @@map("bank_transactions")
 }
 
@@ -430,6 +432,7 @@ model DTE {
   @@index([providerId])
   @@index([issuedDate, paymentStatus])
   @@index([totalAmount])
+  @@index([rutIssuer, totalAmount])
   @@map("dtes")
 }
 
@@ -939,4 +942,21 @@ model AutoCategoryRule {
 
   @@index([organizationId])
   @@map("auto_category_rules")
+}
+
+// ==============================
+// 16. REJECTED MATCH PAIRS (Negative Learning)
+// ==============================
+
+model RejectedMatchPair {
+  id            String   @id @default(cuid())
+  transactionId String
+  dteId         String
+  rejectedBy    String?
+  rejectedAt    DateTime @default(now())
+  reason        String?
+
+  @@unique([transactionId, dteId])
+  @@index([transactionId])
+  @@map("rejected_match_pairs")
 }

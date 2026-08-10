@@ -30,9 +30,9 @@ export default function Header({ onToggle, isCollapsed = false, isMobile = false
 
             <div className="flex items-center gap-3 sm:gap-4 px-2 min-w-0 flex-1 justify-end flex-nowrap">
                 {/* Status */}
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full border border-slate-200 shrink-0">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="text-emerald-700 font-semibold text-xs">EN LÍNEA</span>
+                <div className="flex items-center gap-2 px-2.5 py-1 bg-slate-100 rounded-lg border border-slate-200 shrink-0">
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-700" />
+                    <span className="text-slate-700 font-semibold text-[11px] uppercase tracking-wider">Sistema Operativo</span>
                 </div>
 
                 {/* Notifications */}

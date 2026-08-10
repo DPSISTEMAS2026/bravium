@@ -17,6 +17,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "summary": "ts-node scripts/daily_summary.ts",
+    "db:deduplicate": "ts-node scripts/deduplicate_tx.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix"
   },
   "dependencies": {

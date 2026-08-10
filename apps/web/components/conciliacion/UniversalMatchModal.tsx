@@ -11,6 +11,7 @@ import {
     HandThumbDownIcon,
     TrashIcon,
     PencilSquareIcon,
+    DocumentTextIcon,
     SparklesIcon
 } from '@heroicons/react/24/outline';
 import { authFetch, apiFetcher } from '../../lib/api';
@@ -23,6 +24,7 @@ interface UniversalMatchModalProps {
     onRefresh?: () => void;
     initialTransactions?: any[];
     initialDtes?: any[];
+    provider?: any;
     suggestionId?: string;
     reviewMatchId?: string;
     matchStatus?: string;
@@ -31,10 +33,10 @@ interface UniversalMatchModalProps {
 }
 
 const formatCurrency = (n: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(n);
-const formatDate = (s: string) => {
-    if (!s) return '—';
+const formatDate = (s: any) => {
+    if (!s || s === 'Invalid Date') return '—';
     const d = new Date(s);
-    if (isNaN(d.getTime())) return s;
+    if (isNaN(d.getTime())) return '—';
     return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
@@ -45,6 +47,7 @@ export function UniversalMatchModal({
     onRefresh,
     initialTransactions = [],
     initialDtes = [],
+    provider,
     suggestionId,
     reviewMatchId,
     matchStatus,
@@ -63,6 +66,8 @@ export function UniversalMatchModal({
     const [txLoading, setTxLoading] = useState(false);
     const [dteLoading, setDteLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveSuccess, setSaveSuccess] = useState(false);
 
     // Provider features
     const [providerSearch, setProviderSearch] = useState('');
@@ -99,45 +104,21 @@ export function UniversalMatchModal({
         }
 
         if (isOpen) {
+            document.body.style.overflow = 'hidden';
+            document.documentElement.style.overflow = 'hidden';
             const txs = [...(initialTransactions || [])];
             const dtes = [...(initialDtes || [])];
-
-            // Auto-load related DTEs from initial txs
-            txs.forEach(tx => {
-                if (tx.matches?.length > 0) {
-                    tx.matches.forEach((m: any) => {
-                        if (m.status === 'CONFIRMED' && m.dte) {
-                            if (!dtes.find(d => d.id === m.dte.id)) {
-                                dtes.push({ ...m.dte, provider: m.dte.provider || (tx as any).provider });
-                            }
-                        }
-                    });
-                }
-            });
-
-            // Auto-load related Txs from initial (and expanded) dtes
-            dtes.forEach(dte => {
-                if (dte.matches?.length > 0) {
-                    dte.matches.forEach((m: any) => {
-                        if (m.status === 'CONFIRMED' && m.transaction) {
-                            if (!txs.find(t => t.id === m.transaction.id)) {
-                                txs.push(m.transaction);
-                            }
-                        }
-                    });
-                }
-            });
 
             setSelectedTxs(txs);
             setSelectedDtes(dtes);
             setPendingTxs([]);
             setUnpaidDtes([]);
-            setTxSearch('');
-            setDteSearch('');
             setProviderResults([]);
             setProviderInfo(null);
             setSelectedRuleId('');
             setDiffResolution(null);
+            setSaveSuccess(false);
+            setSaveError(null);
             
             // Pre-populate existing annotation if opening in ANNOTATE mode
             const firstTx = txs[0];
@@ -147,49 +128,55 @@ export function UniversalMatchModal({
                 setNote('');
             }
             
-            // Auto-detect provider: from initial DTEs or from existing annotation
-            if (initialDtes && initialDtes.length > 0 && initialDtes[0].provider) {
-                setSelectedProvider(initialDtes[0].provider);
-            } else if (mode === 'ANNOTATE' && firstTx?.metadata?.providerName) {
-                setSelectedProvider({ name: firstTx.metadata.providerName, id: firstTx.metadata.providerId });
-                setProviderSearch(firstTx.metadata.providerName);
-            } else {
-                setSelectedProvider(null);
-            }
+            // Auto-detect provider & RUT from description or provider prop
+            const detectedProv = provider || (initialDtes && initialDtes[0]?.provider) || (firstTx?.provider) || null;
+            let autoQuery = '';
 
-            // Auto-search bank transactions when opening with DTEs but no txs
-            if (mode === 'MANUAL' && dtes.length > 0 && txs.length === 0) {
-                const firstDte = dtes[0];
-                const searchTerm = firstDte.totalAmount?.toString() || '';
-                if (searchTerm) {
-                    setTxSearch(searchTerm);
-                    // Trigger search after state is set — with cancellable ref
-                    let cancelled = false;
-                    autoSearchTimerRef.current = setTimeout(async () => {
-                        if (cancelled) return;
-                        try {
-                            const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-                            const params = new URLSearchParams({ search: searchTerm, status: 'ALL', limit: '50', fromDate: sixMonthsAgo.toISOString().split('T')[0], sortBy: 'date', order: 'desc' });
-                            const res = await authFetch(`${API_URL}/transactions?${params}`);
-                            if (res.ok && !cancelled) {
-                                const data = await res.json();
-                                const arr = Array.isArray(data) ? data : data.data || [];
-                                setPendingTxs(arr);
-                            }
-                        } catch { /* ignore */ }
-                    }, 100);
-                    // Cleanup on unmount / re-run
-                    return () => {
-                        cancelled = true;
-                        if (autoSearchTimerRef.current) {
-                            clearTimeout(autoSearchTimerRef.current);
-                            autoSearchTimerRef.current = null;
-                        }
-                    };
+            if (detectedProv) {
+                setSelectedProvider(detectedProv);
+                autoQuery = detectedProv.name || detectedProv.rut || '';
+            } else if (firstTx?.description) {
+                let desc = firstTx.description;
+                
+                // Extract clean provider name or RUT
+                let cleanedName = desc
+                    .replace(/^0?\d{8,11}\s*/i, '') // strip leading 0995353709
+                    .replace(/^Transf\.\s*Internet\s*a\s*/i, '')
+                    .replace(/^Transf\s*a\s*/i, '')
+                    .replace(/^PAGO\s*PROVEEDOR\s*/i, '')
+                    .replace(/^ABN\s*CRD\s*DB\s*TRAN\s*/i, '')
+                    .replace(/TRANSBA$/i, '')
+                    .replace(/\$\s*[\d\.\s]+$/i, '')
+                    .trim();
+
+                const rutMatch = desc.match(/(\d{1,2}\.?\d{3}\.?\d{3}[-kK0-9])/);
+                if (rutMatch) {
+                    const cleanRut = rutMatch[1].replace(/[^0-9kK]/g, '').toUpperCase();
+                    const trimmedRut = cleanRut.length === 9 && cleanRut.startsWith('0') ? cleanRut.substring(1) : cleanRut;
+                    // Prefer cleaned provider name if >=3 chars, otherwise use RUT
+                    autoQuery = cleanedName.length >= 3 ? cleanedName : trimmedRut;
+                } else {
+                    autoQuery = cleanedName || desc;
                 }
             }
+
+            if (autoQuery) {
+                setDteSearch(autoQuery);
+                setTxSearch(autoQuery);
+                autoSearchTimerRef.current = setTimeout(() => {
+                    searchDtes(autoQuery);
+                    searchTxs(autoQuery);
+                }, 100);
+            } else {
+                setDteSearch('');
+                setTxSearch('');
+            }
         }
-         
+
+        return () => {
+            document.body.style.overflow = '';
+            document.documentElement.style.overflow = '';
+        };
     }, [isOpen, initKey]);
 
     useEffect(() => {
@@ -200,8 +187,6 @@ export function UniversalMatchModal({
         }
          
     }, [selectedProvider]);
-
-    if (!isOpen) return null;
 
     const fetchProviderInfo = async (providerId: string) => {
         setIsProviderLoading(true);
@@ -235,12 +220,13 @@ export function UniversalMatchModal({
         } catch { /* ignore */ }
     };
 
-    const searchTxs = async () => {
-        if (!txSearch.trim()) return;
+    const searchTxs = async (overrideQuery?: string) => {
+        const q = (overrideQuery !== undefined ? overrideQuery : txSearch).trim();
+        if (!q) return;
         setTxLoading(true);
         try {
             const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-            const params = new URLSearchParams({ search: txSearch, status: 'ALL', limit: '50', fromDate: sixMonthsAgo.toISOString().split('T')[0], sortBy: 'date', order: 'desc' });
+            const params = new URLSearchParams({ search: q, status: 'ALL', limit: '50', fromDate: sixMonthsAgo.toISOString().split('T')[0], sortBy: 'date', order: 'desc' });
             const res = await authFetch(`${API_URL}/transactions?${params}`);
             if (res.ok) {
                 const data = await res.json();
@@ -251,11 +237,12 @@ export function UniversalMatchModal({
         finally { setTxLoading(false); }
     };
 
-    const searchDtes = async () => {
-        if (!dteSearch.trim()) return;
+    const searchDtes = async (overrideQuery?: string) => {
+        const q = (overrideQuery !== undefined ? overrideQuery : dteSearch).trim();
+        if (!q) return;
         setDteLoading(true);
         try {
-            const params = new URLSearchParams({ search: dteSearch, limit: '40', includeMatched: 'true' });
+            const params = new URLSearchParams({ search: q, limit: '40', includeMatched: 'true' });
             const res = await authFetch(`${API_URL}/dtes?${params}`);
             if (res.ok) {
                 const data = await res.json();
@@ -347,6 +334,18 @@ export function UniversalMatchModal({
     const removeDte = (id: string) => setSelectedDtes(prev => prev.filter(d => d.id !== id));
 
     const handleSave = async (actionOverride?: 'PARTIAL' | 'EXACT') => {
+        setSaveError(null);
+        setSaveSuccess(false);
+
+        // Helper to complete save successfully
+        const completeSuccess = () => {
+            setSaveSuccess(true);
+            setTimeout(() => {
+                if (onRefresh) onRefresh();
+                onClose();
+            }, 600);
+        };
+
         // Unidirectional: DTEs but NO Txs (Manual Payment / Review)
         if (selectedDtes.length > 0 && selectedTxs.length === 0) {
             setIsSaving(true);
@@ -362,10 +361,9 @@ export function UniversalMatchModal({
                         })
                     });
                 }
-                if (onRefresh) onRefresh();
-                onClose();
+                completeSuccess();
             } catch (err: any) {
-                alert(`Error al guardar: ${err.message}`);
+                setSaveError(`Error al guardar: ${err.message}`);
             } finally {
                 setIsSaving(false);
             }
@@ -430,10 +428,9 @@ export function UniversalMatchModal({
                     }
                 }
 
-                if (onRefresh) onRefresh();
-                onClose();
+                completeSuccess();
             } catch (err: any) {
-                alert(`Error: ${err.message}`);
+                setSaveError(`Error: ${err.message}`);
             } finally {
                 setIsSaving(false);
             }
@@ -449,9 +446,7 @@ export function UniversalMatchModal({
 
             // Helper: delete a match, gracefully ignoring 404 (already deleted)
             const safeDeleteMatch = async (matchId: string) => {
-                // Prevent deleting the very match we are trying to review/confirm!
                 if (matchId === reviewMatchId) return; 
-
                 if (deletedMatches.has(matchId)) return;
                 const delRes = await authFetch(`${API_URL}/conciliacion/matches/${matchId}`, { method: 'DELETE' });
                 if (!delRes.ok && delRes.status !== 404) {
@@ -492,7 +487,6 @@ export function UniversalMatchModal({
                     }),
                 });
 
-                // Si la sugerencia ya fue eliminada o borrada, hacemos un fallback silencioso a conciliación manual
                 if (res.status === 404 || res.status === 400) {
                     const errorText = await res.text().catch(() => '');
                     if (errorText.includes('no encontrada') || errorText.includes('procesada') || res.status === 404) {
@@ -506,7 +500,6 @@ export function UniversalMatchModal({
                     body: JSON.stringify({ status: 'CONFIRMED' }),
                 });
 
-                // If notes were added/changed, optionally patch notes too
                 if (res.ok && note) {
                     await authFetch(`${API_URL}/conciliacion/matches/${reviewMatchId}/notes`, {
                         method: 'PATCH',
@@ -516,11 +509,7 @@ export function UniversalMatchModal({
                 }
             } 
             
-            // Si no habia sugerencia ni reviewMatchId, o la sugerencia original ya no existía (fallback manual), o si fue PARCIAL
             if ((!suggestionId && !reviewMatchId) || isManualFallback || actionOverride === 'PARTIAL') {
-                if (isManualFallback) {
-                    console.log('Haciendo fallback a match manual porque la sugerencia ya no existe');
-                }
                 res = await authFetch(`${API_URL}/conciliacion/matches/manual`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -534,16 +523,15 @@ export function UniversalMatchModal({
             }
 
             if (res && res.ok) {
-                if (onRefresh) onRefresh();
-                onClose();
+                completeSuccess();
             } else if (res) {
-                const data = await res.json();
-                alert(`Error: ${data.message || 'No se pudo guardar el match'}`);
+                const data = await res.json().catch(()=>({}));
+                setSaveError(`Error: ${data.message || 'No se pudo guardar el match'}`);
             } else {
-                alert(`Error inesperado procesando la orden`);
+                setSaveError('Error inesperado procesando la orden');
             }
-        } catch (err) {
-            alert('Error de conexión');
+        } catch (err: any) {
+            setSaveError(`Error de conexión: ${err.message || ''}`);
         } finally {
             setIsSaving(false);
         }
@@ -676,401 +664,421 @@ export function UniversalMatchModal({
     })();
     const rutMismatchAlert = !!rutMismatchDetails;
 
+    // Detectar Parejas Exactas por RUT, Monto Exacto ($X) y Proximidad de Fecha
+    const exactPairs = useMemo(() => {
+        const pairs: Array<{ tx: any; dte: any }> = [];
+        const usedDteIds = new Set<string>();
+
+        const allTxs = selectedTxs.length > 0 ? selectedTxs : pendingTxs;
+        const allDtes = selectedDtes.length > 0 ? selectedDtes : unpaidDtes;
+
+        for (const tx of allTxs) {
+            const txAmount = Math.abs(tx.amount || 0);
+            if (txAmount === 0) continue;
+            const txTime = new Date(tx.date).getTime();
+
+            // Buscar candidatas con monto 100% exacto y ordenar por fecha más cercana
+            const candidates = allDtes
+                .filter(d => !usedDteIds.has(d.id) && Math.abs(d.totalAmount || d.outstandingAmount || 0) === txAmount)
+                .sort((a, b) => {
+                    const diffA = Math.abs(txTime - new Date(a.issuedDate).getTime());
+                    const diffB = Math.abs(txTime - new Date(b.issuedDate).getTime());
+                    return diffA - diffB;
+                });
+
+            if (candidates.length > 0) {
+                const bestDte = candidates[0];
+                pairs.push({ tx, dte: bestDte });
+                usedDteIds.add(bestDte.id);
+            }
+        }
+        return pairs;
+    }, [selectedTxs, pendingTxs, selectedDtes, unpaidDtes]);
+
+    const handleConfirmExactPairs = async (pairsToMatch: Array<{ tx: any; dte: any }>) => {
+        setIsSaving(true);
+        setSaveError(null);
+        try {
+            for (const p of pairsToMatch) {
+                await authFetch(`${API_URL}/conciliacion/matches/manual`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        transactionIds: [p.tx.id],
+                        dteIds: [p.dte.id],
+                        notes: 'Auto-Conciliado por RUT y Monto Exacto'
+                    })
+                });
+            }
+            setSaveSuccess(true);
+            setTimeout(() => {
+                if (onRefresh) onRefresh();
+                onClose();
+            }, 600);
+        } catch (err: any) {
+            setSaveError(`Error al conciliar parejas: ${err.message}`);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className={`bg-white rounded-xl shadow-2xl w-full flex flex-col max-h-[90vh] overflow-hidden transition-all duration-300 ${selectedProvider ? 'max-w-[90vw] lg:max-w-7xl' : 'max-w-6xl'}`} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            <div className={`bg-white rounded-xl shadow-2xl w-full flex flex-col max-h-[92vh] overflow-hidden transition-all duration-300 ${selectedProvider ? 'max-w-[90vw] lg:max-w-7xl' : 'max-w-6xl'}`} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                 
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                    <h2 className="text-xl font-bold text-slate-800">Conciliación Universal</h2>
-                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
-                        <XMarkIcon className="h-6 w-6" />
+                <div className="flex items-center justify-between px-6 py-4 bg-slate-900 border-b border-slate-800 text-white">
+                    <div>
+                        <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                            <span>Conciliación y Vincular Movimientos</span>
+                            {selectedProvider && (
+                                <span className="bg-slate-800 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full border border-slate-700 font-mono font-semibold">
+                                    {selectedProvider.name || selectedProvider.rut}
+                                </span>
+                            )}
+                        </h2>
+                        <p className="text-xs text-slate-300 mt-0.5 font-medium">
+                            {selectedProvider 
+                                ? `Mostrando documentos y transferencias para RUT: ${selectedProvider.rut || selectedProvider.name}`
+                                : dteSearch
+                                ? `Búsqueda activa para: "${dteSearch}"`
+                                : 'Cuadratura contable de cartolas bancarias con documentos DTE'}
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
+                        <XMarkIcon className="h-5 w-5" />
                     </button>
                 </div>
 
-                {/* TODO: Alerta de discrepancia de RUT deshabilitada temporalmente — revisar lógica más adelante
+                {/* Banner de Parejas Auto-Conciliadas en Verde */}
+                {exactPairs.length > 0 && !saveSuccess && (
+                    <div className="mx-6 mt-4 p-4 bg-emerald-50 border border-emerald-300 rounded-xl space-y-3">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                                <CheckCircleIcon className="h-5 w-5 text-emerald-700 shrink-0" />
+                                <div>
+                                    <h3 className="text-xs font-extrabold text-emerald-950 uppercase tracking-wider">
+                                        {exactPairs.length} {exactPairs.length === 1 ? 'Coincidencia Exacta Identificada (RUT y Monto)' : 'Coincidencias Exactas Identificadas (RUT y Monto)'}
+                                    </h3>
+                                    <p className="text-[11px] text-emerald-800 font-medium">
+                                        Movimiento bancario y documento tributario registran un valor idéntico ($CLP).
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => handleConfirmExactPairs(exactPairs)}
+                                disabled={isSaving}
+                                className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-lg shadow-sm transition-colors flex items-center gap-2 shrink-0 border border-emerald-700"
+                            >
+                                <CheckCircleIcon className="h-4 w-4 text-emerald-300" />
+                                <span>Confirmar Conciliación 1:1 en 1 Clic</span>
+                            </button>
+                        </div>
+                        <div className="divide-y divide-emerald-200 border-t border-emerald-200/80 pt-2 space-y-2">
+                            {exactPairs.map((pair, pIdx) => (
+                                <div key={pIdx} className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs gap-2">
+                                    <div className="flex items-center gap-3">
+                                        <span className="font-mono font-extrabold text-emerald-950 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
+                                            {formatCurrency(pair.tx.amount)}
+                                        </span>
+                                        <div>
+                                            <p className="font-bold text-slate-900">{pair.tx.description}</p>
+                                            <p className="text-[10px] text-slate-500 font-mono">{formatDate(pair.tx.date)}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-emerald-900 font-mono font-bold text-xs bg-emerald-100/60 px-2.5 py-1 rounded border border-emerald-200">
+                                        <span>↔ Documento Folio #{pair.dte.folio} ({formatCurrency(pair.dte.totalAmount || pair.dte.outstandingAmount)})</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Alerta de discrepancia de RUT */}
                 {rutMismatchAlert && (
-                    <div className="px-6 py-3 bg-red-50 border-b border-red-100">
+                    <div className="px-6 py-3 bg-amber-50 border-b border-amber-200">
                         <div className="flex items-start gap-3">
-                            <ExclamationTriangleIcon className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
+                            <ExclamationTriangleIcon className="h-5 w-5 text-amber-700 mt-0.5 shrink-0" />
                             <div>
-                                <h3 className="text-sm font-bold text-red-800">¡Alerta de Discrepancia de RUT!</h3>
-                                <p className="text-sm text-red-700 mt-0.5">La transferencia seleccionada está dirigida a un RUT distinto al RUT emisor de la factura. Por favor verifica antes de confirmar el match para evitar cruces erróneos.</p>
+                                <h3 className="text-xs font-bold text-amber-900 uppercase tracking-wider">Discrepancia de RUT Detectada</h3>
+                                <p className="text-xs text-amber-800 mt-0.5">La transferencia bancaria tiene un RUT distinto al emisor del documento. Por favor verifica antes de confirmar la vinculación.</p>
                                 {rutMismatchDetails && (
-                                    <p className="text-xs text-red-600 mt-1 font-mono opacity-75">
-                                        Banco: {rutMismatchDetails.txRut} ({rutMismatchDetails.txBody}) → Factura: {rutMismatchDetails.dteRut} ({rutMismatchDetails.dteBody})
+                                    <p className="text-[11px] text-amber-800 mt-1 font-mono bg-amber-100 px-2 py-0.5 rounded inline-block">
+                                        Banco: {rutMismatchDetails.txRut} → Factura: {rutMismatchDetails.dteRut}
                                     </p>
                                 )}
                             </div>
                         </div>
                     </div>
                 )}
-                */}
 
-                <div className="flex-1 overflow-auto p-6 md:flex gap-8">
-                    
-                    <div className="flex-1 flex flex-col gap-4 border-r border-slate-100 pr-8">
-                        {(mode === 'ANNOTATE' || selectedDtes.length === 0 || selectedTxs.length === 0) && (
-                            <div className="mb-2 bg-orange-50/80 border border-orange-100 rounded-lg p-4 space-y-4">
-                                <div>
-                                    <h4 className="text-sm font-bold text-orange-800 mb-2">Anotación Rápida</h4>
-                                    <input 
-                                        type="text" 
-                                        value={note} 
-                                        onChange={e => setNote(e.target.value)} 
-                                        placeholder="Concepto / Motivo del gasto..." 
-                                        className="w-full px-3 py-2 bg-white border border-orange-200 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm shadow-sm"
-                                    />
-                                    <p className="text-[11px] text-orange-600 mt-2 font-medium flex items-center gap-1">
-                                        <CheckCircleIcon className="h-3 w-3" /> Al presionar guardar, este movimiento se marcará como revisado.
-                                    </p>
-                                </div>
-                                
-                                <div className="border-t border-orange-100 pt-3">
-                                    <p className="text-xs font-bold text-orange-800 mb-2 flex items-center gap-1">
-                                        <SparklesIcon className="h-3.5 w-3.5" /> Categorizar como Gasto Fijo (Opcional)
-                                    </p>
-                                    <select
-                                        value={selectedRuleId}
-                                        onChange={(e) => setSelectedRuleId(e.target.value)}
-                                        className="w-full px-3 py-2 bg-white border border-orange-200 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm shadow-sm"
-                                    >
-                                        <option value="">-- No categorizar / Sin Regla --</option>
-                                        {rules.map((r: any) => (
-                                            <option key={r.id} value={r.id}>
-                                                {r.keywordMatch} ({r.categoryName})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="border-t border-orange-100 pt-3">
-                                    <p className="text-xs font-bold text-orange-800 mb-2 flex items-center gap-1">
-                                        <BanknotesIcon className="h-3.5 w-3.5" /> Asociar a Proveedor (Opcional)
-                                    </p>
-                                    <div className="relative">
-                                        <input
-                                            type="text"
-                                            value={providerSearch}
-                                            onChange={e => {
-                                                setProviderSearch(e.target.value);
-                                                searchProviders(e.target.value);
-                                                if (selectedProvider) setSelectedProvider(null);
-                                            }}
-                                            placeholder="Buscar proveedor..."
-                                            className="w-full px-3 py-2 bg-white border border-orange-200 rounded-lg outline-none text-sm focus:ring-2 focus:ring-orange-500"
-                                        />
-                                        {providerResults.length > 0 && (
-                                            <div className="absolute z-30 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-40 overflow-y-auto">
-                                                {providerResults.map(p => (
-                                                    <button
-                                                        key={p.id}
-                                                        onClick={() => {
-                                                            setSelectedProvider(p);
-                                                            setProviderSearch(p.name);
-                                                            setProviderResults([]);
-                                                        }}
-                                                        className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-slate-50 last:border-b-0 text-sm"
-                                                    >
-                                                        <div className="font-semibold text-slate-700">{p.name}</div>
-                                                        <div className="text-[10px] text-slate-400 font-mono">{p.rut}</div>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                    {selectedProvider && (
-                                        <div className="mt-2 flex items-center justify-between gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
-                                            <span className="flex items-center gap-1">
-                                                <CheckCircleIcon className="h-3.5 w-3.5" /> Proveedor Asociado: {selectedProvider.name}
-                                            </span>
-                                            <button
-                                                type="button"
-                                                title="Quitar proveedor"
-                                                onClick={() => {
-                                                    setSelectedProvider(null);
-                                                    setProviderSearch('');
-                                                    setProviderResults([]);
-                                                }}
-                                                className="ml-1 p-0.5 rounded hover:bg-emerald-100 text-emerald-500 hover:text-red-500 transition-colors"
-                                            >
-                                                <XMarkIcon className="h-3.5 w-3.5" />
-                                            </button>
-                                        </div>
-                                    )}
-                                    {selectedProvider && (
-                                        <div className="mt-4 pt-3 border-t border-orange-100/50">
-                                            <p className="text-[11px] font-bold text-orange-800 mb-2">Generar Boleta de Honorarios (Opcional)</p>
-                                            <div className="flex gap-2">
-                                                <input 
-                                                    type="number"
-                                                    value={boletaFolio}
-                                                    onChange={e => setBoletaFolio(e.target.value)}
-                                                    placeholder="N° Folio"
-                                                    className="w-1/2 px-2 py-1.5 bg-white border border-orange-200 rounded text-xs outline-none focus:ring-1 focus:ring-orange-500"
-                                                />
-                                                <input 
-                                                    type="number"
-                                                    value={boletaAmount}
-                                                    onChange={e => setBoletaAmount(Number(e.target.value) || '')}
-                                                    placeholder="Monto (Opcional)"
-                                                    className="w-1/2 px-2 py-1.5 bg-white border border-orange-200 rounded text-xs outline-none focus:ring-1 focus:ring-orange-500"
-                                                />
-                                            </div>
-                                            <p className="text-[10px] text-orange-600 mt-1">Si ingresas un folio, se creará el DTE y quedará como pagado con este movimiento.</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
+                {/* Banner de Error al Guardar */}
+                {saveError && (
+                    <div className="px-6 py-3 bg-slate-900 text-rose-300 border-b border-slate-800 flex items-center justify-between text-xs font-semibold">
                         <div className="flex items-center gap-2">
-                            <h3 className="text-lg font-bold text-slate-700">Movimientos Bancarios</h3>
-                            <span className="bg-slate-100 text-slate-500 rounded-full px-2 py-0.5 text-xs font-semibold">{selectedTxs.length}</span>
+                            <ExclamationTriangleIcon className="h-4 w-4 shrink-0 text-rose-400" />
+                            <span>{saveError}</span>
                         </div>
-                        
-                        <div className="flex gap-2">
-                            <div className="relative flex-1">
-                                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                                <input
-                                    type="text"
-                                    value={txSearch}
-                                    onChange={e => setTxSearch(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && searchTxs()}
-                                    placeholder="Buscar glosa, fecha o monto..."
-                                    className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
-                                />
-                            </div>
-                            <button onClick={searchTxs} disabled={txLoading} className="px-4 py-2 bg-slate-100 rounded-lg text-slate-600 hover:bg-slate-200 font-medium text-sm transition-colors disabled:opacity-50">
-                                Buscar
-                            </button>
-                        </div>
+                        <button onClick={() => setSaveError(null)} className="text-slate-400 hover:text-white p-1">
+                            <XMarkIcon className="h-4 w-4" />
+                        </button>
+                    </div>
+                )}
 
-                        {pendingTxs.length > 0 && (
-                            <div className="shrink-0 max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 shadow-inner">
-                                {pendingTxs.map(tx => {
-                                    const isSelected = selectedTxs.some(t => t.id === tx.id);
-                                    return (
-                                        <button
-                                            key={tx.id}
-                                            disabled={isSelected}
-                                            onClick={() => addTx(tx)}
-                                            className={`w-full text-left px-4 py-2 text-sm flex justify-between items-center transition-colors ${isSelected ? 'bg-indigo-50/50 opacity-50 cursor-not-allowed' : 'hover:bg-slate-50'}`}
-                                        >
-                                            <div className="flex-1 min-w-0 pr-4">
-                                                <div className="font-medium text-slate-800 truncate">{tx.description}</div>
-                                                <div className="text-xs text-slate-500">{formatDate(tx.date)}</div>
-                                            </div>
-                                            <div className="font-bold text-slate-900 whitespace-nowrap">{formatCurrency(tx.amount)}</div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        )}
+                {/* Banner de Éxito al Guardar */}
+                {saveSuccess && (
+                    <div className="px-6 py-3 bg-slate-900 text-emerald-400 border-b border-slate-800 flex items-center justify-center gap-2 text-xs font-bold">
+                        <CheckCircleIcon className="h-4 w-4 text-emerald-400" />
+                        <span>Registro actualizado correctamente.</span>
+                    </div>
+                )}
 
-                        <div className="bg-indigo-50/30 border border-indigo-100 rounded-xl p-4 flex-1 flex flex-col">
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-800 mb-3">Movimientos a conciliar</h4>
+                <div className="flex-1 overflow-y-auto p-6 grid md:grid-cols-2 gap-6 bg-slate-50/40 font-sans">
+                    
+                    {/* COLUMNA IZQUIERDA: Movimiento Bancario y Anotación Contable */}
+                    <div className="space-y-4">
+                        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                                    <BanknotesIcon className="h-4 w-4 text-slate-600" />
+                                    <span>Movimientos Bancarios ({selectedTxs.length})</span>
+                                </h3>
+                            </div>
+
+                            {/* Buscador de Transferencias Opcional */}
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        value={txSearch}
+                                        onChange={e => setTxSearch(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && searchTxs()}
+                                        placeholder="Buscar otra transferencia de este RUT..."
+                                        className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white transition-all text-slate-800 placeholder-slate-400 font-medium"
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => searchTxs()}
+                                    disabled={txLoading}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50"
+                                >
+                                    Buscar
+                                </button>
+                            </div>
+
+                            {/* Lista de Transferencias Seleccionadas */}
                             {selectedTxs.length === 0 ? (
-                                <div className="text-center text-indigo-300 text-sm py-8 my-auto">Busca y selecciona movimientos arriba</div>
+                                <div className="text-center text-slate-400 text-xs py-4 font-medium border border-dashed border-slate-200 rounded-lg">
+                                    Ningún movimiento bancario seleccionado.
+                                </div>
                             ) : (
-                                <div className="space-y-2 flex-1 overflow-y-auto pr-2">
+                                <div className="space-y-2">
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                        Movimientos Seleccionados:
+                                    </div>
                                     {selectedTxs.map(tx => (
-                                        <div key={tx.id} className="bg-white border border-indigo-100 shadow-sm rounded-lg p-3 flex justify-between items-center group">
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-sm font-semibold text-slate-800 truncate">{tx.description}</div>
-                                                <div className="text-xs text-slate-500">{formatDate(tx.date)}</div>
-                                                {tx.metadata?.reviewNote && (
-                                                    <div className="mt-1 flex items-center gap-1">
-                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 max-w-[220px] truncate" title={tx.metadata.reviewNote}>
-                                                            💬 {tx.metadata.reviewNote}
-                                                        </span>
-                                                    </div>
-                                                )}
-                                                {tx.metadata?.providerName && (
-                                                    <span className="inline-flex items-center text-[10px] font-medium text-slate-500 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 mt-0.5">
-                                                        🏢 {tx.metadata.providerName}
-                                                    </span>
-                                                )}
+                                        <div key={tx.id} className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex justify-between items-center text-xs">
+                                            <div className="min-w-0 pr-2">
+                                                <div className="font-bold text-slate-900 truncate" title={tx.description}>
+                                                    {tx.description}
+                                                </div>
+                                                <div className="text-[10px] text-slate-500 font-mono">
+                                                    {formatDate(tx.date)} · {tx.bankAccount?.bankName || 'Banco'}
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                                <span className="font-bold text-indigo-700">{formatCurrency(tx.amount)}</span>
-                                                <button onClick={() => removeTx(tx.id)} className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <XMarkIcon className="h-5 w-5" />
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <span className="font-mono font-extrabold text-slate-900">
+                                                    {formatCurrency(tx.amount)}
+                                                </span>
+                                                <button
+                                                    onClick={() => removeTx(tx.id)}
+                                                    className="text-slate-400 hover:text-red-600 p-0.5"
+                                                    title="Quitar de la selección"
+                                                >
+                                                    <XMarkIcon className="h-4 w-4" />
                                                 </button>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             )}
-                            <div className="pt-4 border-t border-indigo-100 mt-4 flex justify-between items-center">
-                                <span className="text-sm font-bold text-slate-600">Total Bancario:</span>
-                                <span className="text-lg font-black text-indigo-700">{formatCurrency(totalTxs)}</span>
+
+                            {/* Lista de Otras Transferencias Candidatas de este RUT */}
+                            {pendingTxs.length > 0 && (
+                                <div className="space-y-2 pt-2 border-t border-slate-100">
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                        Otras Transferencias Disponibles hacia este RUT ({pendingTxs.length}):
+                                    </div>
+                                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1 divide-y divide-slate-100 border border-slate-100 rounded-lg p-2 bg-slate-50/50">
+                                        {pendingTxs.map(tx => {
+                                            const isSelected = selectedTxs.some(t => t.id === tx.id);
+                                            return (
+                                                <div key={tx.id} className="pt-2 pb-1.5 flex justify-between items-center text-xs">
+                                                    <div className="min-w-0 pr-2">
+                                                        <div className="font-semibold text-slate-800 truncate" title={tx.description}>
+                                                            {tx.description}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-500 font-mono">
+                                                            {formatDate(tx.date)}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 shrink-0">
+                                                        <span className="font-mono font-bold text-slate-900">
+                                                            {formatCurrency(tx.amount)}
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            disabled={isSelected}
+                                                            onClick={() => addTx(tx)}
+                                                            className={`px-2 py-1 rounded text-[10px] font-bold transition-all ${
+                                                                isSelected
+                                                                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                                                                    : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'
+                                                            }`}
+                                                        >
+                                                            {isSelected ? 'Agregada' : '+ Agregar'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-xs font-bold text-slate-800 font-mono">
+                                <span>Total Movimiento Bancario:</span>
+                                <span className="text-sm font-extrabold text-slate-900">{formatCurrency(totalTxs)}</span>
                             </div>
+                        </div>
+
+                        {/* Caja de Anotación u Observación Contable Opcional */}
+                        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                                    <PencilSquareIcon className="h-4 w-4 text-slate-600" />
+                                    <span>Anotación o Detalle Contable (Opcional)</span>
+                                </h4>
+                                <span className="text-[10px] text-slate-400 font-mono">{note.length}/250</span>
+                            </div>
+                            <textarea 
+                                rows={3}
+                                maxLength={250}
+                                value={note} 
+                                onChange={e => setNote(e.target.value)} 
+                                placeholder="Escriba la justificación, centro de costo o nota sobre esta transacción..." 
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-1 focus:ring-slate-900 focus:bg-white outline-none text-xs font-medium transition-all resize-none text-slate-900 placeholder-slate-400"
+                            />
                         </div>
                     </div>
 
-                    <div className="flex-1 flex flex-col gap-4 pl-0 mt-8 md:mt-0">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-lg font-bold text-slate-700">Documentos / Facturas</h3>
-                            <span className="bg-slate-100 text-slate-500 rounded-full px-2 py-0.5 text-xs font-semibold">{selectedDtes.length}</span>
-                        </div>
-
-                        <div className="flex gap-2">
-                            <div className="relative flex-1">
-                                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                                <input
-                                    type="text"
-                                    value={dteSearch}
-                                    onChange={e => setDteSearch(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && searchDtes()}
-                                    placeholder="Buscar folio, proveedor o monto..."
-                                    className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
-                                />
+                    {/* COLUMNA DERECHA: Documentos Tributarios (DTEs) del Proveedor */}
+                    <div className="space-y-4">
+                        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                                    <DocumentTextIcon className="h-4 w-4 text-slate-600" />
+                                    <span>Facturas / Documentos del Proveedor</span>
+                                </h3>
+                                {selectedProvider && (
+                                    <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 truncate max-w-[200px]">
+                                        RUT: {selectedProvider.rut || selectedProvider.name}
+                                    </span>
+                                )}
                             </div>
-                            <button onClick={searchDtes} disabled={dteLoading} className="px-4 py-2 bg-slate-100 rounded-lg text-slate-600 hover:bg-slate-200 font-medium text-sm transition-colors disabled:opacity-50">
-                                Buscar
-                            </button>
-                        </div>
 
-                        {unpaidDtes.length > 0 && (
-                            <div className="shrink-0 max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 shadow-inner">
-                                {unpaidDtes.map(dte => {
-                                    const isSelected = selectedDtes.some(d => d.id === dte.id);
-                                    const isNC = dte.type === 61;
-                                    const isMatched = dte.hasMatch || (dte.matches && dte.matches.some((m: any) => m.status === 'CONFIRMED'));
-                                    return (
-                                        <button
-                                            key={dte.id}
-                                            disabled={isSelected}
-                                            onClick={() => addDte(dte)}
-                                            className={`w-full text-left px-4 py-2 text-sm flex justify-between items-center transition-colors ${isSelected ? 'bg-emerald-50/50 opacity-50 cursor-not-allowed' : 'hover:bg-slate-50'}`}
-                                        >
-                                            <div className="flex-1 min-w-0 pr-4">
-                                                <div className="font-medium text-slate-800 flex items-center gap-2">
-                                                    {isNC && <span className="bg-rose-100 text-rose-700 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded">NC</span>}
-                                                    {isMatched && <span className="bg-amber-100 text-amber-700 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded">Ocupado</span>}
-                                                    <span className="truncate">{dte.provider?.name || 'Desconocido'}</span>
-                                                </div>
-                                                <div className="text-xs text-slate-500">Folio: {dte.folio} · {formatDate(dte.issuedDate)}</div>
-                                            </div>
-                                            <div className={`font-bold whitespace-nowrap ${isNC ? 'text-rose-600' : 'text-slate-900'}`}>
-                                                {isNC ? '-' : ''}{formatCurrency(dte.totalAmount)}
-                                            </div>
-                                        </button>
-                                    );
-                                })}
+                            {/* Buscador de DTEs */}
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        value={dteSearch}
+                                        onChange={e => setDteSearch(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && searchDtes()}
+                                        placeholder="Buscar por folio o monto..."
+                                        className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white transition-all text-slate-800 placeholder-slate-400 font-medium"
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => searchDtes()}
+                                    disabled={dteLoading}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50"
+                                >
+                                    Buscar
+                                </button>
                             </div>
-                        )}
 
-                        <div className="bg-emerald-50/30 border border-emerald-100 rounded-xl p-4 flex-1 flex flex-col">
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-800 mb-3">Documentos a conciliar</h4>
-                            {selectedDtes.length === 0 ? (
-                                <div className="text-center text-emerald-300 text-sm py-8 my-auto">Busca y selecciona documentos arriba</div>
-                            ) : (
-                                <div className="space-y-2 flex-1 overflow-y-auto pr-2">
-                                {selectedDtes.map(dte => {
-                                        const isNC = dte.type === 61;
-                                        const isMatched = dte.hasMatch || (dte.matches && dte.matches.some((m: any) => m.status === 'CONFIRMED'));
+                            {/* Lista de Documentos Candidatos Disponibles */}
+                            <div className="space-y-2 max-h-52 overflow-y-auto pr-1 divide-y divide-slate-100 border border-slate-100 rounded-lg p-2 bg-slate-50/50">
+                                {unpaidDtes.length === 0 ? (
+                                    <div className="text-center text-slate-400 text-xs py-6 font-medium">
+                                        No hay facturas impagas adicionales de este proveedor en el periodo.
+                                    </div>
+                                ) : (
+                                    unpaidDtes.map(dte => {
+                                        const isSelected = selectedDtes.some(d => d.id === dte.id);
                                         return (
-                                            <div key={dte.id} className={`border shadow-sm rounded-lg p-3 flex justify-between items-center group ${isMatched ? 'bg-amber-50 border-amber-200' : 'bg-white border-emerald-100'}`}>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="text-sm font-semibold text-slate-800">
-                                                        {isNC && <span className="text-rose-500 mr-2 text-xs font-bold">[NC]</span>}
-                                                        {dte.provider?.name || 'Sin Proveedor'}
+                                            <div key={dte.id} className="pt-2 pb-1.5 flex justify-between items-center text-xs">
+                                                <div>
+                                                    <div className="font-bold text-slate-900">
+                                                        Folio: #{dte.folio}
                                                     </div>
-                                                    <div className="text-xs text-slate-500 flex items-center gap-2">
-                                                        Folio: {dte.folio} · {formatDate(dte.issuedDate)}
-                                                        {isMatched && <span className="text-amber-600 font-bold">⚠️ Reasignará vínculo</span>}
+                                                    <div className="text-[10px] text-slate-500 font-mono">
+                                                        {formatDate(dte.issuedDate)} · {dte.provider?.name || 'Proveedor'}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-3">
-                                                    {dte.type === 112 ? (
-                                                        <button 
-                                                            onClick={() => editDteAmount(dte.id, dte.totalAmount)}
-                                                            className={`font-bold hover:underline cursor-pointer ${isNC ? 'text-rose-600' : 'text-indigo-600 hover:text-indigo-800'}`}
-                                                            title="Editar monto bruto de boleta"
-                                                        >
-                                                            {formatCurrency(dte.totalAmount)} ✏️
-                                                        </button>
-                                                    ) : (
-                                                        <span className={`font-bold ${isNC ? 'text-rose-600' : 'text-emerald-700'}`}>
-                                                            {isNC ? '-' : ''}{formatCurrency(dte.totalAmount)}
-                                                        </span>
-                                                    )}
-                                                    <button onClick={() => removeDte(dte.id)} className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <XMarkIcon className="h-5 w-5" />
+                                                    <span className="font-mono font-bold text-slate-900">
+                                                        {formatCurrency(dte.totalAmount)}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => isSelected ? removeDte(dte.id) : addDte(dte)}
+                                                        className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+                                                            isSelected
+                                                                ? 'bg-slate-800 text-white shadow-2xs'
+                                                                : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'
+                                                        }`}
+                                                    >
+                                                        {isSelected ? 'Seleccionada' : 'Seleccionar'}
                                                     </button>
                                                 </div>
                                             </div>
                                         );
-                                    })}
+                                    })
+                                )}
+                            </div>
+
+                            {/* Facturas Seleccionadas para Conciliar */}
+                            {selectedDtes.length > 0 && (
+                                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                                        Facturas Seleccionadas ({selectedDtes.length}):
+                                    </div>
+                                    {selectedDtes.map(dte => (
+                                        <div key={dte.id} className="flex justify-between items-center text-xs bg-white p-2 rounded border border-slate-200 shadow-2xs">
+                                            <span className="font-bold text-slate-800">Folio: #{dte.folio} ({formatDate(dte.issuedDate)})</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-mono font-bold text-slate-900">{formatCurrency(dte.totalAmount)}</span>
+                                                <button onClick={() => removeDte(dte.id)} className="text-slate-400 hover:text-red-600 p-0.5">
+                                                    <XMarkIcon className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
-                            <div className="pt-4 border-t border-emerald-100 mt-4 flex justify-between items-center">
-                                <span className="text-sm font-bold text-slate-600">Total Documentos:</span>
-                                <span className="text-lg font-black text-emerald-700 cursor-help" title="Descuenta Notas de Crédito automáticamente">{formatCurrency(totalDtes)}</span>
+
+                            <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-xs font-bold text-slate-800 font-mono">
+                                <span>Total Facturas Seleccionadas:</span>
+                                <span className="text-sm font-extrabold text-slate-900">{formatCurrency(totalDtes)}</span>
                             </div>
                         </div>
                     </div>
-
-                    {/* Historical Provider Panel */}
-                    {selectedProvider && providerInfo && (
-                        <div className="hidden lg:flex w-72 flex-col gap-4 border-l border-slate-100 pl-6 shrink-0">
-                            <h3 className="text-sm font-bold text-slate-700 mb-2">Historial del Proveedor</h3>
-                            {isProviderLoading ? (
-                                <div className="text-xs text-slate-400">Cargando...</div>
-                            ) : (
-                                <div className="space-y-4">
-                                    {/* Folios Pendientes */}
-                                    <div className="p-4 bg-white border border-rose-200 rounded-xl shadow-sm">
-                                        <div className="text-[10px] flex items-center gap-1 uppercase font-bold text-rose-500 mb-3">
-                                            <BanknotesIcon className="w-3 h-3"/> Folios Pendientes
-                                        </div>
-                                        <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
-                                            {providerInfo?.rawData?.dtes?.filter((d: any) => (d.paymentStatus === 'UNPAID' || d.paymentStatus === 'PARTIAL') && new Date(d.issuedDate).getFullYear() >= 2026).length > 0 ? (
-                                                providerInfo.rawData.dtes
-                                                    .filter((d: any) => (d.paymentStatus === 'UNPAID' || d.paymentStatus === 'PARTIAL') && new Date(d.issuedDate).getFullYear() >= 2026)
-                                                    .map((dte: any) => (
-                                                    <div key={dte.id} className="text-[11px] flex justify-between items-center border-b border-slate-50 pb-2 last:border-0 last:pb-0">
-                                                        <div className="flex flex-col">
-                                                            <span className="font-bold text-slate-700">Folio: {dte.folio}</span>
-                                                            <span className="text-slate-400 font-mono text-[9px]">{formatDate(dte.issuedDate)}</span>
-                                                        </div>
-                                                        <span className="font-bold text-rose-600">{formatCurrency(dte.outstandingAmount)}</span>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="text-[11px] text-slate-400">Sin facturas pendientes este año</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Folios Pagados */}
-                                    <div className="p-4 bg-white border border-emerald-200 rounded-xl shadow-sm">
-                                        <div className="text-[10px] flex items-center gap-1 uppercase font-bold text-emerald-600 mb-3">
-                                            <BanknotesIcon className="w-3 h-3"/> Folios Pagados
-                                        </div>
-                                        <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
-                                            {providerInfo?.rawData?.dtes?.filter((d: any) => (d.paymentStatus === 'PAID' || d.paymentStatus === 'OVERPAID') && new Date(d.issuedDate).getFullYear() >= 2026).length > 0 ? (
-                                                providerInfo.rawData.dtes
-                                                    .filter((d: any) => (d.paymentStatus === 'PAID' || d.paymentStatus === 'OVERPAID') && new Date(d.issuedDate).getFullYear() >= 2026)
-                                                    .slice(0, 10) // Show last 10 paid max
-                                                    .map((dte: any) => (
-                                                    <div key={dte.id} className="text-[11px] flex justify-between items-center border-b border-slate-50 pb-2 last:border-0 last:pb-0">
-                                                        <div className="flex flex-col">
-                                                            <span className="font-bold text-slate-700">Folio: {dte.folio}</span>
-                                                            <span className="text-slate-400 font-mono text-[9px]">{formatDate(dte.issuedDate)}</span>
-                                                        </div>
-                                                        <span className="font-bold text-emerald-700">{formatCurrency(dte.totalAmount)}</span>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="text-[11px] text-slate-400">Sin pagos recientes este año</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </div>
 
                 <div className="border-t border-slate-200 bg-slate-50/80 px-6 py-5 flex items-center justify-between">

@@ -1,3 +1,8 @@
+'use client';
+
+import React from 'react';
+import { BanknotesIcon, DocumentTextIcon, CheckCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
+
 type ExecutiveKPIGridProps = {
     transactions: {
         total: number;
@@ -35,44 +40,55 @@ function formatCurrency(amount: number) {
 export function ExecutiveKPIGrid(props: ExecutiveKPIGridProps) {
     const { transactions, dtes, matches } = props;
 
-    // Orden: lo más relevante para conciliación primero (pendientes, transacciones, deuda DTE, detalle matches)
     const cards = [
         {
-            name: 'Pendientes de conciliar',
+            name: 'Cobertura Bancaria Conciliada',
+            stat: transactions.match_rate,
+            detail: `${transactions.matched.toLocaleString('es-CL')} de ${transactions.total.toLocaleString('es-CL')} transacciones`,
+            icon: CheckCircleIcon,
+        },
+        {
+            name: 'Transacciones Pendientes',
             stat: transactions.pending.toLocaleString('es-CL'),
-            sub: `${transactions.matched.toLocaleString('es-CL')} ya conciliadas`,
+            detail: `${formatCurrency(transactions.total_amount)} en cartolas`,
+            icon: ClockIcon,
         },
         {
-            name: 'Transacciones bancarias',
-            stat: transactions.total.toLocaleString('es-CL'),
-            sub: `${transactions.match_rate} conciliadas`,
-        },
-        {
-            name: 'Deuda DTE pendiente',
+            name: 'Deuda Documental Pendiente',
             stat: formatCurrency(dtes.outstanding_amount),
-            sub: `${dtes.unpaid.toLocaleString('es-CL')} impagos · ${dtes.paid.toLocaleString('es-CL')} pagados`,
+            detail: `${dtes.unpaid.toLocaleString('es-CL')} DTEs por saldar`,
+            icon: DocumentTextIcon,
         },
         {
-            name: 'Matches automáticos',
-            stat: matches.automatic.toLocaleString('es-CL'),
-            sub: `${matches.auto_rate} del total (${matches.total.toLocaleString('es-CL')})`,
+            name: 'Precisión de Motor v4',
+            stat: matches.auto_rate,
+            detail: `${matches.automatic.toLocaleString('es-CL')} coincidencias de RUT`,
+            icon: BanknotesIcon,
         },
     ];
 
     return (
-        <div>
-            <h3 className="text-base font-semibold leading-6 text-gray-900">Resumen (datos reales)</h3>
-            <dl className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                {cards.map((item) => (
-                    <div key={item.name} className="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-                        <dt className="truncate text-sm font-medium text-gray-500">{item.name}</dt>
-                        <dd className="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
-                            {item.stat}
-                        </dd>
-                        <dd className="mt-1 text-sm text-gray-500">{item.sub}</dd>
-                    </div>
-                ))}
-            </dl>
+        <div className="space-y-3">
+            <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Indicadores Clave de Cuadratura</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {cards.map((item) => {
+                    const IconComponent = item.icon;
+                    return (
+                        <div key={item.name} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:border-slate-300 transition-all">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-slate-600 truncate">{item.name}</span>
+                                <IconComponent className="h-4 w-4 text-slate-600 shrink-0" />
+                            </div>
+                            <div className="mt-3 text-2xl font-extrabold text-slate-900 font-mono tracking-tight">
+                                {item.stat}
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500 font-medium truncate">
+                                {item.detail}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 }

@@ -2,13 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-    ArrowPathIcon, CheckCircleIcon, XCircleIcon, CurrencyDollarIcon,
+    ArrowPathIcon, CheckCircleIcon, XCircleIcon, CurrencyDollarIcon, BanknotesIcon,
     DocumentTextIcon, LinkIcon, ClockIcon, SparklesIcon, UsersIcon,
     TrashIcon, ChatBubbleLeftIcon, HandThumbUpIcon, HandThumbDownIcon,
     PencilSquareIcon, ChevronDownIcon, ChevronUpIcon, PlusCircleIcon,
     MagnifyingGlassIcon, XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { getApiUrl } from '@/lib/api';
+
+import { ProviderGroupedView } from '@/components/conciliacion/ProviderGroupedView';
+import { UniversalMatchModal } from '@/components/conciliacion/UniversalMatchModal';
 
 const API = getApiUrl();
 
@@ -27,8 +30,12 @@ interface DashboardData {
 const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(amount);
 
-const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' });
+const formatDate = (s: any) => {
+    if (!s) return '—';
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' });
+};
 
 export default function ConciliacionPage() {
     const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -37,7 +44,14 @@ export default function ConciliacionPage() {
     const [matchProgress, setMatchProgress] = useState<string | null>(null);
     const [lastUpdated, setLastUpdated] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'matches' | 'suggestions' | 'manual'>('matches');
+    const [activeTab, setActiveTab] = useState<'grouped' | 'matches' | 'suggestions' | 'manual'>('grouped');
+    const [modalState, setModalState] = useState<{
+        isOpen: boolean;
+        txs: any[];
+        dtes: any[];
+        provider?: any;
+    }>({ isOpen: false, txs: [], dtes: [] });
+
     const [dateRange, setDateRange] = useState(() => {
         const today = new Date().toISOString().split('T')[0];
         return { from: '2026-01-01', to: today };
@@ -162,21 +176,12 @@ export default function ConciliacionPage() {
                     </div>
                     <a href="/cartolas"
                         className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium shadow-lg shadow-indigo-600/20 flex items-center space-x-2 transition-all">
-                        <SparklesIcon className="h-5 w-5" />
+                        <BanknotesIcon className="h-5 w-5" />
                         <span>Conciliar en Cartolas</span>
                     </a>
                 </div>
             </div>
 
-            {/* Aviso: acciones en Cartolas */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center justify-between flex-wrap gap-2">
-                <p className="text-sm text-slate-600">
-                    <strong>KPIs y reportes.</strong> Ejecutar motor, aprobar matches y crear matches manuales se hace en <strong>Cartolas Bancarias</strong>. Los datos se comparten con Facturas y Proveedores.
-                </p>
-                <a href="/cartolas" className="text-sm font-medium text-indigo-600 hover:text-indigo-700 whitespace-nowrap">
-                    Ir a Cartolas Bancarias →
-                </a>
-            </div>
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -225,19 +230,20 @@ export default function ConciliacionPage() {
             <div className="border-b border-slate-200">
                 <nav className="flex space-x-1">
                     {[
+                        { key: 'grouped' as const, label: 'Resumen Agrupado por Proveedor', count: null },
                         { key: 'matches' as const, label: 'Matches Recientes', count: dashboardData.recent_matches.length },
                         { key: 'suggestions' as const, label: 'Sugerencias Pendientes', count: null },
                         { key: 'manual' as const, label: 'Match Manual', count: null },
                     ].map(tab => (
                         <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                            className={`px-4 py-2.5 text-sm font-bold border-b-2 transition-colors ${
                                 activeTab === tab.key
                                     ? 'border-indigo-600 text-indigo-600'
                                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                             }`}>
                             {tab.label}
                             {tab.count != null && tab.count > 0 && (
-                                <span className="ml-2 bg-slate-200 text-slate-700 text-xs px-1.5 py-0.5 rounded-full">{tab.count}</span>
+                                <span className="ml-2 bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">{tab.count}</span>
                             )}
                         </button>
                     ))}
@@ -245,11 +251,25 @@ export default function ConciliacionPage() {
             </div>
 
             {/* Tab Content */}
+            {activeTab === 'grouped' && (
+                <ProviderGroupedView
+                    API_URL={API}
+                    fromDate={dateRange.from}
+                    toDate={dateRange.to}
+                    onOpenModal={(txs, dtes, provider) => setModalState({ isOpen: true, txs, dtes, provider })}
+                    onRefreshParent={() => fetchDashboard(true)}
+                />
+            )}
+
             {activeTab === 'matches' && dashboardData.recent_matches.length > 0 && (
                 <div className="bg-white shadow-xl shadow-slate-200/50 rounded-xl border border-slate-200 overflow-hidden">
                     <div className="divide-y divide-slate-100">
                         {dashboardData.recent_matches.map((match: any) => (
-                            <MatchCardReadOnly key={match.id} match={match} />
+                            <MatchCardReadOnly
+                                key={match.id}
+                                match={match}
+                                onOpenModal={(txs, dtes) => setModalState({ isOpen: true, txs, dtes })}
+                            />
                         ))}
                     </div>
                 </div>
@@ -290,7 +310,7 @@ export default function ConciliacionPage() {
                     <div className="p-6">
                         <div className="space-y-3">
                             {dashboardData.insights.top_providers.map((prov: any, idx: number) => (
-                                <div key={prov.provider.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                                <div key={`${prov.provider?.id || 'prov'}-${idx}`} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                                     <div className="flex items-center space-x-3">
                                         <div className="w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold text-sm">{idx + 1}</div>
                                         <div>
@@ -308,6 +328,19 @@ export default function ConciliacionPage() {
                     </div>
                 </div>
             )}
+
+            {/* Modal Universal de Conciliación por Lote */}
+            {modalState.isOpen && (
+                <UniversalMatchModal
+                    isOpen={modalState.isOpen}
+                    onClose={() => setModalState({ isOpen: false, txs: [], dtes: [] })}
+                    API_URL={API}
+                    initialTransactions={modalState.txs}
+                    initialDtes={modalState.dtes}
+                    provider={modalState.provider}
+                    onRefresh={() => fetchDashboard(true)}
+                />
+            )}
         </div>
     );
 }
@@ -317,17 +350,17 @@ function StatCard({ icon, badge, value, label, details }: {
     details: { label: string; value: number; color: string }[];
 }) {
     return (
-        <div className="card-glass p-6">
+        <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all duration-200 group">
             <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-slate-100 rounded-lg">{icon}</div>
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wider">{badge}</span>
+                <div className="p-2.5 bg-slate-50 group-hover:bg-indigo-50/60 rounded-lg text-slate-600 group-hover:text-indigo-600 transition-colors">{icon}</div>
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full uppercase tracking-wider">{badge}</span>
             </div>
-            <div className="text-3xl font-bold text-slate-900 mb-1">{value}</div>
+            <div className="text-3xl font-extrabold text-slate-900 mb-1 tracking-tight">{value}</div>
             <div className="text-xs text-slate-500 font-medium uppercase tracking-tight">{label}</div>
-            <div className="mt-4 flex items-center space-x-3 text-[11px] font-semibold">
+            <div className="mt-4 flex items-center space-x-3 text-[11px] font-semibold border-t border-slate-100 pt-3">
                 {details.map(d => (
                     <div key={d.label} className={`flex items-center ${d.color}`}>
-                        <CheckCircleIcon className="h-3 w-3 mr-1" />{d.value}
+                        <CheckCircleIcon className="h-3.5 w-3.5 mr-1" />{d.value}
                     </div>
                 ))}
             </div>
@@ -589,46 +622,75 @@ function SuggestionCard({ suggestion: s, busy, onAccept, onReject }: {
 
 // ── Match Card (solo lectura en este módulo; gestionar en Cartolas) ──
 
-function MatchCardReadOnly({ match }: { match: any }) {
-    const statusBadge = match.status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-700'
-        : match.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700';
-    const statusLabel = match.status === 'CONFIRMED' ? 'Confirmado'
-        : match.status === 'REJECTED' ? 'Rechazado' : 'Borrador';
-    const ruleClean = (match.ruleApplied || '').replace(/\s*-\s*.*$/, '');
+function MatchCardReadOnly({ match, onOpenModal }: { match: any; onOpenModal?: (txs: any[], dtes: any[]) => void }) {
+    const statusLabel = match.status === 'CONFIRMED' ? 'Aprobada'
+        : match.status === 'REJECTED' ? 'Rechazada' : 'Borrador';
+
+    const tx = match.transaction;
+    const dte = match.dte;
 
     return (
-        <div className="px-6 py-4 hover:bg-slate-50/50 transition-colors">
-            <div className="flex items-start justify-between">
-                <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-2 flex-wrap gap-y-1">
-                        <CheckCircleIcon className="h-5 w-5 text-emerald-600" />
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${statusBadge}`}>{statusLabel}</span>
-                        <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-bold border border-slate-200">
-                            {match.origin === 'AUTOMATIC' ? 'AUTO' : 'MANUAL'}
-                        </span>
-                        {ruleClean && (
-                            <span className="text-[10px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">{ruleClean}</span>
-                        )}
-                        <span className="text-xs text-slate-500">{(match.confidence * 100).toFixed(0)}%</span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <div className="text-xs text-slate-500 mb-1">Transacción</div>
-                            <div className="font-medium text-slate-900">{match.transaction?.description}</div>
-                            <div className="text-xs text-slate-600">{match.transaction && formatDate(match.transaction.date)} &bull; {match.transaction && formatCurrency(match.transaction.amount)}</div>
+        <div className="p-3.5 hover:bg-slate-50/80 transition-colors">
+            <div className="grid md:grid-cols-2 gap-3 items-center">
+                {/* Left: Bank Transaction */}
+                <div className="bg-white border border-slate-200 rounded-lg p-3 flex justify-between items-center shadow-2xs">
+                    <div className="min-w-0 pr-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded-full shadow-xs shrink-0">
+                                <CheckCircleIcon className="h-3 w-3 text-emerald-200" />
+                                <span>{statusLabel}</span>
+                            </span>
+                            <span className="font-semibold text-slate-900 text-xs truncate" title={tx?.description}>
+                                {tx?.description || 'Movimiento Bancario'}
+                            </span>
                         </div>
-                        {match.dte && (
-                            <div>
-                                <div className="text-xs text-slate-500 mb-1">DTE</div>
-                                <div className="font-medium text-slate-900">Folio {match.dte.folio} - {match.dte.provider?.name}</div>
-                                <div className="text-xs text-slate-600">Tipo {match.dte.type} &bull; {formatCurrency(match.dte.totalAmount)}</div>
-                            </div>
-                        )}
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <span className="text-[10px] text-slate-500 font-mono">
+                                {tx?.date ? formatDate(tx.date) : ''} · {tx?.bankAccount?.bankName || 'Banco'}
+                            </span>
+                            {dte && (
+                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300 shrink-0 inline-flex items-center gap-1">
+                                    ➔ Vinculado a Folio #{dte.folio}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                    <div className="font-extrabold text-slate-900 font-mono text-xs shrink-0 text-right">
+                        {tx ? formatCurrency(tx.amount) : ''}
                     </div>
                 </div>
-                <a href="/cartolas" className="shrink-0 ml-4 text-xs font-medium text-indigo-600 hover:text-indigo-700 whitespace-nowrap">
-                    Gestionar en Cartolas →
-                </a>
+
+                {/* Right: DTE / Invoice */}
+                <div className="bg-white border border-slate-200 rounded-lg p-3 flex justify-between items-center shadow-2xs">
+                    {dte ? (
+                        <>
+                            <div className="min-w-0 pr-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded-full shadow-xs shrink-0">
+                                        <CheckCircleIcon className="h-3 w-3 text-emerald-200" />
+                                        <span>{statusLabel}</span>
+                                    </span>
+                                    <span className="font-bold text-slate-900 text-xs">
+                                        Folio: #{dte.folio}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                    <span className="text-[10px] text-slate-500 font-mono">
+                                        {formatDate(dte.issuedDate || dte.date)} · {dte.provider?.name || 'Proveedor'}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300 shrink-0 inline-flex items-center gap-1">
+                                        ➔ Vinculado a Movimiento Bancario
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="font-extrabold text-slate-900 font-mono text-xs shrink-0 text-right">
+                                {formatCurrency(dte.totalAmount)}
+                            </div>
+                        </>
+                    ) : (
+                        <span className="text-slate-400 italic text-xs">Sin DTE directo asignado</span>
+                    )}
+                </div>
             </div>
         </div>
     );

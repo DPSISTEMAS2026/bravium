@@ -23,6 +23,8 @@ import {
     HandThumbDownIcon,
     PlusCircleIcon,
     LinkIcon,
+    UserGroupIcon,
+    TagIcon,
     CurrencyDollarIcon,
     DocumentTextIcon,
     XMarkIcon,
@@ -1662,10 +1664,36 @@ export default function CartolasPage() {
                                                             onClick={() => openAnnotateModal(tx)}
                                                             className="flex flex-col items-center cursor-pointer group hover:scale-105 transition-transform"
                                                         >
-                                                            <span className="inline-flex items-center text-amber-500 font-bold text-xs ring-1 ring-amber-200 ring-offset-2 rounded px-2 py-0.5 group-hover:bg-amber-50 group-hover:ring-amber-400 transition-colors">
-                                                                <ClockIcon className="h-3 w-3 mr-1" />
-                                                                PENDIENTE
-                                                            </span>
+                                                            {(() => {
+                                                                const meta = tx.metadata as any;
+                                                                if (meta?.identifiedProviderName) {
+                                                                    return (
+                                                                        <div className="flex flex-col items-center">
+                                                                            <span className="inline-flex items-center bg-purple-100 text-purple-700 font-bold text-[10px] ring-1 ring-purple-300 ring-offset-1 rounded px-2 py-0.5 group-hover:bg-purple-200 transition-colors max-w-[140px] truncate" title={`ASIGNACIÓN MASIVA: ${meta.identifiedProviderName}`}>
+                                                                                <UserGroupIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+                                                                                ASIGNACIÓN MASIVA
+                                                                            </span>
+                                                                            <span className="text-[9px] text-purple-600 font-medium mt-0.5 truncate max-w-[120px]" title={meta.identifiedProviderName}>{meta.identifiedProviderName}</span>
+                                                                        </div>
+                                                                    );
+                                                                } else if (meta?.autoCategorized) {
+                                                                    return (
+                                                                        <div className="flex flex-col items-center">
+                                                                            <span className="inline-flex items-center bg-blue-100 text-blue-700 font-bold text-[10px] ring-1 ring-blue-300 ring-offset-1 rounded px-2 py-0.5 group-hover:bg-blue-200 transition-colors max-w-[140px] truncate" title={`IDENTIFICADO: ${meta.category}`}>
+                                                                                <TagIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+                                                                                IDENTIFICADO
+                                                                            </span>
+                                                                            <span className="text-[9px] text-blue-600 font-medium mt-0.5 truncate max-w-[120px]" title={meta.category || meta.ruleName}>{meta.category || meta.ruleName || 'Regla Automática'}</span>
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                return (
+                                                                    <span className="inline-flex items-center text-amber-500 font-bold text-xs ring-1 ring-amber-200 ring-offset-1 rounded px-2 py-0.5 group-hover:bg-amber-50 transition-colors">
+                                                                        <ClockIcon className="h-3 w-3 mr-1" />
+                                                                        PENDIENTE
+                                                                    </span>
+                                                                );
+                                                            })()}
                                                         </button>
                                                         {(() => { const noteKey = `${tx.description}|${tx.amount}`; const note = historicalNotes[noteKey]; return note ? (
                                                             <button

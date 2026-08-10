@@ -139,16 +139,16 @@ export default function CartolasIngestionPage() {
                                 </svg>
                                 <div className="flex text-sm text-gray-600">
                                     <label htmlFor="file-upload" className="relative cursor-pointer rounded-md bg-white font-medium text-indigo-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-offset-2 hover:text-indigo-500">
-                                        <span>Subir un archivo</span>
-                                        <input id="file-upload" name="file-upload" type="file" className="sr-only" onChange={handleFileChange} accept=".xlsx, .xls, .xlsm" />
+                                        <span>Subir Cartola Bancaria</span>
+                                        <input id="file-upload" name="file-upload" type="file" className="sr-only" onChange={handleFileChange} accept=".xlsx, .xls, .csv, .pdf" />
                                     </label>
                                     <p className="pl-1">o arrastrar y soltar</p>
                                 </div>
-                                <p className="text-xs text-gray-500">XLSX hasta 10MB</p>
+                                <p className="text-xs text-gray-500">Excel (.xlsx, .xls), CSV o PDF oficial hasta 15MB</p>
                             </div>
                         </div>
                         {file && (
-                            <p className="mt-2 text-sm text-green-600 font-medium">Archivo seleccionado: {file.name}</p>
+                            <p className="mt-2 text-sm text-emerald-600 font-medium">✓ Archivo listo para ingesta y auto-corrección: {file.name}</p>
                         )}
                     </div>
 

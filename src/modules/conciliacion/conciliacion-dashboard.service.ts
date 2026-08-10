@@ -376,6 +376,7 @@ export class ConciliacionDashboardService {
                         id: true,
                         folio: true,
                         type: true,
+                        issuedDate: true,
                         totalAmount: true,
                         provider: {
                             select: {
@@ -550,5 +551,219 @@ export class ConciliacionDashboardService {
         }
 
         return filter;
+    }
+
+    /**
+     * Resumen agrupado de cartolas por Proveedor / RUT / Patrón Recurrente
+     */
+    async getGroupedSummary(filters: DashboardFiltersDto = {}) {
+        const txWhere = this.buildTransactionDateFilter(filters);
+        txWhere.status = { in: ['PENDING', 'PARTIALLY_MATCHED'] };
+        txWhere.type = 'DEBIT';
+
+        const [txs, allProviders, allUnpaidDtes] = await Promise.all([
+            this.prisma.bankTransaction.findMany({
+                where: txWhere,
+                orderBy: { date: 'desc' },
+                include: {
+                    bankAccount: { select: { bankName: true, accountNumber: true } },
+                    matches: { select: { id: true, dteId: true, status: true, ruleApplied: true } },
+                },
+            }),
+            this.prisma.provider.findMany({
+                where: filters.organizationId ? { organizationId: filters.organizationId } : {},
+                select: { id: true, name: true, rut: true },
+            }),
+            this.prisma.dTE.findMany({
+                where: {
+                    paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+                    type: { not: 61 },
+                    ...this.buildDteDateFilter(filters),
+                    ...(filters.organizationId ? { organizationId: filters.organizationId } : {}),
+                },
+                include: {
+                    provider: { select: { id: true, name: true, rut: true } },
+                    matches: { select: { id: true, transactionId: true, status: true, ruleApplied: true } },
+                },
+                orderBy: { issuedDate: 'desc' },
+            }),
+        ]);
+
+        // Helper para extraer RUT
+        const extractRut = (desc: string): string | null => {
+            if (!desc) return null;
+            const m1 = desc.match(/(\d{1,2}(?:\.?\d{3}){2}-?[\dkK])\b/i);
+            if (m1) {
+                const clean = m1[1].replace(/\./g, '').replace(/-/g, '').toUpperCase();
+                return `${clean.slice(0, -1)}-${clean.slice(-1)}`;
+            }
+            const m2 = desc.match(/\b0?(\d{7,8})(\d)\b/);
+            if (m2) return `${m2[1]}-${m2[2]}`;
+            return null;
+        };
+
+        // Índice de proveedores por RUT limpio (soporta RUT con y sin DV)
+        const provByRutMap = new Map<string, { id: string; name: string; rut: string }>();
+        for (const p of allProviders) {
+            if (!p.rut) continue;
+            const rutKey = p.rut.replace(/\./g, '').replace(/-/g, '').toUpperCase();
+            provByRutMap.set(rutKey, p);
+            if (rutKey.length >= 8) provByRutMap.set(rutKey.slice(0, 8), p);
+            if (rutKey.length >= 7) provByRutMap.set(rutKey.slice(0, 7), p);
+        }
+
+        // Map de DTEs por providerId y por RUT (soporta RUT completo y cuerpo sin DV)
+        const dtesByProvId = new Map<string, any[]>();
+        const dtesByRutKey = new Map<string, any[]>();
+
+        const addDteToRutKey = (key: string, dte: any) => {
+            if (!key) return;
+            const clean = key.replace(/[^0-9Kk]/g, '').toUpperCase();
+            if (!clean) return;
+
+            const targetKeys = new Set<string>([clean]);
+            if (clean.length >= 8) targetKeys.add(clean.slice(0, 8));
+            if (clean.length >= 7) targetKeys.add(clean.slice(0, 7));
+
+            for (const k of targetKeys) {
+                if (!dtesByRutKey.has(k)) dtesByRutKey.set(k, []);
+                const arr = dtesByRutKey.get(k)!;
+                if (!arr.some(d => d.id === dte.id)) {
+                    arr.push(dte);
+                }
+            }
+        };
+
+        for (const dte of allUnpaidDtes) {
+            if (dte.providerId) {
+                if (!dtesByProvId.has(dte.providerId)) dtesByProvId.set(dte.providerId, []);
+                const arr = dtesByProvId.get(dte.providerId)!;
+                if (!arr.some(d => d.id === dte.id)) arr.push(dte);
+            }
+            if (dte.provider?.rut) addDteToRutKey(dte.provider.rut, dte);
+            if (dte.rutIssuer) addDteToRutKey(dte.rutIssuer, dte);
+        }
+
+        // Agrupar transacciones
+        const groupsMap = new Map<string, {
+            groupId: string;
+            groupName: string;
+            rut: string | null;
+            provider: { id: string; name: string; rut: string } | null;
+            transactions: any[];
+            totalAmount: number;
+        }>();
+
+        for (const tx of txs) {
+            const metaRut = (tx.metadata as any)?.providerRut;
+            const descRut = extractRut(tx.description || '');
+            const rawRut = metaRut || descRut;
+            const rutKey = rawRut ? rawRut.replace(/\./g, '').replace(/-/g, '').toUpperCase() : null;
+
+            let provider = rutKey ? (provByRutMap.get(rutKey) || null) : null;
+            if (!provider && rutKey) {
+                const clean = rutKey.replace(/[^0-9Kk]/g, '').toUpperCase();
+                const dtes = dtesByRutKey.get(clean) || dtesByRutKey.get(clean.slice(0, 8)) || dtesByRutKey.get(clean.slice(0, 7)) || [];
+                if (dtes.length > 0 && dtes[0].provider) {
+                    provider = dtes[0].provider;
+                }
+            }
+
+            let groupKey: string;
+            let groupName: string;
+
+            if (provider) {
+                groupKey = `PROV_${provider.id || provider.rut}`;
+                groupName = provider.name;
+            } else if (rawRut) {
+                const clean = rutKey ? rutKey.replace(/[^0-9Kk]/g, '').toUpperCase() : '';
+                const dtes = dtesByRutKey.get(clean) || dtesByRutKey.get(clean.slice(0, 8)) || dtesByRutKey.get(clean.slice(0, 7)) || [];
+                const dteProvName = dtes[0]?.provider?.name;
+                groupKey = `RUT_${rutKey}`;
+                groupName = dteProvName || `Transferencias a RUT ${rawRut}`;
+            } else {
+                // Normalizar glosa para agrupar patrones recurrentes
+                const normDesc = (tx.description || '')
+                    .toLowerCase()
+                    .replace(/[\d.,\-()]/g, ' ')
+                    .split(/\s+/)
+                    .filter(w => w.length > 2)
+                    .slice(0, 4)
+                    .join(' ')
+                    .trim() || 'Movimientos Varios';
+
+                groupKey = `GLOSA_${normDesc}`;
+                groupName = (tx.description || 'Movimientos sin detalle').slice(0, 45);
+            }
+
+            if (!groupsMap.has(groupKey)) {
+                groupsMap.set(groupKey, {
+                    groupId: groupKey,
+                    groupName,
+                    rut: provider?.rut || rawRut || null,
+                    provider,
+                    transactions: [],
+                    totalAmount: 0,
+                });
+            }
+
+            const grp = groupsMap.get(groupKey)!;
+            grp.transactions.push(tx);
+            grp.totalAmount += Math.abs(tx.amount);
+        }
+
+        // Enriquecer cada grupo con sus DTEs correspondientes
+        const groups = Array.from(groupsMap.values()).map(grp => {
+            let rawDtes: any[] = [];
+            if (grp.provider?.id) {
+                rawDtes = dtesByProvId.get(grp.provider.id) || [];
+            }
+            if (rawDtes.length === 0 && grp.rut) {
+                const clean = grp.rut.replace(/[^0-9Kk]/g, '').toUpperCase();
+                const body8 = clean.slice(0, 8);
+                const body7 = clean.slice(0, 7);
+                rawDtes = dtesByRutKey.get(clean) || dtesByRutKey.get(body8) || dtesByRutKey.get(body7) || [];
+            }
+
+            // Deduplicar estrictamente DTEs por ID
+            const dteMap = new Map<string, any>();
+            for (const d of rawDtes) {
+                if (d && d.id) dteMap.set(d.id, d);
+            }
+            const pendingDtes = Array.from(dteMap.values());
+
+            const pendingDteTotal = pendingDtes.reduce((sum, d) => sum + Math.abs(d.totalAmount || 0), 0);
+
+            return {
+                ...grp,
+                transactionCount: grp.transactions.length,
+                pendingDtes,
+                pendingDteCount: pendingDtes.length,
+                pendingDteTotal,
+            };
+        });
+
+        // Ordenar: PRIMERO los grupos que tienen TANTO transferencias COMO DTEs disponibles
+        groups.sort((a, b) => {
+            const aHasBoth = a.transactionCount > 0 && a.pendingDteCount > 0;
+            const bHasBoth = b.transactionCount > 0 && b.pendingDteCount > 0;
+
+            if (aHasBoth && !bHasBoth) return -1;
+            if (!aHasBoth && bHasBoth) return 1;
+
+            // Si ambos tienen DTEs y transferencias (o ninguno), ordenar por mayor cantidad de DTEs pendientes
+            if (b.pendingDteCount !== a.pendingDteCount) {
+                return b.pendingDteCount - a.pendingDteCount;
+            }
+
+            // Luego por mayor monto total en cartola
+            return b.totalAmount - a.totalAmount;
+        });
+
+        return {
+            totalPendingTransactions: txs.length,
+            totalGroups: groups.length,
+            groups,
+        };
     }
 }
