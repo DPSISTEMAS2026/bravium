@@ -6,9 +6,11 @@ import { CartolaIngestionProvider } from '../contexts/CartolaIngestionContext';
 import { SWRProvider } from '../components/providers/SWRProvider';
 import { Shell } from '../components/layout/Shell';
 
+const isProductionMaintenance = process.env.NODE_ENV === 'production';
+
 export const metadata = {
-    title: 'DP Sistemas | Gestión Contable',
-    description: 'Plataforma de gestión contable y automatizaciones',
+    title: isProductionMaintenance ? 'DP Sistemas | Mantenimiento' : 'DP Sistemas | Gestión Contable',
+    description: isProductionMaintenance ? 'Plataforma en mantenimiento' : 'Plataforma de gestión contable y automatizaciones',
 };
 
 export default function RootLayout({
@@ -16,20 +18,64 @@ export default function RootLayout({
 }: {
     children: React.ReactNode;
 }) {
+    const appShell = (
+        <SWRProvider>
+            <TenantProvider>
+                <AuthProvider>
+                    <CartolaIngestionProvider>
+                        <Shell>
+                            {children}
+                        </Shell>
+                    </CartolaIngestionProvider>
+                </AuthProvider>
+            </TenantProvider>
+        </SWRProvider>
+    );
+
+    if (!isProductionMaintenance) {
+        return (
+            <html lang="es">
+                <body className="bg-slate-50 text-slate-900 font-sans antialiased">
+                    {appShell}
+                </body>
+            </html>
+        );
+    }
+
     return (
         <html lang="es">
-            <body className="bg-slate-50 text-slate-900 font-sans antialiased">
-                <SWRProvider>
-                    <TenantProvider>
-                        <AuthProvider>
-                            <CartolaIngestionProvider>
-                                <Shell>
-                                    {children}
-                                </Shell>
-                            </CartolaIngestionProvider>
-                        </AuthProvider>
-                    </TenantProvider>
-                </SWRProvider>
+            <body className="bg-[#f8f9fa] text-slate-900 font-sans antialiased min-h-screen m-0 p-0">
+                <main className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden">
+                    <div className="flex-1 flex flex-col items-center justify-center px-4 w-full relative z-10 -mt-10">
+                        <div className="relative mb-12">
+                            <div className="absolute inset-0 bg-teal-300 blur-[80px] opacity-30 rounded-full w-full h-full transform scale-150" />
+                            <img src="/logo-dp.png" alt="DP Sistemas" className="h-[120px] object-contain relative z-10" />
+                        </div>
+
+                        <div className="flex gap-2 mb-10">
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#39b3be]"></div>
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#82c8d2]"></div>
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#bde0e5]"></div>
+                        </div>
+
+                        <h1 className="text-[34px] sm:text-[40px] font-bold text-[#0f2136] text-center leading-[1.1] mb-6 tracking-tight">
+                            Estamos haciendo<br />algunos cambios.
+                        </h1>
+
+                        <div className="text-center text-[#6e7781] font-medium text-[15px] space-y-1">
+                            <p>La plataforma se encuentra temporalmente en mantenimiento.</p>
+                            <p>Volveremos pronto.</p>
+                        </div>
+                    </div>
+
+                    <div className="w-full py-8 text-center text-[11px] font-semibold text-[#a5abb1] absolute bottom-0 uppercase tracking-wide">
+                        DP Sistemas y Automatizaciones
+                    </div>
+                </main>
+
+                <div style={{ display: 'none' }} aria-hidden="true">
+                    {appShell}
+                </div>
             </body>
         </html>
     );
