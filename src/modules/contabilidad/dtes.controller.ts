@@ -129,15 +129,24 @@ export class DtesController {
 
     /**
      * POST /dtes/honorarios
-     * Crear una boleta de honorarios manualmente
+     * Crear una boleta de honorarios (112) o boleta electrónica (39) y, si hace falta, el perfil de trabajador.
      */
     @Post('honorarios')
     async createBoletaHonorarios(
-        @Body() body: { providerId: string; folio: number; amount: number; date?: string; notes?: string },
+        @Body() body: {
+            providerId?: string;
+            providerName?: string;
+            providerRut?: string;
+            folio: number;
+            amount: number;
+            date?: string;
+            notes?: string;
+            type?: number;
+        },
         @Req() req?: Request
     ) {
-        const organizationId = (req as any)?.organizationId;
-        this.logger.log(`Creating manual boleta honorarios for provider ${body.providerId}`);
+        const organizationId = (req as any)?.organizationId || (req as any)?.user?.organizationId;
+        this.logger.log(`Creating manual boleta honorarios folio ${body.folio} provider=${body.providerId || body.providerName}`);
         return this.dtesService.createBoletaHonorarios(organizationId, body);
     }
 

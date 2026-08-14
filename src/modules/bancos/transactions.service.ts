@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../common/services/cache.service';
 import { DataVisibilityService } from '../../common/services/data-visibility.service';
+import { suggestionRutsAllowed } from '../conciliacion/utils/provider-matcher';
 
 export interface TransactionFilters {
     organizationId?: string;
@@ -120,6 +122,34 @@ export class TransactionsService {
             }
         }
 
+        // Pendientes = cargos sin destino conocido. IDENTIFICADO (Excel) y PAGO A PROVEEDOR no son cola.
+        if (filters.status === 'PENDING') {
+            const missingOrEmpty = (field: string) => ({
+                OR: [
+                    { metadata: { path: [field], equals: Prisma.AnyNull } },
+                    { metadata: { path: [field], equals: '' } },
+                ],
+            });
+            const extra = {
+                AND: [
+                    {
+                        OR: [
+                            { metadata: { path: ['autoCategorized'], equals: Prisma.AnyNull } },
+                            { metadata: { path: ['autoCategorized'], equals: false } },
+                        ],
+                    },
+                    missingOrEmpty('excelEmpresa'),
+                    missingOrEmpty('category'),
+                    missingOrEmpty('identifiedProviderName'),
+                ],
+            };
+            if (where.AND) {
+                where.AND = Array.isArray(where.AND) ? [...where.AND, extra] : [where.AND, extra];
+            } else {
+                where.AND = [extra];
+            }
+        }
+
         return where;
     }
 
@@ -196,12 +226,34 @@ export class TransactionsService {
                       },
                   })
                 : [];
+        const suggestionTxIdList = [...new Set(pendingSuggestions.flatMap((s) => (s.transactionIds as string[]) || []))];
+        const suggestionTxRows = suggestionTxIdList.length
+            ? await this.prisma.bankTransaction.findMany({
+                where: { id: { in: suggestionTxIdList } },
+                select: { id: true, metadata: true },
+            })
+            : [];
+        const suggestionTxMeta = new Map(suggestionTxRows.map((t) => [t.id, t.metadata as any]));
+
         const txIdToSuggestion = new Map<string, { id: string; type: string; confidence: number; dte: any; transactionIds: string[]; relatedDteIds?: string[] }>();
+        const rejectIds: string[] = [];
         for (const s of pendingSuggestions) {
             const ids = (s.transactionIds as string[]) || [];
+            const dteRut = (s as any).dte?.provider?.rut || (s as any).dte?.rutIssuer;
+            const txRuts = ids.map((id) => suggestionTxMeta.get(id)?.providerRut);
+            if (!suggestionRutsAllowed(dteRut, txRuts)) {
+                rejectIds.push(s.id);
+                continue;
+            }
             for (const id of ids) {
                 if (txIds.has(id)) txIdToSuggestion.set(id, { id: s.id, type: s.type, confidence: s.confidence, dte: (s as any).dte, transactionIds: ids, relatedDteIds: (s.relatedDteIds as any) || undefined });
             }
+        }
+        if (rejectIds.length > 0) {
+            this.prisma.matchSuggestion.updateMany({
+                where: { id: { in: rejectIds }, status: 'PENDING' },
+                data: { status: 'REJECTED', reason: 'RUT_MISMATCH: sugerencia de DTE con RUT distinto al de la transacción' },
+            }).catch(() => {});
         }
 
         // Batch lookup de proveedores por RUT (para el tooltip de identificación de glosa)

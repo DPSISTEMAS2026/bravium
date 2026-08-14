@@ -88,6 +88,75 @@ function getMonths2026() {
     ];
 }
 
+/** Motivo visible bajo IDENTIFICADO: categoría de la regla, no el fallback genérico. */
+function identifiedReason(meta: any): string {
+    const cat = String(meta?.category || meta?.ruleName || meta?.excelEmpresa || '').trim();
+    if (cat) return cat;
+    const note = String(meta?.reviewNote || '');
+    const m = note.match(/\[Auto:\s*(.+?)\]/i) || note.match(/\[Excel:\s*(.+?)\]/i);
+    if (m?.[1]) return m[1].trim();
+    return 'Regla automática';
+}
+
+function extractCommerceFromGlosa(desc: string): string | null {
+    const s = String(desc || '').replace(/\s+/g, ' ').trim();
+    const mp = s.match(/^MP\s*\*\s*(.+)$/i);
+    if (mp?.[1]) return mp[1].replace(/[._*]+/g, ' ').trim().replace(/\b\w/g, (c) => c.toUpperCase());
+    return null;
+}
+
+function identifiedSubtitle(tx: { description?: string; metadata?: any }): string | null {
+    const meta = tx.metadata || {};
+    const commerce = String(meta.commerceFromGlosa || extractCommerceFromGlosa(tx.description || '') || '').trim();
+    const main = identifiedReason(meta);
+    if (commerce && main && commerce.toLowerCase() !== main.toLowerCase()) return commerce;
+    return null;
+}
+
+function extractPersonNameFromGlosa(desc: string): string | null {
+    let s = String(desc || '');
+    s = s.replace(/^0?\d{8,11}\s*/i, '');
+    s = s.replace(/^Transf\.?\s*(Internet\s*)?a\s*/i, '');
+    s = s.replace(/^Transf\.?\s*de\s*/i, '');
+    s = s.replace(/\s+/g, ' ').trim();
+    if (!s || /\b(SPA|LTDA|S\.?A\.?|LIMITADA|EIRL)\b/i.test(s)) return null;
+    if (/^\d{1,2}\.?\d{3}\.?\d{3}-[\dkK]$/i.test(s)) return null;
+    const words = s.split(' ').filter(w => /[a-záéíóúñü]/i.test(w));
+    if (words.length >= 2 && words.length <= 5) {
+        return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    }
+    return null;
+}
+
+function looksLikeHonorarios(tx: { type?: string; description?: string; metadata?: any }): boolean {
+    if (tx.type === 'CREDIT') return false;
+    const meta = tx.metadata || {};
+    if (/honor/i.test(String(meta.category || meta.reviewNote || ''))) return true;
+    const desc = String(tx.description || '');
+    const identified = String(meta.identifiedProviderName || '');
+    const blob = `${identified} ${desc}`;
+    if (/MP\s*\*|MERCADOPAGO|WEBPAY|TRANSBANK|PAYPAL|RIPLEY|FALABELLA|LIDER|PARIS|TRASPASO|COMISION|IMPUESTO|MUNICIPALIDAD|CHILEXPRESS/i.test(blob)) return false;
+    if (/\b(SPA|LTDA|S\.?A\.?|LIMITADA|EIRL|CORPORATION|ROBOTICS|BANCO)\b/i.test(blob)) return false;
+    // Honorarios = transferencia a persona, no compra con tarjeta ni comercio
+    if (!/^Transf/i.test(desc)) return false;
+    const person = identified || extractPersonNameFromGlosa(desc);
+    const words = String(person || '').trim().split(/\s+/).filter(Boolean);
+    return words.length >= 2 && words.length <= 5;
+}
+
+function counterpartyName(tx: { description?: string; metadata?: any }): string | null {
+    return tx.metadata?.identifiedProviderName || extractPersonNameFromGlosa(tx.description || '') || null;
+}
+
+function restorePageScroll() {
+    if (typeof document === 'undefined') return;
+    document.body.style.overflow = '';
+    document.body.style.overflowY = '';
+    document.body.style.paddingRight = '';
+    document.documentElement.style.overflow = '';
+    document.documentElement.style.overflowY = '';
+}
+
 interface MatchDte {
     id: string;
     folio: number;
@@ -179,9 +248,9 @@ export default function CartolasPage() {
     const [search, setSearch] = useState(() => searchParams.get('search') || '');
     const [appliedSearch, setAppliedSearch] = useState(() => searchParams.get('search') || '');
     const [fromDate, setFromDate] = useState<string>(() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() - 1);
-        return d.toISOString().split('T')[0];
+        const fromQuery = searchParams.get('from');
+        if (fromQuery) return fromQuery;
+        return '2026-01-01';
     });
     const [toDate, setToDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
     const [selectedAccount, setSelectedAccount] = useState(() => searchParams.get('bankAccountId') || 'ALL');
@@ -300,6 +369,9 @@ export default function CartolasPage() {
         return { fromDate, toDate };
     }, [fromDate, toDate]);
 
+    useEffect(() => {
+    }, [fromDate, toDate, user]);
+
     // Build query params for SWR keys (cartolas: solo Nov-Dic 2025 y 2026 hasta mes actual)
     const queryParams = useMemo(() => {
         const { fromDate, toDate } = periodDates;
@@ -351,6 +423,33 @@ export default function CartolasPage() {
     const meta = txData?.meta || null;
     // Solo mostrar skeleton en carga inicial; al revalidar (tras confirmar match, etc.) seguimos mostrando datos
     const loading = txLoading;
+
+    useEffect(() => {
+        if (!Array.isArray(transactions) || transactions.length === 0) return;
+        const pending = transactions.filter((t: any) => t.status === 'PENDING');
+        const muniSamples = transactions
+            .filter((t: any) => /MUNI|MUNICIPALIDAD/i.test(t.description || ''))
+            .map((t: any) => ({
+                id: t.id,
+                desc: String(t.description || '').slice(0, 60),
+                amount: t.amount,
+                status: t.status,
+                identified: t.metadata?.identifiedProviderName || null,
+                identifiedId: t.metadata?.identifiedProviderId || null,
+                dtePendiente: !!t.metadata?.dtePendiente,
+                providerRut: t.metadata?.providerRut || null,
+            }));
+        const samples = pending
+            .filter((t: any) => t.type === 'CREDIT' || looksLikeHonorarios(t) || /SAFFORE/i.test(t.description || ''))
+            .slice(0, 10)
+            .map((t: any) => ({
+                type: t.type,
+                desc: String(t.description || '').slice(0, 48),
+                identified: t.metadata?.identifiedProviderName || null,
+                honorarios: looksLikeHonorarios(t),
+                badge: t.type === 'CREDIT' ? 'ABONO' : looksLikeHonorarios(t) ? 'HONORARIOS' : t.metadata?.identifiedProviderName ? 'PAGO_PROVEEDOR' : 'PENDIENTE',
+            }));
+    }, [transactions]);
 
     const refreshData = useCallback(() => {
         mutateTx();
@@ -674,11 +773,15 @@ export default function CartolasPage() {
 
     // Bloquear scroll del fondo cuando cualquier modal de cartola está abierto
     useEffect(() => {
-        if (annotateTx || (reviewTx && reviewMatch) || suggestionModalId) {
-            const prev = document.body.style.overflow;
+        const open = !!(annotateTx || (reviewTx && reviewMatch) || suggestionModalId);
+        if (open) {
             document.body.style.overflow = 'hidden';
-            return () => { document.body.style.overflow = prev; };
+            document.documentElement.style.overflow = 'hidden';
+            return () => {
+                restorePageScroll();
+            };
         }
+        restorePageScroll();
     }, [annotateTx, reviewTx, reviewMatch, suggestionModalId]);
 
     // Cargar detalle de sugerencia cuando se abre el modal
@@ -851,6 +954,7 @@ export default function CartolasPage() {
     };
 
     const openAnnotateModal = (tx: Transaction) => {
+        const meta = tx.metadata as any;
         setAnnotateTx(tx);
         setAnnotateNote(tx.metadata?.reviewNote || '');
     };
@@ -870,6 +974,8 @@ export default function CartolasPage() {
         if (suggestionModalId) setSuggestionModalId(null);
         else if (reviewTx && reviewMatch) closeReviewModal();
         else if (annotateTx) closeAnnotateModal();
+        // FIX: Restaurar scroll del body explícitamente al cerrar cualquier modal
+        restorePageScroll();
     };
 
     const searchAnnotateDtes = async () => {
@@ -1040,196 +1146,10 @@ export default function CartolasPage() {
                 </div>
             </div>
 
-            {/* Cartolas cargadas: listar y eliminar */}
-            {allCartolas.length > 0 && (
-                <div className="card p-4 border-slate-200 bg-white">
-                    <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => setIsCartolasVisible(!isCartolasVisible)}>
-                        <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                            <DocumentTextIcon className="h-5 w-5 text-slate-500" />
-                            Cartolas cargadas
-                        </h2>
-                        <button
-                            type="button"
-                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
-                        >
-                            {isCartolasVisible ? (
-                                <ChevronUpIcon className="h-5 w-5 font-bold" />
-                            ) : (
-                                <ChevronDownIcon className="h-5 w-5 font-bold" />
-                            )}
-                        </button>
-                    </div>
-                    {isCartolasVisible && (
-                        <>
-                            <p className="text-sm text-slate-600 mt-2 mb-4">
-                                Puedes eliminar los movimientos de una cartola para volver a cargarla desde cero (ej. si la carga falló y reportó 0 movimientos).
-                            </p>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-slate-200 text-slate-600 text-left">
-                                    <th className="py-2 pr-4 font-medium">Archivo</th>
-                                    <th className="py-2 pr-4 font-medium">Banco / Cuenta</th>
-                                    <th className="py-2 pr-4 font-medium text-right">Movimientos</th>
-                                    <th className="py-2 w-24"></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {allCartolas.map((row) => (
-                                    <tr key={`${row.filename}-${row.bankAccountId}`} className="border-b border-slate-100 hover:bg-slate-50">
-                                        <td className="py-2.5 pr-4 font-medium text-slate-800">{row.filename}</td>
-                                        <td className="py-2.5 pr-4 text-slate-600">{row.bankName} — {row.accountNumber}</td>
-                                        <td className="py-2.5 pr-4 text-right">{row.count.toLocaleString('es-CL')}</td>
-                                        <td className="py-2.5">
-                                            <button
-                                                type="button"
-                                                onClick={() => setDeleteCartolaFilename(row.filename)}
-                                                className="inline-flex items-center gap-1 text-red-600 hover:text-red-700 font-medium"
-                                                title="Eliminar movimientos de esta cartola para poder volver a cargarla"
-                                            >
-                                                <TrashIcon className="h-4 w-4" />
-                                                Eliminar
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    </>
-                    )}
-                </div>
-            )}
-
-            {/* Modal confirmar eliminar cartola */}
-            {deleteCartolaFilename && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => !deletingCartola && setDeleteCartolaFilename(null)}>
-                    <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-lg font-semibold text-slate-900 mb-2">Eliminar cartola</h3>
-                        <p className="text-slate-600 mb-4">
-                            Se eliminarán todos los movimientos del archivo <strong>{deleteCartolaFilename}</strong>. Los matches y sugerencias asociados también se eliminarán. Podrás volver a cargar este archivo desde cero.
-                        </p>
-                        <div className="flex gap-3 justify-end">
-                            <button
-                                type="button"
-                                onClick={() => setDeleteCartolaFilename(null)}
-                                disabled={deletingCartola}
-                                className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-50"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    if (!deleteCartolaFilename) return;
-                                    setDeletingCartola(true);
-                                    try {
-                                        const res = await authFetch(`${API_URL}/transactions/delete-cartola`, {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ sourceFile: deleteCartolaFilename }),
-                                        });
-                                        const data = await res.json().catch(() => ({}));
-                                        if (!res.ok) throw new Error(data?.message || 'Error al eliminar');
-                                        setDeleteCartolaFilename(null);
-                                        mutateAllCartolas();
-                                        refreshData();
-                                        globalMutate((k: string) => typeof k === 'string' && (k.includes('/conciliacion/') || k.includes('/transactions')));
-                                    } catch (e: any) {
-                                        alert(e?.message || 'Error al eliminar la cartola');
-                                    } finally {
-                                        setDeletingCartola(false);
-                                    }
-                                }}
-                                disabled={deletingCartola}
-                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium disabled:opacity-50 flex items-center gap-2"
-                            >
-                                {deletingCartola ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <TrashIcon className="h-4 w-4" />}
-                                {deletingCartola ? 'Eliminando...' : 'Eliminar movimientos'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Stats Cards */}
-            {summary && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="card-glass p-5 flex items-center space-x-4">
-                        <div className="bg-purple-100 p-3 rounded-xl text-purple-600">
-                            <DocumentChartBarIcon className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <div className="text-2xl font-bold text-slate-900">{summary.total}</div>
-                            <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Movimientos</div>
-                        </div>
-                    </div>
-
-                    <div className="card-glass p-5 flex items-center space-x-4">
-                        <div className="bg-green-100 p-3 rounded-xl text-green-600">
-                            <ArrowTrendingUpIcon className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <div className="text-2xl font-bold text-green-700">{formatCurrency(summary.totalCredits)}</div>
-                            <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Abonos (+)</div>
-                        </div>
-                    </div>
-
-                    <div className="card-glass p-5 flex items-center space-x-4">
-                        <div className="bg-red-100 p-3 rounded-xl text-red-600">
-                            <ArrowTrendingDownIcon className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <div className="text-2xl font-bold text-red-700">{formatCurrency(Math.abs(summary.totalDebits))}</div>
-                            <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Cargos (-)</div>
-                        </div>
-                    </div>
-
-                    <div className="card-glass p-5 flex items-center space-x-4">
-                        <div className="bg-blue-100 p-3 rounded-xl text-blue-600">
-                            <CheckCircleIcon className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <div className="text-2xl font-bold text-blue-700">{summary.matchRate.toFixed(1)}%</div>
-                            <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Tasa Conciliación</div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Motor de conciliación: ejecutar, sugerencias, match manual */}
-            <div className="card p-4 border-indigo-100 bg-indigo-50/30">
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-2">
-                        <SparklesIcon className="h-5 w-5 text-indigo-600" />
-                        <h2 className="text-lg font-semibold text-slate-800">Motor de conciliación</h2>
-                    </div>
-                    <button
-                        onClick={runConciliacion}
-                        disabled={runMatchLoading}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 disabled:opacity-50"
-                    >
-                        {runMatchLoading ? (
-                            <ArrowPathIcon className="h-5 w-5 animate-spin" />
-                        ) : (
-                            <SparklesIcon className="h-5 w-5" />
-                        )}
-                        <span>{runMatchLoading ? 'Ejecutando...' : 'Ejecutar conciliación'}</span>
-                    </button>
-                </div>
-                <p className="text-sm text-slate-600 mb-4">Los matches se comparten con Conciliación (KPIs), Facturas (DTEs conciliados) y Proveedores (estado de cuenta). Usa el filtro <strong>&quot;Sugerencias&quot;</strong> en la tabla para ver y gestionar todas las sugerencias del motor. Para ver movimientos de todas las cuentas (incl. tarjeta de cr&#233;dito), usa <strong>&quot;Todas las cuentas&quot;</strong> y <strong>&quot;Todas las cartolas del periodo&quot;</strong>.</p>
-
-                <div className="space-y-3">
-                    <button
-                        onClick={() => setShowManualMatch(true)}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl shadow-md font-bold hover:bg-indigo-700 transition-colors"
-                    >
-                        <SparklesIcon className="h-5 w-5" />
-                        Hacer Match Multidocumento (Universal)
-                    </button>
                     <UniversalMatchModal
                         isOpen={showManualMatch || (USE_NEW_MODAL && !!suggestionModalId && !!suggestionDetail) || (USE_NEW_MODAL && !!reviewMatch) || (USE_NEW_MODAL && !!annotateTx)}
                         onClose={() => {
+                            restorePageScroll();
                             setShowManualMatch(false);
                             if (USE_NEW_MODAL) {
                                 setSuggestionModalId(null);
@@ -1240,6 +1160,7 @@ export default function CartolasPage() {
                         }}
                         API_URL={API_URL}
                         onRefresh={() => { refreshData(); invalidateDtesAndProveedores(); }}
+                        provider={(USE_NEW_MODAL && annotateTx && annotateTx.metadata?.identifiedProviderId) ? { id: annotateTx.metadata.identifiedProviderId, name: annotateTx.metadata.identifiedProviderName } : undefined}
                         suggestionId={(USE_NEW_MODAL && suggestionModalId) ? suggestionModalId : undefined}
                         reviewMatchId={(USE_NEW_MODAL && reviewMatch?.id) ? reviewMatch.id : undefined}
                         matchStatus={(USE_NEW_MODAL && reviewMatch?.status) ? reviewMatch.status : undefined}
@@ -1293,10 +1214,7 @@ export default function CartolasPage() {
                             <ArrowPathIcon className="h-10 w-10 text-white animate-spin" />
                         </div>
                     )}
-                </div>
-            </div>
-
-            {/* Filters */}
+                {/* Filters */}
             <div className="card p-4">
                 <div className="flex flex-col lg:flex-row gap-3 items-center">
                     {/* Buscador Prominente */}
@@ -1347,7 +1265,7 @@ export default function CartolasPage() {
                             <option value="ALL">Todos</option>
                             <option value="MATCHED">Conciliados</option>
                             <option value="PARTIALLY_MATCHED">Sugerencias</option>
-                            <option value="PENDING">Pendientes (Cargos)</option>
+                            <option value="PENDING">Pendientes (sin identificar)</option>
                             <option value="CREDIT_ABONOS">⬇ Abonos Bancarios</option>
                             <option value="UNMATCHED">Revisados</option>
                         </select>
@@ -1518,10 +1436,6 @@ export default function CartolasPage() {
                                                         <span className="text-xs text-slate-700 font-medium max-w-[160px] truncate block" title={tx.metadata?.sourceFile}>
                                                             {cartolaName}
                                                         </span>
-                                                    ) : tx.origin === 'API_INTEGRATION' ? (
-                                                        <span className="text-xs text-emerald-600 font-medium flex items-center gap-1" title="Sincronización automática">
-                                                            <CloudArrowUpIcon className="h-3 w-3"/> Fintoc
-                                                        </span>
                                                     ) : (
                                                         <span className="text-[10px] text-slate-400 italic">—</span>
                                                     )}
@@ -1594,15 +1508,18 @@ export default function CartolasPage() {
                                                     <button 
                                                         onClick={() => openAnnotateModal(tx)}
                                                         className="mx-auto flex flex-col items-center text-center cursor-pointer group hover:scale-105 transition-transform" 
-                                                        title="Regla de Gasto Fijo aplicada automáticamente. Clic para detalles."
+                                                        title="Movimiento identificado automáticamente. Clic para detalles."
                                                     >
-                                                        <span className="inline-flex items-center text-purple-600 font-bold text-xs mb-1 bg-purple-50 rounded px-2 py-0.5 border border-purple-200 group-hover:bg-purple-100 transition-colors">
-                                                            <SparklesIcon className="h-3.5 w-3.5 mr-1" />
-                                                            GASTO FIJO
+                                                        <span className="inline-flex items-center bg-blue-100 text-blue-700 font-bold text-[10px] ring-1 ring-blue-300 ring-offset-1 rounded px-2 py-0.5 group-hover:bg-blue-200 transition-colors max-w-[140px] truncate">
+                                                            <TagIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+                                                            IDENTIFICADO
                                                         </span>
-                                                        <div className="text-[10px] text-purple-700 font-medium leading-tight max-w-[140px] truncate">
-                                                            {tx.metadata.reviewNote?.replace('[Auto: ', '')?.replace(']', '') || 'Regla Automática'}
-                                                        </div>
+                                                        <span className="text-[9px] text-blue-600 font-medium mt-0.5 truncate max-w-[160px]" title={identifiedReason(tx.metadata)}>
+                                                            {identifiedReason(tx.metadata)}
+                                                        </span>
+                                                        {identifiedSubtitle(tx) && (
+                                                            <span className="text-[8px] text-slate-500 mt-0.5 truncate max-w-[160px]" title={`Comercio: ${identifiedSubtitle(tx)}`}>vía {identifiedSubtitle(tx)}</span>
+                                                        )}
                                                     </button>
                                                 ) : tx.status === 'MATCHED' ? (
                                                     <span className="inline-flex items-center text-emerald-600 font-bold text-xs">
@@ -1666,24 +1583,54 @@ export default function CartolasPage() {
                                                         >
                                                             {(() => {
                                                                 const meta = tx.metadata as any;
+                                                                const honorarios = looksLikeHonorarios(tx);
+                                                                const who = counterpartyName(tx);
+                                                                if (tx.type === 'CREDIT') {
+                                                                    return (
+                                                                        <div className="flex flex-col items-center">
+                                                                            <span className="inline-flex items-center bg-emerald-100 text-emerald-800 font-bold text-[10px] ring-1 ring-emerald-300 ring-offset-1 rounded px-2 py-0.5 group-hover:bg-emerald-200 transition-colors max-w-[160px] truncate" title={`Abono recibido${who ? ` de ${who}` : ''}`}>
+                                                                                <ArrowTrendingUpIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+                                                                                ABONO RECIBIDO
+                                                                            </span>
+                                                                            {who && <span className="text-[9px] text-emerald-700 font-semibold mt-0.5 truncate max-w-[140px]" title={who}>{who}</span>}
+                                                                            <span className="text-[8px] text-emerald-600 font-medium">Le pagan a Bravium</span>
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                if (honorarios) {
+                                                                    return (
+                                                                        <div className="flex flex-col items-center">
+                                                                            <span className="inline-flex items-center bg-teal-100 text-teal-800 font-bold text-[10px] ring-1 ring-teal-300 ring-offset-1 rounded px-2 py-0.5 group-hover:bg-teal-200 transition-colors max-w-[160px] truncate" title={`Trabajador a honorarios${who ? `: ${who}` : ''}`}>
+                                                                                <DocumentTextIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+                                                                                HONORARIOS
+                                                                            </span>
+                                                                            {who && <span className="text-[9px] text-teal-700 font-semibold mt-0.5 truncate max-w-[140px]" title={who}>{who}</span>}
+                                                                            <span className="text-[8px] text-amber-600 font-medium">Falta N° boleta</span>
+                                                                        </div>
+                                                                    );
+                                                                }
                                                                 if (meta?.identifiedProviderName) {
                                                                     return (
                                                                         <div className="flex flex-col items-center">
-                                                                            <span className="inline-flex items-center bg-purple-100 text-purple-700 font-bold text-[10px] ring-1 ring-purple-300 ring-offset-1 rounded px-2 py-0.5 group-hover:bg-purple-200 transition-colors max-w-[140px] truncate" title={`ASIGNACIÓN MASIVA: ${meta.identifiedProviderName}`}>
+                                                                            <span className="inline-flex items-center bg-purple-100 text-purple-700 font-bold text-[10px] ring-1 ring-purple-300 ring-offset-1 rounded px-2 py-0.5 group-hover:bg-purple-200 transition-colors max-w-[160px] truncate" title={`Pago dirigido a: ${meta.identifiedProviderName}${meta.dtePendiente ? ' (DTE Pendiente)' : ''}`}>
                                                                                 <UserGroupIcon className="h-3 w-3 mr-1 flex-shrink-0" />
-                                                                                ASIGNACIÓN MASIVA
+                                                                                PAGO A PROVEEDOR
                                                                             </span>
-                                                                            <span className="text-[9px] text-purple-600 font-medium mt-0.5 truncate max-w-[120px]" title={meta.identifiedProviderName}>{meta.identifiedProviderName}</span>
+                                                                            <span className="text-[9px] text-purple-600 font-semibold mt-0.5 truncate max-w-[140px]" title={meta.identifiedProviderName}>{meta.identifiedProviderName}</span>
+                                                                            {meta.dtePendiente && <span className="text-[8px] text-amber-500 font-medium">DTE Pendiente</span>}
                                                                         </div>
                                                                     );
                                                                 } else if (meta?.autoCategorized) {
                                                                     return (
                                                                         <div className="flex flex-col items-center">
-                                                                            <span className="inline-flex items-center bg-blue-100 text-blue-700 font-bold text-[10px] ring-1 ring-blue-300 ring-offset-1 rounded px-2 py-0.5 group-hover:bg-blue-200 transition-colors max-w-[140px] truncate" title={`IDENTIFICADO: ${meta.category}`}>
+                                                                            <span className="inline-flex items-center bg-blue-100 text-blue-700 font-bold text-[10px] ring-1 ring-blue-300 ring-offset-1 rounded px-2 py-0.5 group-hover:bg-blue-200 transition-colors max-w-[140px] truncate" title={`IDENTIFICADO: ${identifiedReason(meta)}`}>
                                                                                 <TagIcon className="h-3 w-3 mr-1 flex-shrink-0" />
                                                                                 IDENTIFICADO
                                                                             </span>
-                                                                            <span className="text-[9px] text-blue-600 font-medium mt-0.5 truncate max-w-[120px]" title={meta.category || meta.ruleName}>{meta.category || meta.ruleName || 'Regla Automática'}</span>
+                                                                            <span className="text-[9px] text-blue-600 font-medium mt-0.5 truncate max-w-[160px]" title={identifiedReason(meta)}>{identifiedReason(meta)}</span>
+                                                                            {identifiedSubtitle(tx) && (
+                                                                                <span className="text-[8px] text-slate-500 mt-0.5 truncate max-w-[160px]" title={`Comercio: ${identifiedSubtitle(tx)}`}>vía {identifiedSubtitle(tx)}</span>
+                                                                            )}
                                                                         </div>
                                                                     );
                                                                 }

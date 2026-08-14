@@ -40,6 +40,32 @@ const formatDate = (s: any) => {
     return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
+function extractPersonNameFromGlosa(desc: string): string | null {
+    let s = String(desc || '');
+    s = s.replace(/^0?\d{8,11}\s*/i, '');
+    s = s.replace(/^Transf\.?\s*(Internet\s*)?a\s*/i, '');
+    s = s.replace(/\s+/g, ' ').trim();
+    if (!s || /\b(SPA|LTDA|S\.?A\.?|LIMITADA|EIRL)\b/i.test(s)) return null;
+    if (/^\d{1,2}\.?\d{3}\.?\d{3}-[\dkK]$/i.test(s)) return null;
+    const words = s.split(' ').filter(w => /[a-záéíóúñü]/i.test(w));
+    if (words.length >= 2 && words.length <= 5) return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    return null;
+}
+
+function looksLikeHonorarios(tx: any, provider: any): boolean {
+    const cat = String(provider?.category || tx?.metadata?.category || '').toUpperCase();
+    if (cat.includes('HONOR')) return true;
+    const desc = String(tx?.description || '');
+    const blob = `${provider?.name || ''} ${tx?.metadata?.identifiedProviderName || ''} ${desc}`;
+    if (/honorario/i.test(blob)) return true;
+    if (/MP\s*\*|MERCADOPAGO|WEBPAY|TRANSBANK|PAYPAL|RIPLEY|FALABELLA|LIDER|PARIS|TRASPASO|COMISION|IMPUESTO|MUNICIPALIDAD|CHILEXPRESS/i.test(blob)) return false;
+    if (/\b(SPA|LTDA|S\.?A\.?|LIMITADA|EIRL|CORPORATION|ROBOTICS|BANCO)\b/i.test(blob)) return false;
+    if (!/^Transf/i.test(desc)) return false;
+    const person = provider?.name || tx?.metadata?.identifiedProviderName || extractPersonNameFromGlosa(desc);
+    const words = String(person || '').trim().split(/\s+/).filter(Boolean);
+    return words.length >= 2 && words.length <= 5;
+}
+
 export function UniversalMatchModal({
     isOpen,
     onClose,
@@ -79,6 +105,8 @@ export function UniversalMatchModal({
     // Unidirectional states
     const [boletaFolio, setBoletaFolio] = useState('');
     const [boletaAmount, setBoletaAmount] = useState<number | ''>('');
+    const [boletaKind, setBoletaKind] = useState<39 | 112>(112);
+    const [honorariosName, setHonorariosName] = useState('');
     
     // New states for Gastos Fijos & Diff Resolution
     const [selectedRuleId, setSelectedRuleId] = useState<string>('');
@@ -119,6 +147,10 @@ export function UniversalMatchModal({
             setDiffResolution(null);
             setSaveSuccess(false);
             setSaveError(null);
+            setBoletaFolio('');
+            setBoletaKind(112);
+            const txAmt = Math.abs(txs.reduce((s, t) => s + Number(t.amount || 0), 0));
+            setBoletaAmount(txAmt || '');
             
             // Pre-populate existing annotation if opening in ANNOTATE mode
             const firstTx = txs[0];
@@ -171,11 +203,21 @@ export function UniversalMatchModal({
                 setDteSearch('');
                 setTxSearch('');
             }
+
+            const personFromGlosa = extractPersonNameFromGlosa(firstTx?.description || '');
+            const honorName = detectedProv?.name || firstTx?.metadata?.identifiedProviderName || personFromGlosa || '';
+            setHonorariosName(honorName);
+            const honorarios = looksLikeHonorarios(firstTx, detectedProv);
+            if (honorarios && honorName) {
+                searchProviders(honorName, true);
+            }
         }
 
         return () => {
             document.body.style.overflow = '';
+            document.body.style.overflowY = '';
             document.documentElement.style.overflow = '';
+            document.documentElement.style.overflowY = '';
         };
     }, [isOpen, initKey]);
 
@@ -208,7 +250,7 @@ export function UniversalMatchModal({
         finally { setIsProviderLoading(false); }
     };
 
-    const searchProviders = async (q: string) => {
+    const searchProviders = async (q: string, autoSelect = false) => {
         if (q.length < 2) {
             setProviderResults([]);
             return;
@@ -216,7 +258,16 @@ export function UniversalMatchModal({
         try {
             const res = await authFetch(`${API_URL}/proveedores?search=${encodeURIComponent(q)}&limit=10`);
             const data = await res.json();
-            setProviderResults(Array.isArray(data) ? data : data.data || []);
+            const list = Array.isArray(data) ? data : data.data || [];
+            setProviderResults(list);
+            if (autoSelect && list.length > 0) {
+                const qn = q.trim().toLowerCase();
+                const exact = list.find((p: any) => String(p.name || '').trim().toLowerCase() === qn)
+                    || list.find((p: any) => String(p.name || '').toLowerCase().includes(qn.split(' ')[0]))
+                    || list[0];
+                setSelectedProvider(exact);
+                setHonorariosName(exact.name || q);
+            }
         } catch { /* ignore */ }
     };
 
@@ -377,17 +428,20 @@ export function UniversalMatchModal({
                 const finalDteIds: string[] = [];
                 let finalNote = note;
                 
-                if (boletaFolio && Number(boletaFolio) > 0 && selectedProvider) {
+                if (boletaFolio && Number(boletaFolio) > 0 && (selectedProvider || honorariosName)) {
                     const amount = boletaAmount || Math.abs(selectedTxs.reduce((s, t) => s + (t.amount || 0), 0));
                     const dteRes = await authFetch(`${API_URL}/dtes/honorarios`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            providerId: selectedProvider.id,
+                            providerId: selectedProvider?.id,
+                            providerName: honorariosName || selectedProvider?.name,
+                            providerRut: selectedProvider?.rut,
                             folio: Number(boletaFolio),
                             amount,
                             notes: note || undefined,
-                            date: selectedTxs[0]?.date
+                            date: selectedTxs[0]?.date,
+                            type: boletaKind,
                         })
                     });
                     
@@ -725,7 +779,7 @@ export function UniversalMatchModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto" onMouseDown={(e) => { if (e.target === e.currentTarget) { document.body.style.overflow = ''; document.documentElement.style.overflow = ''; onClose(); } }}>
             <div className={`bg-white rounded-xl shadow-2xl w-full flex flex-col max-h-[92vh] overflow-hidden transition-all duration-300 ${selectedProvider ? 'max-w-[90vw] lg:max-w-7xl' : 'max-w-6xl'}`} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                 
                 <div className="flex items-center justify-between px-6 py-4 bg-slate-900 border-b border-slate-800 text-white">
@@ -746,7 +800,7 @@ export function UniversalMatchModal({
                                 : 'Cuadratura contable de cartolas bancarias con documentos DTE'}
                         </p>
                     </div>
-                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
+                    <button onClick={() => { document.body.style.overflow = ''; document.documentElement.style.overflow = ''; onClose(); }} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
                         <XMarkIcon className="h-5 w-5" />
                     </button>
                 </div>
@@ -973,6 +1027,70 @@ export function UniversalMatchModal({
                                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-1 focus:ring-slate-900 focus:bg-white outline-none text-xs font-medium transition-all resize-none text-slate-900 placeholder-slate-400"
                             />
                         </div>
+
+                        {selectedTxs.length > 0 && selectedDtes.length === 0 && looksLikeHonorarios(selectedTxs[0], selectedProvider) && (
+                            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 shadow-sm space-y-3">
+                                <div>
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900">Trabajador a honorarios</h4>
+                                    <p className="text-[11px] text-indigo-800 mt-0.5">
+                                        La glosa parece un pago a persona (no empresa). Ingresa el N° de boleta para crear el documento y dejar el pago registrado.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <label className="text-[10px] font-bold uppercase text-indigo-800 col-span-2">
+                                        Nombre
+                                        <input
+                                            value={honorariosName}
+                                            onChange={e => { setHonorariosName(e.target.value); if (e.target.value.length >= 3) searchProviders(e.target.value); }}
+                                            placeholder="Ej. Arturo Saffores"
+                                            className="mt-1 w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-700 text-slate-900"
+                                        />
+                                    </label>
+                                    {providerResults.length > 0 && !selectedProvider && (
+                                        <div className="col-span-2 max-h-24 overflow-y-auto border border-indigo-100 rounded-lg bg-white divide-y divide-indigo-50">
+                                            {providerResults.slice(0, 5).map((p: any) => (
+                                                <button
+                                                    key={p.id}
+                                                    type="button"
+                                                    onClick={() => { setSelectedProvider(p); setHonorariosName(p.name); setProviderResults([]); }}
+                                                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50"
+                                                >
+                                                    <span className="font-semibold text-slate-900">{p.name}</span>
+                                                    <span className="text-slate-500 font-mono ml-2">{p.rut}</span>
+                                                    {p.category && <span className="ml-2 text-[10px] uppercase text-indigo-700">{p.category}</span>}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {selectedProvider && (
+                                        <div className="col-span-2 text-[11px] text-indigo-900 font-medium">
+                                            Perfil: {selectedProvider.name} {selectedProvider.category ? `(${selectedProvider.category})` : '(se marcará HONORARIOS)'}
+                                        </div>
+                                    )}
+                                    <label className="text-[10px] font-bold uppercase text-indigo-800">
+                                        Tipo
+                                        <select
+                                            value={boletaKind}
+                                            onChange={e => setBoletaKind(Number(e.target.value) as 39 | 112)}
+                                            className="mt-1 w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-700 text-slate-900"
+                                        >
+                                            <option value={112}>Boleta de honorarios</option>
+                                            <option value={39}>Boleta electrónica</option>
+                                        </select>
+                                    </label>
+                                    <label className="text-[10px] font-bold uppercase text-indigo-800">
+                                        N° boleta
+                                        <input
+                                            value={boletaFolio}
+                                            onChange={e => setBoletaFolio(e.target.value.replace(/\D/g, ''))}
+                                            placeholder="14"
+                                            inputMode="numeric"
+                                            className="mt-1 w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-700 text-slate-900 font-mono"
+                                        />
+                                    </label>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* COLUMNA DERECHA: Documentos Tributarios (DTEs) del Proveedor */}
@@ -1219,6 +1337,7 @@ export function UniversalMatchModal({
                                 className={`px-8 py-3 text-sm font-bold text-white shadow-md rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${(selectedDtes.length === 0 || selectedTxs.length === 0) ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30 hover:shadow-lg' : hasMatchedDtes ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30 hover:shadow-lg' : isPerfect ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30 hover:shadow-lg' : diffResolution ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30 hover:shadow-lg' : 'bg-slate-300 text-white shadow-none'}`}
                             >
                                 {isSaving ? 'Guardando...' : 
+                                 boletaFolio && selectedTxs.length > 0 && selectedDtes.length === 0 ? 'Registrar boleta y conciliar' :
                                  selectedDtes.length === 0 ? 'Guardar Anotación Manual' :
                                  selectedTxs.length === 0 ? 'Anotar / Pagar Manualmente' :
                                  hasMatchedDtes ? 'Confirmar y Reasignar' :

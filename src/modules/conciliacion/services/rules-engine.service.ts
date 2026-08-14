@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { TransactionStatus, Prisma } from '@prisma/client';
+import { isExcelGastoFijo } from './excel-pattern-learner.service';
 
 @Injectable()
 export class RulesEngineService {
@@ -40,7 +41,22 @@ export class RulesEngineService {
                 where: txWhere,
             });
 
+
             if (pendingTx.length === 0) return { categorized: 0 };
+
+            // Cargar todos los alias de glosas para búsqueda rápida (sistema de "memoria")
+            const allAliases = await this.prisma.glosaCategoryAlias.findMany({
+                include: { rule: true },
+            });
+
+            // Índice: glosaNormalized → { ruleId, categoryName }
+            const aliasIndex = new Map<string, { ruleId: string; categoryName: string }>();
+            for (const alias of allAliases) {
+                aliasIndex.set(alias.glosaNormalized, {
+                    ruleId: alias.ruleId,
+                    categoryName: alias.rule.categoryName,
+                });
+            }
 
             let categorizedCount = 0;
             const cleanRut = (rut: string) => rut.replace(/\./g, '').toUpperCase();
@@ -63,9 +79,15 @@ export class RulesEngineService {
                         hasRut = cleanDesc.includes(cleanPRutNoDv);
                     }
                     
-                    const hasAlias = provider.aliases.some(alias => 
+                    const matchingAliases = provider.aliases.filter(alias =>
                         alias.description && descUpper.includes(alias.description.toUpperCase())
                     );
+                    const hasAlias = matchingAliases.length > 0;
+                    const isMunicipalGlosa = /\bMUNI(?:CIPALIDAD)?\b/i.test(tx.description || '');
+                    const isMunicipalProvider = /MUNI(?:CIPALIDAD)?|PATENTE/i.test(provider.name || '');
+                    if (isMunicipalGlosa && !isMunicipalProvider && (hasRut || hasAlias)) {
+                        continue;
+                    }
 
                     if (hasRut || hasAlias) {
                         await this.prisma.bankTransaction.update({
@@ -88,24 +110,119 @@ export class RulesEngineService {
                 }
 
                 if (matchedProvider) continue; // Ya se identificó para masiva, no aplicar reglas de gasto fijo
+
+                // 2. Buscar en la "memoria" de aliases de glosas (GlosaCategoryAlias)
+                const descNorm = this.normalizeGlosaForSearch(tx.description);
+                const aliasMatch = aliasIndex.get(descNorm);
+
+                if (aliasMatch) {
+                    const closes = isExcelGastoFijo(aliasMatch.categoryName);
+                    await this.prisma.bankTransaction.update({
+                        where: { id: tx.id },
+                        data: {
+                            status: closes ? TransactionStatus.MATCHED : TransactionStatus.PENDING,
+                            metadata: {
+                                ...(typeof tx.metadata === 'object' && tx.metadata ? tx.metadata : {}),
+                                reviewNote: `[Auto: ${aliasMatch.categoryName}]`,
+                                autoCategorized: true,
+                                category: aliasMatch.categoryName,
+                                ruleName: aliasMatch.categoryName,
+                                ruleId: aliasMatch.ruleId
+                            },
+                        }
+                    });
+
+                    // Incrementar contador de la regla y del alias
+                    await Promise.all([
+                        this.prisma.autoCategoryRule.update({
+                            where: { id: aliasMatch.ruleId },
+                            data: { matchCount: { increment: 1 } },
+                        }),
+                        this.prisma.glosaCategoryAlias.updateMany({
+                            where: { ruleId: aliasMatch.ruleId, glosaNormalized: descNorm },
+                            data: { timesMatched: { increment: 1 }, lastSeenAt: new Date() },
+                        }),
+                    ]);
+
+                    this.logger.log(`Auto-categorized TX ${tx.id} via ALIAS MEMORY: "${tx.description}" → "${aliasMatch.categoryName}"`);
+                    if (/MUNI|MUNICIPALIDAD|PATENTE/i.test(`${tx.description} ${aliasMatch.categoryName}`)) {
+                    }
+                    categorizedCount++;
+                    continue;
+                }
                 
-                // 2. Find first matching Gasto Fijo rule
+                // 3. Find first matching Gasto Fijo rule by keyword
                 const matchedRule = rules.find(r => desc.includes(r.keywordMatch.toLowerCase()));
                 
                 if (matchedRule) {
+                    const closes = isExcelGastoFijo(matchedRule.categoryName);
+                    await this.prisma.bankTransaction.update({
+                        where: { id: tx.id },
+                        data: {
+                            status: closes ? TransactionStatus.MATCHED : TransactionStatus.PENDING,
+                            metadata: {
+                                ...(typeof tx.metadata === 'object' && tx.metadata ? tx.metadata : {}),
+                                reviewNote: `[Auto: ${matchedRule.categoryName}]`,
+                                autoCategorized: true,
+                                category: matchedRule.categoryName,
+                                ruleName: matchedRule.categoryName,
+                                ruleId: matchedRule.id
+                            },
+                        }
+                    });
+
+                    // Incrementar matchCount de la regla
+                    await this.prisma.autoCategoryRule.update({
+                        where: { id: matchedRule.id },
+                        data: { matchCount: { increment: 1 } },
+                    });
+
+                    // AUTO-APRENDIZAJE: Registrar esta glosa como nuevo alias en la memoria
+                    if (descNorm && descNorm.length >= 4) {
+                        try {
+                            await this.prisma.glosaCategoryAlias.upsert({
+                                where: {
+                                    ruleId_glosaNormalized: {
+                                        ruleId: matchedRule.id,
+                                        glosaNormalized: descNorm,
+                                    },
+                                },
+                                update: {
+                                    timesMatched: { increment: 1 },
+                                    lastSeenAt: new Date(),
+                                },
+                                create: {
+                                    ruleId: matchedRule.id,
+                                    glosaBancaria: tx.description,
+                                    glosaNormalized: descNorm,
+                                    source: 'AUTO_DETECTED',
+                                    timesMatched: 1,
+                                },
+                            });
+                        } catch { /* silenciar si falla el upsert */ }
+                    }
+
+                    this.logger.log(`Auto-categorized TX ${tx.id} (${tx.description}) using rule "${matchedRule.categoryName}"`);
+                    categorizedCount++;
+                    continue;
+                }
+
+                // IVA del banco (uso internacional, etc.). No mezclar con IVA COM. REMUNERACION.
+                if (/\bIVA\b/i.test(tx.description || '') && !/REMUNERACION/i.test(tx.description || '')) {
                     await this.prisma.bankTransaction.update({
                         where: { id: tx.id },
                         data: {
                             status: TransactionStatus.MATCHED,
                             metadata: {
                                 ...(typeof tx.metadata === 'object' && tx.metadata ? tx.metadata : {}),
-                                reviewNote: `[Auto: ${matchedRule.categoryName}]`,
+                                reviewNote: '[Auto: IVA]',
                                 autoCategorized: true,
-                                ruleId: matchedRule.id
+                                category: 'IVA',
+                                ruleName: 'IVA',
                             },
-                        }
+                        },
                     });
-                    this.logger.log(`Auto-categorized TX ${tx.id} (${tx.description}) using rule "${matchedRule.categoryName}"`);
+                    this.logger.log(`Auto-categorized TX ${tx.id} as IVA: ${tx.description}`);
                     categorizedCount++;
                 }
             }
@@ -163,5 +280,20 @@ export class RulesEngineService {
             orderBy: { date: 'desc' },
             take: 100
         });
+    }
+
+    /**
+     * Normaliza una glosa bancaria para búsqueda en el índice de aliases.
+     * Misma lógica que ExcelPatternLearnerService.normalizeGlosa.
+     */
+    private normalizeGlosaForSearch(desc: string): string {
+        return desc
+            .toLowerCase()
+            .replace(/\d{1,2}\.?\d{3}\.?\d{3}-[\dkK]/gi, '')
+            .replace(/[\d.,]+/g, ' ')
+            .replace(/[^\w\sáéíóúñü]/g, ' ')
+            .replace(/\b(a|de|del|el|la|los|las|en|por|con|nro|num|n)\b/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
     }
 }

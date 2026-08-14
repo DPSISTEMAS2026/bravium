@@ -3,6 +3,8 @@ import { PrismaService } from '../../../common/prisma/prisma.service';
 import { DataOrigin, TransactionType } from '@prisma/client';
 import { OpenAiService } from './openai.service';
 import { TransactionsService } from '../../bancos/transactions.service';
+import { isSantanderTcPdfFilename, parseSantanderTcPdf, SantanderTcParseResult } from './santander-tc-pdf.parser';
+import { isItauTcPdfFilename, parseItauTcPdf, ItauTcParseResult } from './itau-tc-pdf.parser';
 
 
 export interface DriveIngestDto {
@@ -94,6 +96,25 @@ export class DriveIngestService {
                 }
             } catch (e) { /* ignorar si falla */ }
         }
+        if (/0215703887/i.test(filename2) && !isItauTcPdfFilename(filename2)) {
+            (dto as any)._extractedAccountNumber = '0215703887';
+        }
+        if (isItauTcPdfFilename(filename2) && dto.fileContentBase64) {
+            const itauParsed = await this.parseItauTcFromDto(dto);
+            (dto as any)._itauTcParsed = itauParsed;
+            if (itauParsed.accountLast4) {
+                (dto as any)._extractedAccountNumber = itauParsed.accountLast4;
+                this.logger.log(`[PRE-EXTRACCIÓN] TC Itaú cuenta XXXX-${itauParsed.accountLast4}`);
+            }
+        }
+        if (isSantanderTcPdfFilename(filename2) && dto.fileContentBase64) {
+            const tcParsed = await this.parseSantanderTcFromDto(dto);
+            (dto as any)._tcParsed = tcParsed;
+            if (tcParsed.accountLast4) {
+                (dto as any)._extractedAccountNumber = tcParsed.accountLast4;
+                this.logger.log(`[PRE-EXTRACCIÓN] TC Santander cuenta XXXX-${tcParsed.accountLast4}`);
+            }
+        }
 
         // 1.5 Resolve Bank Account Early
         let bankAccount;
@@ -111,6 +132,31 @@ export class DriveIngestService {
                     }
                 });
                 if (bankAccount) this.logger.log(`Cuenta encontrada por número de header: ${bankAccount.bankName} ${bankAccount.accountNumber}`);
+            }
+            if (!bankAccount && extractedNum === '5239') {
+                bankAccount = await this.prisma.bankAccount.findFirst({
+                    where: {
+                        organizationId: dto.organizationId,
+                        OR: [
+                            { id: 'acc-santander-5239' },
+                            { accountNumber: { contains: 'XXXX-5239' } },
+                        ],
+                    },
+                });
+                if (bankAccount) this.logger.log(`Cuenta TC Santander fallback: ${bankAccount.bankName} ${bankAccount.accountNumber}`);
+            }
+            if (!bankAccount && extractedNum === '3965') {
+                bankAccount = await this.prisma.bankAccount.findFirst({
+                    where: {
+                        organizationId: dto.organizationId,
+                        OR: [
+                            { id: 'acc-itau-3965' },
+                            { accountNumber: { contains: 'XXXX-3965' } },
+                            { accountNumber: { contains: '3965' } },
+                        ],
+                    },
+                });
+                if (bankAccount) this.logger.log(`Cuenta TC Itaú fallback: ${bankAccount.bankName} ${bankAccount.accountNumber}`);
             }
             // Fallback: buscar por nombre de banco
             if (!bankAccount) {
@@ -140,10 +186,9 @@ export class DriveIngestService {
         }
 
         if (!bankAccount) {
-            // Create default if not found (legacy behavior)
-            bankAccount = await this.prisma.bankAccount.create({
-                data: { bankName, accountNumber: (dto as any)._extractedAccountNumber || accountNumber, currency: 'CLP', rutHolder: 'AUTO', organizationId: dto.organizationId }
-            });
+            throw new Error(
+                `No se encontró una cuenta bancaria de Bravium para el número del Excel (${(dto as any)._extractedAccountNumber || accountNumber}). La cuenta debe existir previamente; Fintoc ya no aplica.`
+            );
         }
 
         // Get the latest CREDIT transaction date for this account to optimize skipping (ultimo ingreso de dinero)
@@ -236,8 +281,120 @@ export class DriveIngestService {
                     });
                 }
             }
-        } else {
-            // FASE AI (Fallback)
+        }
+
+        const isItau = filename && /0215703887/i.test(filename) && !isItauTcPdfFilename(filename);
+        if (!normalizedRows.length && isItau && dto.fileContentBase64) {
+            this.logger.log('Detectado formato Itaú nativo. Omitiendo OpenAI.');
+            const XLSX = require('xlsx');
+            const wb = XLSX.read(Buffer.from(dto.fileContentBase64, 'base64'), { type: 'buffer' });
+            const rawData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }) as any[];
+
+            let periodYear = 2026;
+            let periodMonth = 1;
+            for (const row of rawData) {
+                if (!Array.isArray(row)) continue;
+                const joined = row.map((c) => String(c || '')).join(' ');
+                const pm = joined.match(/(\d{2})\/(\d{2})\/(\d{4})\s*-\s*(\d{2})\/(\d{2})\/(\d{4})/);
+                if (pm) {
+                    periodMonth = parseInt(pm[2], 10);
+                    periodYear = parseInt(pm[3], 10);
+                    break;
+                }
+            }
+
+            const cuentaRow = rawData.find((r) => Array.isArray(r) && String(r[2] || '').includes('Número de cuenta'));
+            if (cuentaRow && cuentaRow[3]) {
+                const num = String(cuentaRow[3]).replace(/\D/g, '');
+                if (num.length >= 5) (dto as any)._extractedAccountNumber = num;
+            } else {
+                (dto as any)._extractedAccountNumber = '0215703887';
+            }
+
+            const totIdx = rawData.findIndex((r) => Array.isArray(r) && String(r[0] || '').toLowerCase().includes('total cargos'));
+            if (totIdx !== -1 && rawData[totIdx + 1]) {
+                const sums = rawData[totIdx + 1];
+                controlSums = {
+                    totalCargos: Math.abs(Number(sums[0]) || 0),
+                    totalAbonos: Math.abs(Number(sums[1]) || 0),
+                };
+            }
+
+            const headerIdx = rawData.findIndex((r) =>
+                Array.isArray(r) && String(r[0] || '').trim() === 'Fecha' && String(r[3] || '').toLowerCase().includes('descrip'),
+            );
+            if (headerIdx !== -1) {
+                for (let i = headerIdx + 1; i < rawData.length; i++) {
+                    const r = rawData[i];
+                    if (!r || !r[0]) continue;
+                    const dateStr = String(r[0]).trim();
+                    const dm = dateStr.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+                    if (!dm) {
+                        if (String(r[0]).toLowerCase().includes('resumen')) break;
+                        continue;
+                    }
+                    const day = dm[1].padStart(2, '0');
+                    const month = (dm[2] || String(periodMonth)).padStart(2, '0');
+                    let year = dm[3] ? (dm[3].length === 2 ? `20${dm[3]}` : dm[3]) : String(periodYear);
+                    const credit = Number(r[4] || 0) || 0;
+                    const debit = Number(r[5] || 0) || 0;
+                    if (credit === 0 && debit === 0) continue;
+                    normalizedRows.push({
+                        date: `${year}-${month}-${day}`,
+                        reference: String(r[1] || '').trim(),
+                        description: String(r[3] || '').trim(),
+                        amount: credit > 0 ? credit : debit,
+                        credit: credit > 0 ? credit : undefined,
+                        debit: debit > 0 ? debit : undefined,
+                    });
+                }
+            }
+            this.logger.log(`Itaú nativo: ${normalizedRows.length} filas, control=${JSON.stringify(controlSums || null)}`);
+        }
+
+        const tcParsed: SantanderTcParseResult | undefined = (dto as any)._tcParsed;
+        if (!normalizedRows.length && tcParsed) {
+            if (!tcParsed.leyComprasOk || !tcParsed.leySection3Ok) {
+                const msg = `Ingreso Abortado TC Santander: ${tcParsed.errors.join('; ')}`;
+                this.logger.error(msg);
+                throw new Error(msg);
+            }
+            this.logger.log(`Detectado PDF TC Santander nativo. Omitiendo OpenAI. Cuenta=${tcParsed.accountNumber}`);
+            controlSums = {
+                totalAbonos: tcParsed.controlSums.totalAbonos,
+                totalCargos: tcParsed.controlSums.totalCargos,
+            };
+            normalizedRows = tcParsed.rows.map((r) => ({
+                date: r.date,
+                description: r.description,
+                amount: r.amount,
+                credit: r.credit,
+                debit: r.debit,
+            }));
+        }
+
+        const itauTcParsed: ItauTcParseResult | undefined = (dto as any)._itauTcParsed;
+        if (!normalizedRows.length && itauTcParsed) {
+            if (!itauTcParsed.leyFacturadoOk) {
+                const msg = `Ingreso Abortado TC Itaú: ${itauTcParsed.errors.join('; ')}`;
+                this.logger.error(msg);
+                throw new Error(msg);
+            }
+            this.logger.log(`Detectado PDF TC Itaú nativo. Omitiendo OpenAI. Cuenta=${itauTcParsed.accountNumber}`);
+            controlSums = {
+                totalAbonos: itauTcParsed.controlSums.totalAbonos,
+                totalCargos: itauTcParsed.controlSums.totalCargos,
+            };
+            normalizedRows = itauTcParsed.rows.map((r) => ({
+                date: r.date,
+                description: r.description,
+                amount: r.amount,
+                credit: r.credit,
+                debit: r.debit,
+            }));
+        }
+
+        if (!normalizedRows.length) {
             const BATCH_SIZE = 50;
             for (let i = 0; i < rows.length; i += BATCH_SIZE) {
                 const batchRows = rows.slice(i, i + BATCH_SIZE);
@@ -345,15 +502,13 @@ export class DriveIngestService {
                 continue;
             }
 
-            // Skip transactions strictly older than the latest income (CREDIT) in database for this account
-            if (latestDate && date < latestDate) {
-                skippedCount++;
-                continue;
-            }
+            // No se omite por "último CREDIT en BD": esa regla tragaba pagos válidos
+            // del mismo archivo (ej. arriendo Parot 03-feb y LOGINSA 20-feb) cuando
+            // ya existía un abono posterior en el mismo período.
 
-            // 1. Check by Reference + Amount + Description (clave compuesta)
-            // NOTA: Santander reutiliza el mismo N° documento para múltiples pagos batch distintos.
-            // Por eso la unicidad es (referencia + monto + descripción), NO solo referencia.
+            // 1. Check by Reference + Amount + Description + Date (clave compuesta)
+            // Santander reutiliza N° documento entre meses y entre transferencias
+            // del mismo mes; sin fecha se pierde el arriendo recurrente y los batch.
             const isDummyRef = reference && /^0+$/.test(reference.toString().trim());
             
             if (reference && !isDummyRef) {
@@ -363,8 +518,9 @@ export class DriveIngestService {
                         reference,
                         amount: amount,
                         description: description,
+                        date: date,
                     },
-                    select: { id: true }
+                    select: { id: true, date: true },
                 });
                 if (existingByRef) {
                     skippedCount++;
@@ -500,6 +656,22 @@ export class DriveIngestService {
         }
 
         return [];
+    }
+
+    private async parseSantanderTcFromDto(dto: DriveIngestDto): Promise<SantanderTcParseResult> {
+        const pdfModule: any = await import('pdf-parse');
+        const pdfParse = pdfModule.default || pdfModule;
+        const buffer = Buffer.from(dto.fileContentBase64!, 'base64');
+        const pdfData = await pdfParse(buffer);
+        return parseSantanderTcPdf(String(pdfData.text || ''));
+    }
+
+    private async parseItauTcFromDto(dto: DriveIngestDto): Promise<ItauTcParseResult> {
+        const pdfModule: any = await import('pdf-parse');
+        const pdfParse = pdfModule.default || pdfModule;
+        const buffer = Buffer.from(dto.fileContentBase64!, 'base64');
+        const pdfData = await pdfParse(buffer);
+        return parseItauTcPdf(String(pdfData.text || ''));
     }
 
     async processManualDteCsv(csvContent: string) {

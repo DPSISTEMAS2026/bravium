@@ -48,6 +48,7 @@ export class AmountMatchStrategy implements MatchingStrategy {
         const txDesc = (transaction.description || '').toUpperCase();
 
         const scored: MatchCandidate['candidates'] = [];
+        const txRut = (transaction.metadata as any)?.providerRut;
 
         for (const dte of dtes) {
             const dteAbs = Math.abs(dte.totalAmount);
@@ -55,6 +56,18 @@ export class AmountMatchStrategy implements MatchingStrategy {
 
             if (amountDiff > this.amountToleranceClp) continue;
             if (!isWithinDateWindow(txDate, dte.issuedDate, this.dateWindowDays)) continue;
+
+            // REGLA ESTRICTA: Si la TX tiene un RUT extraído de la glosa,
+            // SOLO sugerir DTEs del mismo proveedor (mismo RUT).
+            if (txRut && txRut.length >= 6) {
+                const cleanTxRut = txRut.replace(/[^0-9kK]/gi, '').toUpperCase();
+                const dteRut = (dte.rutIssuer || '').replace(/[^0-9kK]/gi, '').toUpperCase();
+                const txRutBody = cleanTxRut.length >= 2 ? cleanTxRut.slice(0, -1) : cleanTxRut;
+                const dteRutBody = dteRut.length >= 2 ? dteRut.slice(0, -1) : dteRut;
+                if (txRutBody.length >= 6 && dteRutBody.length >= 6 && txRutBody !== dteRutBody) {
+                    continue;
+                }
+            }
 
             const amountScore = this.scoreAmount(txAbs, dteAbs);
             const dateScore = this.scoreDate(txDate, dte.issuedDate);
@@ -93,7 +106,6 @@ export class AmountMatchStrategy implements MatchingStrategy {
 
         scored.sort((a, b) => b.score - a.score);
 
-        // Always return candidates — the service layer decides CONFIRMED vs DRAFT
         return { transaction, candidates: scored.slice(0, 5) };
     }
 

@@ -6,7 +6,6 @@ import { LibreDteService } from '../../modules/ingestion/services/libredte.servi
 import { ConciliacionService } from '../../modules/conciliacion/conciliacion.service';
 import { GoogleDriveService } from '../../modules/ingestion/services/google-drive.service';
 import { DriveIngestService } from '../../modules/ingestion/services/drive-ingest.service';
-import { FintocService } from '../../modules/ingestion/services/fintoc.service';
 
 @Injectable()
 export class SchedulerService implements OnModuleInit {
@@ -17,7 +16,6 @@ export class SchedulerService implements OnModuleInit {
         private readonly conciliacionService: ConciliacionService,
         private readonly googleDriveService: GoogleDriveService,
         private readonly driveIngestService: DriveIngestService,
-        private readonly fintocService: FintocService,
         private readonly prisma: PrismaService,
     ) { }
 
@@ -223,7 +221,7 @@ export class SchedulerService implements OnModuleInit {
 
     private async processTenantAutomation(org: any) {
         // 0. Extraer archivos de Banca desde Google Drive (DESACTIVADO POR REGLA DE PROYECTO)
-        this.logger.log(`⏭️ [${org.slug}] Google Drive & Fintoc automated background sync DEPRECATED — using official local Excel ingestion.`);
+        this.logger.log(`⏭️ [${org.slug}] Ingesta solo por Excel local. La cuenta se resuelve desde el archivo.`);
 
         // 1. Sync DTEs via LibreDTE
         if (org.libreDteApiKey && org.libreDteRut) {
@@ -292,13 +290,18 @@ export class SchedulerService implements OnModuleInit {
 
     private detectBankFromFilename(filename: string): { bank: string; account: string } {
         const upper = filename.toUpperCase();
+        if (upper.includes('ITAU') || upper.includes('ITAÚ')) {
+            if (/\bTC\b/.test(upper) || upper.includes('TARJETA') || /ESTADO\s+(DE\s+)?CUENTA/.test(upper)) {
+                return { bank: 'Itaú TC', account: 'XXXX-3965' };
+            }
+            return { bank: 'Itaú', account: 'CTA-CTE' };
+        }
         if (upper.includes('ESTADOCUENTATC') || upper.includes('ESTADO DE CUENTA TC')) {
             const match = filename.match(/(\d{4})/);
             return { bank: 'Santander TC', account: match ? `XXXX-${match[1]}` : 'TC' };
         }
         if (upper.includes('SANTANDER')) return { bank: 'Santander', account: 'CTA-CTE' };
         if (upper.includes('SCOTIABANK')) return { bank: 'Scotiabank', account: 'CTA-CTE' };
-        if (upper.includes('ITAU') || upper.includes('ITAÚ')) return { bank: 'Itaú', account: 'CTA-CTE' };
         return { bank: 'Drive Import', account: 'AUTO' };
     }
 }

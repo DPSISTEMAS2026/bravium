@@ -8,6 +8,7 @@ import { MatchSuggestionsService } from './services/match-suggestions.service';
 import { ExportService } from './services/export.service';
 import { MorningBriefingService } from './services/morning-briefing.service';
 import { RulesEngineService } from './services/rules-engine.service';
+import { ExcelPatternLearnerService } from './services/excel-pattern-learner.service';
 import { DashboardFiltersDto } from './dto/dashboard-filters.dto';
 import { ExportType } from './dto/export-filters.dto';
 
@@ -38,6 +39,7 @@ export class ConciliacionController {
         private readonly libreDteService: LibreDteService,
         private readonly morningBriefing: MorningBriefingService,
         private readonly rulesEngine: RulesEngineService,
+        private readonly excelPatternLearner: ExcelPatternLearnerService,
     ) { }
 
     /**
@@ -329,5 +331,27 @@ export class ConciliacionController {
     async getRuleTransactions(@Param('id') id: string, @Req() req: Request) {
         const organizationId = (req as any).user?.organizationId || (req as any).organizationId;
         return this.rulesEngine.getRuleTransactions(id, organizationId);
+    }
+
+    // ── Excel Pattern Learner ──
+
+    /**
+     * POST /conciliacion/learn-patterns
+     * Lee el Excel de Pagos ("Pagos CL 2026.xlsx"), cruza montos con transacciones bancarias
+     * y genera AutoCategoryRules para patrones recurrentes (ej. "Traspaso Internet a T. Crédito" → "Pago TC Santander").
+     * Debe ejecutarse una sola vez después de tener cartolas y el Excel cargados.
+     */
+    @Post('learn-patterns')
+    async learnPatternsFromExcel(
+        @Body() body: { excelPath?: string },
+        @Req() req: Request,
+    ) {
+        const organizationId = (req as any).user?.organizationId || (req as any).organizationId;
+        if (!organizationId) {
+            throw new BadRequestException('organizationId es requerido para aprender patrones');
+        }
+
+        this.logger.log(`Iniciando aprendizaje de patrones desde Excel para Org ${organizationId}`);
+        return this.excelPatternLearner.learnFromExcel(organizationId, body.excelPath);
     }
 }

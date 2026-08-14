@@ -111,6 +111,29 @@ export function providerMatchesDescription(
     return false;
 }
 
+/** Cuerpo de RUT chileno (sin DV), solo alfanuméricos. */
+export function normalizeRutBody(rut: string | null | undefined): string {
+    const clean = (rut || '').replace(/[^0-9kK]/gi, '').toUpperCase();
+    if (clean.length < 7) return '';
+    return clean.slice(0, -1);
+}
+
+/**
+ * Una sugerencia solo es válida si TODAS las TX tienen RUT extraído
+ * y ese RUT coincide con el del DTE/proveedor.
+ */
+export function suggestionRutsAllowed(
+    dteRut: string | null | undefined,
+    txRuts: Array<string | null | undefined>,
+): boolean {
+    const dteBody = normalizeRutBody(dteRut);
+    if (!dteBody || txRuts.length === 0) return false;
+    return txRuts.every((r) => {
+        const body = normalizeRutBody(r);
+        return body.length >= 6 && body === dteBody;
+    });
+}
+
 /**
  * Checks whether a DTE date is within an acceptable window of a bank
  * transaction. Uses absolute difference — a DTE can be issued before

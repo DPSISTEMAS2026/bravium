@@ -451,48 +451,97 @@ export class DtesService {
     }
 
     /**
-     * Crear una boleta de honorarios manualmente (DTE tipo 112 o similar)
+     * Crear una boleta de honorarios (tipo 112) o boleta electrónica (tipo 39).
+     * Si no hay providerId, crea o reutiliza un perfil con categoría HONORARIOS.
      */
-    async createBoletaHonorarios(organizationId: string | undefined, data: { providerId: string; folio: number; amount: number; date?: string; notes?: string }) {
+    async createBoletaHonorarios(organizationId: string | undefined, data: {
+        providerId?: string;
+        providerName?: string;
+        providerRut?: string;
+        folio: number;
+        amount: number;
+        date?: string;
+        notes?: string;
+        type?: number;
+    }) {
         if (!organizationId) throw new Error('Missing organizationId');
-        
-        // Check if it already exists
+        if (!data.folio || !data.amount) throw new Error('Folio y monto son requeridos');
+
+        const dteType = data.type === 39 || data.type === 41 ? data.type : 112;
+
+        let provider = data.providerId
+            ? await this.prisma.provider.findFirst({ where: { id: data.providerId, organizationId } })
+            : null;
+
+        if (!provider && data.providerName) {
+            provider = await this.prisma.provider.findFirst({
+                where: {
+                    organizationId,
+                    name: { equals: data.providerName.trim(), mode: 'insensitive' },
+                },
+            });
+        }
+
+        if (!provider && data.providerRut) {
+            provider = await this.prisma.provider.findFirst({
+                where: { organizationId, rut: data.providerRut },
+            });
+        }
+
+        if (!provider) {
+            const name = (data.providerName || '').trim();
+            if (!name) throw new Error('Se requiere un proveedor o el nombre del trabajador a honorarios');
+            const slug = name.replace(/[^A-Za-z0-9]/g, '').slice(0, 16).toUpperCase() || 'HON';
+            provider = await this.prisma.provider.create({
+                data: {
+                    name,
+                    rut: data.providerRut || `HIST-${slug}`,
+                    category: 'HONORARIOS',
+                    organizationId,
+                },
+            });
+        } else if (!provider.category || !/honor/i.test(provider.category)) {
+            provider = await this.prisma.provider.update({
+                where: { id: provider.id },
+                data: { category: 'HONORARIOS' },
+            });
+        }
+
         const existing = await this.prisma.dTE.findFirst({
             where: {
-                providerId: data.providerId,
+                providerId: provider.id,
                 folio: data.folio,
-                type: 112, // Boleta de Honorarios is typically 112
-                organizationId
-            }
+                type: dteType,
+                organizationId,
+            },
         });
 
         if (existing) {
-            throw new Error('La boleta de honorarios con este folio ya existe para este proveedor.');
+            throw new Error('La boleta con este folio ya existe para este trabajador.');
         }
 
-        const provider = await this.prisma.provider.findUnique({ where: { id: data.providerId } });
-        const rutIssuer = provider?.rut || '1-9';
         const issuedDate = data.date ? new Date(data.date) : new Date();
-        
+
         return this.prisma.dTE.create({
             data: {
                 folio: data.folio,
-                type: 112,
+                type: dteType,
                 totalAmount: data.amount,
                 outstandingAmount: data.amount,
                 paymentStatus: 'UNPAID',
-                issuedDate: issuedDate,
+                issuedDate,
                 dueDate: issuedDate,
-                rutIssuer: rutIssuer,
-                rutReceiver: '1-9', // Or fetch from organization
+                rutIssuer: provider.rut || '1-9',
+                rutReceiver: '1-9',
                 siiStatus: 'ACEPTADO',
                 metadata: {
                     notes: data.notes,
                     isManual: true,
+                    kind: dteType === 39 ? 'BOLETA_ELECTRONICA' : 'BOLETA_HONORARIOS',
                 },
-                providerId: data.providerId,
+                providerId: provider.id,
                 organizationId,
-            }
+            },
         });
     }
 

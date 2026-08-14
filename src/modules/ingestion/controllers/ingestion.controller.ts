@@ -1,4 +1,5 @@
 import { Controller, Post, Body, Logger, Get, Param, Query, Res, Req, NotFoundException, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { LibreDteService } from '../services/libredte.service';
 import { DriveIngestService, DriveIngestDto } from '../services/drive-ingest.service';
@@ -25,6 +26,7 @@ export class IngestionController {
         private readonly dtesService: DtesService,
         private readonly googleDriveService: GoogleDriveService,
         private readonly prisma: PrismaService,
+        private readonly moduleRef: ModuleRef,
     ) { }
 
     /**
@@ -181,13 +183,22 @@ export class IngestionController {
 
     private detectBankFromFilename(filename: string): { bank: string; account: string } {
         const upper = filename.toUpperCase();
-        if (upper.includes('ESTADOCUENTATC') || upper.includes('ESTADO DE CUENTA TC')) {
-            const match = filename.match(/(\d{4})/);
-            return { bank: 'Santander TC', account: match ? `XXXX-${match[1]}` : 'TC' };
+        if (upper.includes('USD')) return { bank: 'SKIP_USD', account: 'USD' };
+        if (upper.includes('ITAU') || upper.includes('ITAÚ')) {
+            if (/\bTC\b/.test(upper) || upper.includes('TARJETA') || /ESTADO\s+(DE\s+)?CUENTA/.test(upper)) {
+                return { bank: 'Itaú TC', account: 'XXXX-3965' };
+            }
+            return { bank: 'Itaú', account: 'CTA-CTE' };
+        }
+        if (
+            /STDR\s*TC/.test(upper) ||
+            /ESTADO\s+(DE\s+)?CUENTA\s+TC/.test(upper) ||
+            upper.includes('ESTADOCUENTATC')
+        ) {
+            return { bank: 'Santander TC', account: 'XXXX-5239' };
         }
         if (upper.includes('SANTANDER')) return { bank: 'Santander', account: 'CTA-CTE' };
         if (upper.includes('SCOTIABANK')) return { bank: 'Scotiabank', account: 'CTA-CTE' };
-        if (upper.includes('ITAU') || upper.includes('ITAÚ')) return { bank: 'Itaú', account: 'CTA-CTE' };
         return { bank: 'Drive Manual', account: 'AUTO' };
     }
 
@@ -199,6 +210,8 @@ export class IngestionController {
         @Body('account') account?: string,
         @Body('bankAccountId') bankAccountId?: string,
         @Body('replace') replace?: string,
+        @Body('organizationId') organizationIdBody?: string,
+        @Body('skipAutoMatch') skipAutoMatch?: string,
         @Req() req?: Request,
     ) {
         if (!file) throw new BadRequestException('Se requiere un archivo (PDF, Excel o CSV)');
@@ -215,10 +228,10 @@ export class IngestionController {
         this.logger.log(`Upload manual: ${file.originalname} (${(file.size / 1024).toFixed(1)} KB)`);
 
         const dto: DriveIngestDto = {
-            organizationId: (req as any).user?.organizationId,
-            bank: bank || 'Carga Manual',
-            account: account || 'MANUAL',
-            bankAccountId: bankAccountId,
+            organizationId: (req as any).user?.organizationId || organizationIdBody,
+            bank: bank || undefined,
+            account: account || undefined,
+            bankAccountId: bankAccountId || undefined,
             fileContentBase64: file.buffer.toString('base64'),
             metadata: {
                 filename: file.originalname,
@@ -229,7 +242,38 @@ export class IngestionController {
             },
         };
 
-        return this.driveIngestService.processDriveFile(dto);
+        const result = await this.driveIngestService.processDriveFile(dto);
+
+        // TRIGGER AUTOMÁTICO: Si se insertaron movimientos, correr el motor de conciliación en background
+        const skipEngine = skipAutoMatch === 'true' || skipAutoMatch === '1';
+        if (result.insertedRows > 0 && !skipEngine) {
+            const organizationId = (req as any).user?.organizationId || organizationIdBody;
+            if (organizationId) {
+                this.logger.log(`Disparando motor de conciliación automático post-ingesta (${result.insertedRows} movimientos nuevos)...`);
+                // Resolver ConciliacionService de forma lazy via ModuleRef para evitar dependencia circular
+                try {
+                    const { ConciliacionService } = await import('../../conciliacion/conciliacion.service');
+                    const conciliacionService = this.moduleRef.get(ConciliacionService, { strict: false });
+                    conciliacionService.runReconciliationCycle(undefined, undefined, organizationId)
+                        .then(async (r) => {
+                            this.logger.log(`Conciliación post-ingesta completada: ${JSON.stringify(r)}`);
+                            try {
+                                const { PaymentRecordsService } = await import('../../payment-records/payment-records.service');
+                                const payments = this.moduleRef.get(PaymentRecordsService, { strict: false });
+                                const conf = await payments.confirmDeclaredAgainstCartola(organizationId);
+                                this.logger.log(`Doble confirmación libro de pagos: ${JSON.stringify(conf)}`);
+                            } catch (e: any) {
+                                this.logger.warn(`Confirmación libro de pagos post-ingesta falló (no crítico): ${e.message}`);
+                            }
+                        })
+                        .catch(e => this.logger.warn(`Conciliación post-ingesta falló (no crítico): ${e.message}`));
+                } catch (e) {
+                    this.logger.warn(`No se pudo resolver ConciliacionService para auto-conciliación: ${e.message}`);
+                }
+            }
+        }
+
+        return result;
     }
 
     @Get('ping')

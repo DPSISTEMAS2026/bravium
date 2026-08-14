@@ -14,6 +14,7 @@ import {
     ChevronRightIcon,
     SparklesIcon,
     DocumentTextIcon,
+    ClipboardDocumentListIcon,
     ChevronDoubleLeftIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../contexts/AuthContext';
@@ -37,6 +38,7 @@ const sections: NavSection[] = [
         items: [
             { name: 'Facturas (DTE)', href: '/facturas', icon: DocumentTextIcon },
             { name: 'Cartolas Bancarias', href: '/cartolas', icon: BanknotesIcon },
+            { name: 'Libro de Pagos', href: '/registro-pagos', icon: ClipboardDocumentListIcon },
             { name: 'Conciliación Bancaria', href: '/conciliacion', icon: CreditCardIcon },
             { name: 'Proveedores', href: '/proveedores', icon: UsersIcon },
         ]
@@ -54,6 +56,7 @@ const prefetchMap: Record<string, string[]> = {
     '/cartolas': ['/transactions/bank-accounts', '/conciliacion/files'],
     '/facturas': ['/dtes/summary'],
     '/proveedores': ['/proveedores'],
+    '/registro-pagos': ['/payment-records/week-queue', '/payment-records/summary'],
     '/reportes': ['/reportes/deuda-proveedores', '/reportes/flujo-caja'],
 };
 

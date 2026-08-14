@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { TransactionStatus, MatchStatus } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
+import { suggestionRutsAllowed } from '../utils/provider-matcher';
 
 @Injectable()
 export class MatchSuggestionsService {
@@ -44,7 +45,7 @@ export class MatchSuggestionsService {
                             id: { in: txIds },
                             status: { in: ['PENDING', 'PARTIALLY_MATCHED'] }  // UNMATCHED = revisado, no mostrar
                         },
-                        select: { id: true, date: true, description: true, amount: true, type: true, status: true },
+                        select: { id: true, date: true, description: true, amount: true, type: true, status: true, metadata: true },
                         orderBy: { date: 'asc' },
                     })
                     : [];
@@ -52,6 +53,12 @@ export class MatchSuggestionsService {
                 // Si alguna TX ya fue MATCHED o UNMATCHED (cerrada), la sugerencia es obsoleta
                 if (transactions.length !== txIds.length) {
 
+                    return null;
+                }
+
+                const dteRut = (s as any).dte?.provider?.rut || (s as any).dte?.rutIssuer;
+                const txRuts = transactions.map((t) => (t.metadata as any)?.providerRut);
+                if (!suggestionRutsAllowed(dteRut, txRuts)) {
                     return null;
                 }
 
@@ -107,11 +114,17 @@ export class MatchSuggestionsService {
                         description: true,
                         amount: true,
                         type: true,
+                        metadata: true,
                         bankAccount: { select: { bankName: true, accountNumber: true } },
                     },
                     orderBy: { date: 'asc' },
                 })
                 : [];
+        const dteRut = s.dte?.provider?.rut || (s.dte as any)?.rutIssuer;
+        const txRuts = transactions.map((t) => (t.metadata as any)?.providerRut);
+        if (!suggestionRutsAllowed(dteRut, txRuts)) {
+            return null;
+        }
         let relatedDtes: any[] = [];
         if (s.type === 'SPLIT') {
             const dteIds = (s.relatedDteIds || []) as string[];
@@ -141,6 +154,16 @@ export class MatchSuggestionsService {
         if (!suggestion) throw new NotFoundException('Sugerencia no encontrada');
         if (suggestion.status !== 'PENDING') {
             throw new BadRequestException('Sugerencia ya fue procesada');
+        }
+
+        const acceptTxIds = (overrides?.transactionIds ?? (suggestion.transactionIds as string[])) as string[];
+        const acceptTxs = await this.prisma.bankTransaction.findMany({
+            where: { id: { in: acceptTxIds } },
+            select: { metadata: true },
+        });
+        const acceptDteRut = suggestion.dte?.provider?.rut || suggestion.dte?.rutIssuer;
+        if (!suggestionRutsAllowed(acceptDteRut, acceptTxs.map((t) => (t.metadata as any)?.providerRut))) {
+            throw new BadRequestException('Sugerencia inválida: el RUT de la transacción no coincide con el del DTE');
         }
 
         if (suggestion.type === 'SPLIT' && !overrides) {

@@ -12,6 +12,7 @@ import { ConciliacionController } from './conciliacion.controller';
 import { AutoRecoveryService } from './services/auto-recovery.service';
 import { MorningBriefingService } from './services/morning-briefing.service';
 import { RulesEngineService } from './services/rules-engine.service';
+import { ExcelPatternLearnerService } from './services/excel-pattern-learner.service';
 import { IngestionModule } from '../ingestion/ingestion.module';
 
 @Module({
@@ -30,7 +31,8 @@ import { IngestionModule } from '../ingestion/ingestion.module';
         AutoRecoveryService,
         MorningBriefingService,
         RulesEngineService,
+        ExcelPatternLearnerService,
     ],
-    exports: [ConciliacionService, ConciliacionDashboardService, MatchManagementService, MatchSuggestionsService, ExportService, MorningBriefingService, RulesEngineService],
+    exports: [ConciliacionService, ConciliacionDashboardService, MatchManagementService, MatchSuggestionsService, ExportService, MorningBriefingService, RulesEngineService, ExcelPatternLearnerService],
 })
 export class ConciliacionModule { }

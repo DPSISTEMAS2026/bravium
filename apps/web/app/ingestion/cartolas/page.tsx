@@ -18,9 +18,6 @@ export default function CartolasIngestionPage() {
             .then(data => {
                 if (data.organization?.bankAccounts) {
                     setBankAccounts(data.organization.bankAccounts);
-                    if (data.organization.bankAccounts.length > 0) {
-                        setBankAccountId(data.organization.bankAccounts[0].id);
-                    }
                 }
             })
             .catch(err => console.error(err));
@@ -53,7 +50,7 @@ export default function CartolasIngestionPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!file || !bankAccountId) return;
+        if (!file) return;
 
         setStatus('uploading');
         setResult(null);
@@ -63,8 +60,7 @@ export default function CartolasIngestionPage() {
         try {
             const base64Content = await convertToBase64(file);
 
-            const payload = {
-                bankAccountId: bankAccountId,
+            const payload: any = {
                 fileContentBase64: base64Content,
                 metadata: {
                     filename: file.name,
@@ -72,6 +68,7 @@ export default function CartolasIngestionPage() {
                     invertAmountSign: invertSign
                 }
             };
+            if (bankAccountId) payload.bankAccountId = bankAccountId;
 
             const res = await authFetch(`${getApiUrl()}/ingestion/cartolas/drive`, {
                 method: 'POST',
@@ -102,19 +99,20 @@ export default function CartolasIngestionPage() {
             <div className="bg-white shadow rounded-lg p-6 border border-gray-100">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Cuenta Bancaria</label>
+                        <label className="block text-sm font-medium text-gray-700">Cuenta bancaria (opcional)</label>
                         <select
                             value={bankAccountId}
                             onChange={(e) => setBankAccountId(e.target.value)}
                             className="mt-1 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm border"
-                            required
                         >
+                            <option value="">Detectar del Excel</option>
                             {bankAccounts.map(acc => (
                                 <option key={acc.id} value={acc.id}>
                                     {acc.bankName} - {acc.accountNumber} ({acc.currency})
                                 </option>
                             ))}
                         </select>
+                        <p className="mt-1 text-xs text-gray-500">La cuenta está en el Excel. Solo elige una si el archivo no trae número de cuenta.</p>
                     </div>
 
                     <div className="flex items-center">

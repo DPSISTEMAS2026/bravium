@@ -737,9 +737,10 @@ model Organization {
   libreDteRut            String? // RUT configured in LibreDTE
   googleDriveFolderId    String? // Google Drive folder to watch
   googleDriveCredentials String? // Service account JSON (stored encrypted)
-  fintocApiKey           String? // Fintoc Secret Key
-  fintocPublicKey        String? // Fintoc Public Key
-  fintocLinkToken        String? // Fintoc Link Token (for account identification)
+  // Fintoc deprecado: la ingesta es solo Excel; columnas residuales en BD, no usar.
+  fintocApiKey           String?
+  fintocPublicKey        String?
+  fintocLinkToken        String?
 
   // Data visibility
   dataVisibleFrom DateTime? // Minimum date for data queries
@@ -931,17 +932,46 @@ model SyncLog {
 model AutoCategoryRule {
   id             String   @id @default(cuid())
   organizationId String
-  keywordMatch   String
-  categoryName   String
+  keywordMatch   String   // Keyword normalizada de la glosa bancaria (ej. "traspaso internet credito")
+  categoryName   String   // Nombre de la categoría/grupo (ej. "Pago TC Santander")
   providerId     String?
   isActive       Boolean  @default(true)
+  source         String   @default("MANUAL") // MANUAL | EXCEL_LEARNER | CONFIRMED_MATCH
+  confidence     Float    @default(1.0) // 0-1, confianza del aprendizaje
+  matchCount     Int      @default(0) // Cuántas veces ha matcheado esta regla
+  exampleAmount  Float?   // Monto de ejemplo para referencia
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
   provider     Provider?    @relation(fields: [providerId], references: [id])
+  aliases      GlosaCategoryAlias[]
 
   @@index([organizationId])
   @@map("auto_category_rules")
+}
+
+// ==============================
+// GLOSA CATEGORY ALIAS ("Memoria" de apodos)
+// Mapea múltiples glosas bancarias a una sola AutoCategoryRule.
+// Ej: "Traspaso Internet a T. Crédito" y "Pago Tarjeta Crédito" → Regla "Pago TC"
+// Cada vez que el sistema ve una nueva glosa bajo la misma categoría, la persiste aquí.
+// ==============================
+model GlosaCategoryAlias {
+  id             String   @id @default(cuid())
+  ruleId         String   // FK a AutoCategoryRule
+  glosaBancaria  String   // Glosa original del banco (ej. "Traspaso Internet a T. Crédito")
+  glosaNormalized String  // Versión normalizada para búsqueda (ej. "traspaso internet credito")
+  source         String   @default("EXCEL_LEARNER") // EXCEL_LEARNER | MANUAL | AUTO_DETECTED
+  timesMatched   Int      @default(1) // Cuántas veces se ha visto esta glosa exacta
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+
+  rule AutoCategoryRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, glosaNormalized])
+  @@index([glosaNormalized])
+  @@map("glosa_category_aliases")
 }
 
 // ==============================

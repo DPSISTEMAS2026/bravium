@@ -17,6 +17,7 @@ import { SumMatchStrategy } from './strategies/sum-match.strategy';
 import { SplitPaymentMatchStrategy } from './strategies/split-payment-match.strategy';
 import { MatchingStrategy } from './domain/matching.interfaces';
 import { RulesEngineService } from './services/rules-engine.service';
+import { ExcelPatternLearnerService } from './services/excel-pattern-learner.service';
 import { ReconciliationEngine } from './engine/reconciliation.engine';
 
 
@@ -34,6 +35,7 @@ export class ConciliacionService {
         private splitPaymentStrategy: SplitPaymentMatchStrategy,
         private readonly visibility: DataVisibilityService,
         private readonly rulesEngine: RulesEngineService,
+        private readonly excelPatternLearner: ExcelPatternLearnerService,
     ) {
         this.strategies = [this.exactStrategy, this.amountStrategy];
     }
@@ -79,20 +81,35 @@ export class ConciliacionService {
             });
 
             // Auto-categorización complementaria por palabras clave
+            let learnResult: { crucesExitosos?: number; reglasCreadas?: number; anotadasAhora?: number } = {};
+            try {
+                learnResult = await this.excelPatternLearner.learnFromExcel(resolvedOrgId);
+                this.logger.log(
+                    `Excel learner: cruces=${learnResult.crucesExitosos} reglas=${learnResult.reglasCreadas} anotadas=${learnResult.anotadasAhora}`,
+                );
+            } catch (learnErr: any) {
+                this.logger.warn(`Excel learner omitido: ${learnErr?.message || learnErr}`);
+            }
+            const tRules = Date.now();
             const rulesResult = await this.rulesEngine.executeAutoCategoryRules(resolvedOrgId);
             if (rulesResult.categorized > 0) {
                 this.fileLog(`AUTO-CATEGORIZED: ${rulesResult.categorized} via rules engine.`);
             }
 
             this.fileLog(
-                `COMPLETED: P1=${result.pass1Exact} Drafts=${result.totalDrafts} Rules=${rulesResult.categorized}`
+                `COMPLETED: FASE2_RUTs=${result.phase2RutsExtracted} FASE3_Providers=${result.phase3ProvidersResolved} ` +
+                `FASE4_Matches=${result.pass1Exact} FASE5_DtePendiente=${result.phase5DtePendiente} ` +
+                `FASE6_Rules=${rulesResult.categorized}`
             );
 
             return {
                 processed: result.processed,
-                matches: result.totalDrafts + result.pass1Exact,
+                matches: result.pass1Exact,
                 suggestions: 0,
                 autoCategorized: rulesResult.categorized,
+                phase2RutsExtracted: result.phase2RutsExtracted,
+                phase3ProvidersResolved: result.phase3ProvidersResolved,
+                phase5DtePendiente: result.phase5DtePendiente,
                 detail: result,
             };
         } catch (err) {

@@ -20,9 +20,6 @@ export class ConciliacionDashboardService {
         let fromDate = filters.fromDate;
         let toDate = filters.toDate;
         try {
-            this.logger.log(`Getting dashboard for period: ${fromDate || 'all'} to ${toDate || 'all'}`);
-
-            // Validar fechas
             if (fromDate && isNaN(Date.parse(fromDate))) {
                 this.logger.warn(`Invalid fromDate: ${fromDate}`);
                 fromDate = undefined;
@@ -31,6 +28,9 @@ export class ConciliacionDashboardService {
                 this.logger.warn(`Invalid toDate: ${toDate}`);
                 toDate = undefined;
             }
+            if (!fromDate) fromDate = '2026-01-01';
+            filters = { ...filters, fromDate, toDate };
+            this.logger.log(`Getting dashboard for period: ${fromDate} to ${toDate || 'open'}`);
 
             // Defaults in case of failure
             const defaultTransactionStats = { total: 0, matched: 0, pending: 0, match_rate: '0%', total_amount: 0 };
@@ -136,7 +136,7 @@ export class ConciliacionDashboardService {
      * Resumen Mensual
      */
     private async getMonthlyBreakdown(filters: DashboardFiltersDto) {
-        const fromDateObj = filters.fromDate ? new Date(filters.fromDate) : new Date(new Date().getFullYear(), 0, 1);
+        const fromDateObj = filters.fromDate ? new Date(filters.fromDate) : new Date('2026-01-01T00:00:00.000Z');
         const toDateObj = filters.toDate ? new Date(filters.toDate) : new Date();
         
         // Generar lista de meses a iterar
@@ -177,7 +177,10 @@ export class ConciliacionDashboardService {
      * Estadísticas de DTEs
      */
     private async getDteStats(filters: DashboardFiltersDto) {
-        const dateFilter = this.buildDteDateFilter(filters);
+        const dateFilter = {
+            ...this.buildDteDateFilter(filters),
+            type: { not: 61 },
+        };
 
         const [total, paid, unpaid, partiallyPaid, totalAmount, outstandingAmount] = await Promise.all([
             this.prisma.dTE.count({ where: dateFilter }),
@@ -306,7 +309,8 @@ export class ConciliacionDashboardService {
         return this.prisma.dTE.findMany({
             where: {
                 ...dateFilter,
-                paymentStatus: 'UNPAID'
+                paymentStatus: 'UNPAID',
+                type: { not: 61 },
             },
             orderBy: [
                 { outstandingAmount: 'desc' }, // Priorizar montos altos
