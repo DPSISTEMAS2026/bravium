@@ -100,37 +100,37 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     {/* Deuda Total a Proveedores */}
                     <div className="bg-white border border-slate-300 rounded-lg p-4 shadow-sm">
-                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Deuda Total a Proveedores (DTE)</div>
+                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Deuda DTE 2026 sin marcar pagada</div>
                         <div className="mt-2 text-2xl font-extrabold text-slate-900 font-mono">
                             {formatCurrency(totalDebt)}
                         </div>
                         <div className="mt-2 text-xs text-slate-600 border-t border-slate-200 pt-2 font-medium flex justify-between">
-                            <span>Facturas Impagas:</span>
+                            <span>Facturas 2026 impagas (no incluye 2025):</span>
                             <span className="font-bold font-mono">{unpaidDteCount.toLocaleString('es-CL')} DTEs</span>
                         </div>
                     </div>
 
                     {/* Cargos Bancarios */}
                     <div className="bg-white border border-slate-300 rounded-lg p-4 shadow-sm">
-                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Egresos en Cartolas</div>
+                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Egresos cartolas 2026</div>
                         <div className="mt-2 text-2xl font-extrabold text-slate-900 font-mono">
                             {formatCurrency(dashboard.summary?.transactions?.total_amount || 0)}
                         </div>
                         <div className="mt-2 text-xs text-slate-600 border-t border-slate-200 pt-2 font-medium flex justify-between">
-                            <span>Movimientos:</span>
+                            <span>Cargos ene–hoy (incluye TC, SII, dólares):</span>
                             <span className="font-bold font-mono">{dashboard.summary?.transactions?.total?.toLocaleString('es-CL') || 0} txs</span>
                         </div>
                     </div>
 
                     {/* Pendiente de Conciliar */}
                     <div className="bg-white border border-slate-300 rounded-lg p-4 shadow-sm">
-                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Movimientos por Justificar</div>
+                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Cargos sin identificar</div>
                         <div className="mt-2 text-2xl font-extrabold text-slate-900 font-mono">
-                            {dashboard.summary?.transactions?.pending?.toLocaleString('es-CL') || 0}
+                            {(dashboard.summary?.transactions?.pending_unknown ?? dashboard.summary?.transactions?.pending ?? 0).toLocaleString('es-CL')}
                         </div>
                         <div className="mt-2 text-xs text-slate-600 border-t border-slate-200 pt-2 font-medium flex justify-between">
-                            <span>Sin DTE asociado:</span>
-                            <span className="font-bold text-slate-700">Por Vincular</span>
+                            <span>Sin destino en cartola:</span>
+                            <span className="font-bold text-slate-700">Cola real</span>
                         </div>
                     </div>
 
@@ -141,8 +141,8 @@ export default function DashboardPage() {
                             {dashboard.summary?.transactions?.match_rate || '0%'}
                         </div>
                         <div className="mt-2 text-xs text-slate-600 border-t border-slate-200 pt-2 font-medium flex justify-between">
-                            <span>Conciliados:</span>
-                            <span className="font-bold font-mono text-slate-800">{dashboard.summary?.transactions?.matched?.toLocaleString('es-CL') || 0} txs</span>
+                            <span>Identificados:</span>
+                            <span className="font-bold font-mono text-slate-800">{(dashboard.summary?.transactions?.identified ?? dashboard.summary?.transactions?.matched ?? 0).toLocaleString('es-CL')} txs</span>
                         </div>
                     </div>
                 </div>

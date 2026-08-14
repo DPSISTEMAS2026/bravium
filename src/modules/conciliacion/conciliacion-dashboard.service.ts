@@ -1,7 +1,46 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { DataVisibilityService } from '../../common/services/data-visibility.service';
 import { DashboardFiltersDto } from './dto/dashboard-filters.dto';
+
+function missingOrEmpty(field: string) {
+    return {
+        OR: [
+            { metadata: { path: [field], equals: Prisma.AnyNull } },
+            { metadata: { path: [field], equals: '' } },
+        ],
+    };
+}
+
+function unknownPendingAnd() {
+    return {
+        AND: [
+            {
+                OR: [
+                    { metadata: { path: ['autoCategorized'], equals: Prisma.AnyNull } },
+                    { metadata: { path: ['autoCategorized'], equals: false } },
+                ],
+            },
+            missingOrEmpty('excelEmpresa'),
+            missingOrEmpty('category'),
+            missingOrEmpty('identifiedProviderName'),
+        ],
+    };
+}
+
+function parseToDate(raw?: string): Date | undefined {
+    if (!raw) return undefined;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        return new Date(`${raw}T23:59:59.999Z`);
+    }
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? undefined : d;
+}
+
+function normRut(rut?: string | null) {
+    return (rut || '').replace(/[^0-9kK]/g, '').toUpperCase();
+}
 
 @Injectable()
 export class ConciliacionDashboardService {
@@ -103,7 +142,13 @@ export class ConciliacionDashboardService {
 
         const dateFilterWithDebit = { ...dateFilter, type: 'DEBIT' as const };
 
-        const [total, matched, pending, totalAmount] = await Promise.all([
+        const unknownWhere = {
+            ...dateFilterWithDebit,
+            status: 'PENDING' as const,
+            ...unknownPendingAnd(),
+        };
+
+        const [total, matched, pending, pendingUnknown, totalAmount] = await Promise.all([
             this.prisma.bankTransaction.count({ where: dateFilterWithDebit }),
             this.prisma.bankTransaction.count({
                 where: {
@@ -117,17 +162,22 @@ export class ConciliacionDashboardService {
                     status: 'PENDING'
                 }
             }),
+            this.prisma.bankTransaction.count({ where: unknownWhere }),
             this.prisma.bankTransaction.aggregate({
                 where: dateFilterWithDebit,
                 _sum: { amount: true }
             })
         ]);
 
+        const identified = Math.max(0, total - pendingUnknown);
         return {
             total,
             matched,
-            pending,
-            match_rate: total > 0 ? ((matched / total) * 100).toFixed(1) + '%' : '0%',
+            pending: pendingUnknown,
+            pending_status: pending,
+            pending_unknown: pendingUnknown,
+            identified,
+            match_rate: total > 0 ? ((identified / total) * 100).toFixed(1) + '%' : '0%',
             total_amount: totalAmount._sum.amount || 0
         };
     }
@@ -207,7 +257,10 @@ export class ConciliacionDashboardService {
                 _sum: { totalAmount: true }
             }),
             this.prisma.dTE.aggregate({
-                where: dateFilter,
+                where: {
+                    ...dateFilter,
+                    paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+                },
                 _sum: { outstandingAmount: true }
             })
         ]);
@@ -276,7 +329,8 @@ export class ConciliacionDashboardService {
             where: {
                 ...dateFilter,
                 status: 'PENDING',
-                type: 'DEBIT'
+                type: 'DEBIT',
+                ...unknownPendingAnd(),
             },
             orderBy: [
                 { amount: 'desc' }, // Priorizar montos altos
@@ -343,7 +397,7 @@ export class ConciliacionDashboardService {
         if (filters.fromDate || filters.toDate) {
             where.transaction = { date: {} };
             if (filters.fromDate) where.transaction.date.gte = new Date(filters.fromDate);
-            if (filters.toDate) where.transaction.date.lte = new Date(filters.toDate);
+            if (filters.toDate) where.transaction.date.lte = parseToDate(filters.toDate) || new Date(filters.toDate);
         }
         if (filters.organizationId) {
             where.transaction = {
@@ -414,7 +468,8 @@ export class ConciliacionDashboardService {
         const dtes = await this.prisma.dTE.findMany({
             where: {
                 ...dateFilter,
-                paymentStatus: { in: ['UNPAID', 'PARTIAL'] }
+                paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+                type: { not: 61 },
             },
             select: {
                 outstandingAmount: true,
@@ -435,7 +490,7 @@ export class ConciliacionDashboardService {
         dtes.forEach(dte => {
             if (!dte.provider) return;
 
-            const key = dte.provider.id;
+            const key = normRut(dte.provider.rut) || dte.provider.id;
             if (!providerMap.has(key)) {
                 providerMap.set(key, {
                     provider: dte.provider,
@@ -528,7 +583,7 @@ export class ConciliacionDashboardService {
         if (minDate || filters.toDate) {
             filter.date = {};
             if (minDate) filter.date.gte = minDate;
-            if (filters.toDate) filter.date.lte = new Date(filters.toDate);
+            if (filters.toDate) filter.date.lte = parseToDate(filters.toDate) || new Date(filters.toDate);
         }
 
         return filter;
@@ -551,7 +606,7 @@ export class ConciliacionDashboardService {
         if (minDate || filters.toDate) {
             filter.issuedDate = {};
             if (minDate) filter.issuedDate.gte = minDate;
-            if (filters.toDate) filter.issuedDate.lte = new Date(filters.toDate);
+            if (filters.toDate) filter.issuedDate.lte = parseToDate(filters.toDate) || new Date(filters.toDate);
         }
 
         return filter;
