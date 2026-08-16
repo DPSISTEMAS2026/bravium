@@ -600,4 +600,97 @@ export class DtesService {
             }
         });
     }
+
+    /**
+     * Aplica notas de crédito (61) contra su factura de origen.
+     * Solo 1:1 mismo emisor y mismo monto ±$10. Nunca contra cartola.
+     */
+    async applyCreditNotes(organizationId: string) {
+        const minDate = this.visibility.getVisibleFromDate() ?? new Date('2026-01-01T00:00:00.000Z');
+        const ncs = await this.prisma.dTE.findMany({
+            where: { organizationId, type: 61, issuedDate: { gte: minDate } },
+            select: { id: true, folio: true, totalAmount: true, rutIssuer: true, metadata: true },
+        });
+        const unpaid = await this.prisma.dTE.findMany({
+            where: {
+                organizationId,
+                type: { in: [33, 34] },
+                issuedDate: { gte: minDate },
+                paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+                NOT: { provider: { rut: { startsWith: 'HIST-' } } },
+            },
+            select: { id: true, folio: true, totalAmount: true, outstandingAmount: true, rutIssuer: true, metadata: true, paymentStatus: true },
+        });
+
+        let applied = 0;
+        let skippedMulti = 0;
+        let skippedNoHit = 0;
+        let skippedAlready = 0;
+        const details: { ncFolio: number; invoiceFolio: number; amount: number }[] = [];
+
+        for (const nc of ncs) {
+            const meta = (nc.metadata && typeof nc.metadata === 'object' && !Array.isArray(nc.metadata))
+                ? nc.metadata as Record<string, any>
+                : {};
+            if (meta.ncAppliedToDteId) {
+                skippedAlready++;
+                continue;
+            }
+            const amt = Math.abs(nc.totalAmount || 0);
+            const cands = unpaid.filter((d) =>
+                d.id !== nc.id
+                && d.rutIssuer === nc.rutIssuer
+                && Math.abs(Math.abs(d.outstandingAmount || d.totalAmount) - amt) <= 10,
+            );
+            if (cands.length !== 1) {
+                if (cands.length > 1) skippedMulti++;
+                else skippedNoHit++;
+                continue;
+            }
+            const inv = cands[0];
+            const newOut = Math.max(0, (inv.outstandingAmount || 0) - amt);
+            const invMeta = (inv.metadata && typeof inv.metadata === 'object' && !Array.isArray(inv.metadata))
+                ? inv.metadata as Record<string, any>
+                : {};
+            const creditNotesApplied = Array.isArray(invMeta.creditNotesApplied) ? invMeta.creditNotesApplied : [];
+            creditNotesApplied.push({ ncId: nc.id, folio: nc.folio, amount: amt });
+
+            await this.prisma.$transaction([
+                this.prisma.dTE.update({
+                    where: { id: inv.id },
+                    data: {
+                        outstandingAmount: newOut,
+                        paymentStatus: newOut <= 0 ? 'PAID' : 'PARTIAL',
+                        metadata: { ...invMeta, creditNotesApplied },
+                    },
+                }),
+                this.prisma.dTE.update({
+                    where: { id: nc.id },
+                    data: {
+                        metadata: { ...meta, ncAppliedToDteId: inv.id, ncAppliedToFolio: inv.folio },
+                    },
+                }),
+            ]);
+            inv.outstandingAmount = newOut;
+            inv.paymentStatus = newOut <= 0 ? 'PAID' : 'PARTIAL';
+            applied++;
+            details.push({ ncFolio: nc.folio, invoiceFolio: inv.folio, amount: amt });
+        }
+
+        const result = { applied, skippedAlready, skippedMulti, skippedNoHit, details: details.slice(0, 20) };
+        this.logger.log(`NC aplicadas org=${organizationId}: ${JSON.stringify({ applied, skippedAlready, skippedMulti, skippedNoHit })}`);
+        // #region agent log
+        try {
+            const fs = require('fs');
+            fs.appendFileSync('e:\\BRAVIUM-PRODUCCION\\.cursor\\debug-58a0b5.log', JSON.stringify({
+                sessionId: '58a0b5', runId: 'estructural-nc-cards', hypothesisId: 'H1',
+                location: 'dtes.service.ts:applyCreditNotes',
+                message: 'nc apply result',
+                data: result,
+                timestamp: Date.now(),
+            }) + '\n');
+        } catch { /* ignore */ }
+        // #endregion
+        return result;
+    }
 }

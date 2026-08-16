@@ -36,6 +36,7 @@ interface QueueDte {
     totalAmount: number;
     outstandingAmount: number;
     issuedDate: string;
+    dueDate: string;
     daysSinceIssue: number;
     daysToDue: number;
     bucket: Bucket;
@@ -61,6 +62,7 @@ export default function LibroDePagosPage() {
     const [bucket, setBucket] = useState<'accion' | Bucket | 'todos'>('accion');
     const [selected, setSelected] = useState<Record<string, boolean>>({});
     const [paying, setPaying] = useState(false);
+    const [applyingNc, setApplyingNc] = useState(false);
     const [payMsg, setPayMsg] = useState<string | null>(null);
     const [payErr, setPayErr] = useState<string | null>(null);
     const [search, setSearch] = useState('');
@@ -157,6 +159,24 @@ export default function LibroDePagosPage() {
             setProvQ(d.provider.name);
         }
         setSelected((prev) => ({ ...prev, [d.id]: true }));
+    };
+
+    const aplicarNc = async () => {
+        if (!queue?.nc?.wouldApply) return;
+        setApplyingNc(true);
+        setPayErr(null);
+        setPayMsg(null);
+        try {
+            const res = await authFetch(`${API}/dtes/apply-credit-notes`, { method: 'POST' });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || 'No se pudieron aplicar las notas de crédito');
+            setPayMsg(`Se aplicaron ${data.applied || 0} notas de crédito a facturas del mismo emisor y monto. No se tocó la cartola.`);
+            mutateQueue();
+        } catch (e: any) {
+            setPayErr(e.message || 'Error al aplicar NC');
+        } finally {
+            setApplyingNc(false);
+        }
     };
 
     const pagar = async (ids: string[]) => {
@@ -462,71 +482,98 @@ export default function LibroDePagosPage() {
                             className="pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg w-48"
                         />
                     </div>
-                    <button
-                        type="button"
-                        disabled={selectedIds.length === 0 || paying}
-                        onClick={() => pagar(selectedIds)}
-                        className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-semibold text-sm rounded-lg px-4 py-2 flex items-center gap-2"
-                    >
-                        {paying ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <BanknotesIcon className="h-4 w-4" />}
-                        Pagar {selectedIds.length || ''} {selectedIds.length ? `· ${formatCurrency(selectedAmount)}` : 'seleccionados'}
+                    <button type="button" onClick={toggleAll} className="text-xs font-semibold text-slate-600 border border-slate-200 rounded-lg px-3 py-1.5">
+                        {visible.length > 0 && visible.every((d) => selected[d.id]) ? 'Quitar todas' : 'Seleccionar visibles'}
                     </button>
                 </div>
 
+                {queue?.nc?.wouldApply > 0 && (
+                    <div className="px-5 py-2 text-xs text-slate-700 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center gap-3">
+                        <span>
+                            Hay {queue.nc.wouldApply} notas de crédito que calzan 1:1 con una factura (mismo emisor y monto). La cola ya no las muestra; el botón las deja aplicadas en la ficha.
+                        </span>
+                        <button
+                            type="button"
+                            disabled={applyingNc}
+                            onClick={aplicarNc}
+                            className="text-xs font-semibold border border-slate-300 rounded-lg px-3 py-1.5 bg-white"
+                        >
+                            {applyingNc ? 'Aplicando…' : 'Aplicar NC en fichas'}
+                        </button>
+                    </div>
+                )}
+
                 {isLoading ? (
                     <div className="p-10 text-center text-slate-400 text-sm">Cargando cola de la semana…</div>
+                ) : visible.length === 0 ? (
+                    <div className="px-4 py-12 text-center text-slate-400">No hay folios en este filtro.</div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-slate-50 text-[10px] uppercase text-slate-500 font-semibold">
-                                <tr>
-                                    <th className="px-4 py-3">
-                                        <input type="checkbox" onChange={toggleAll} checked={visible.length > 0 && visible.every((d) => selected[d.id])} />
-                                    </th>
-                                    <th className="px-4 py-3 text-left">Estado</th>
-                                    <th className="px-4 py-3 text-left">Proveedor</th>
-                                    <th className="px-4 py-3 text-left">Folio</th>
-                                    <th className="px-4 py-3 text-left">Emitida</th>
-                                    <th className="px-4 py-3 text-right">Monto</th>
-                                    <th className="px-4 py-3 text-right">Días a 30</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {visible.map((d) => (
-                                    <tr key={d.id} className={selected[d.id] ? 'bg-indigo-50/60' : 'hover:bg-slate-50'}>
-                                        <td className="px-4 py-3">
-                                            <input type="checkbox" checked={!!selected[d.id]} onChange={() => toggle(d.id)} />
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded ${
-                                                d.bucket === 'vencido' ? 'bg-rose-100 text-rose-800' :
-                                                d.bucket === 'estaSemana' ? 'bg-amber-100 text-amber-800' :
-                                                'bg-slate-100 text-slate-600'
-                                            }`}>
-                                                {d.bucket === 'vencido' ? <ExclamationTriangleIcon className="h-3 w-3" /> : <ClockIcon className="h-3 w-3" />}
-                                                {bucketLabel(d.bucket)}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="font-medium text-slate-900">{d.provider?.name || '—'}</div>
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {visible.map((d) => {
+                            const on = !!selected[d.id];
+                            return (
+                                <button
+                                    key={d.id}
+                                    type="button"
+                                    onClick={() => toggle(d.id)}
+                                    className={`text-left rounded-xl border p-4 transition ${
+                                        on ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white hover:border-slate-300'
+                                    }`}
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <div className="font-semibold text-slate-900 truncate">{d.provider?.name || '—'}</div>
                                             <div className="text-[11px] text-slate-400">{d.provider?.rut}</div>
-                                        </td>
-                                        <td className="px-4 py-3 font-bold text-slate-800">#{d.folio}</td>
-                                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatDate(d.issuedDate)}</td>
-                                        <td className="px-4 py-3 text-right font-semibold">{formatCurrency(d.outstandingAmount || d.totalAmount)}</td>
-                                        <td className="px-4 py-3 text-right font-mono text-slate-600">{d.daysToDue}</td>
-                                    </tr>
-                                ))}
-                                {visible.length === 0 && (
-                                    <tr>
-                                        <td colSpan={7} className="px-4 py-12 text-center text-slate-400">No hay folios en este filtro.</td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                                        </div>
+                                        <span className={`shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded ${
+                                            d.bucket === 'vencido' ? 'bg-rose-100 text-rose-800' :
+                                            d.bucket === 'estaSemana' ? 'bg-amber-100 text-amber-800' :
+                                            'bg-slate-100 text-slate-600'
+                                        }`}>
+                                            {d.bucket === 'vencido' ? <ExclamationTriangleIcon className="h-3 w-3" /> : <ClockIcon className="h-3 w-3" />}
+                                            {bucketLabel(d.bucket)}
+                                        </span>
+                                    </div>
+                                    <div className="mt-3 flex items-end justify-between">
+                                        <div>
+                                            <div className="text-[11px] uppercase tracking-wide text-slate-400">Folio</div>
+                                            <div className="text-lg font-bold text-slate-900">#{d.folio}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-[11px] uppercase tracking-wide text-slate-400">Monto</div>
+                                            <div className="text-lg font-bold text-slate-900">{formatCurrency(d.outstandingAmount || d.totalAmount)}</div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-500">
+                                        <div>Emitida {formatDate(d.issuedDate)}</div>
+                                        <div className="text-right">Vence {formatDate(d.dueDate || d.issuedDate)}</div>
+                                    </div>
+                                </button>
+                            );
+                        })}
                     </div>
                 )}
             </div>
+
+            {selectedIds.length > 0 && (
+                <div className="sticky bottom-4 z-20">
+                    <div className="bg-slate-900 text-white rounded-xl px-5 py-3 flex flex-wrap items-center gap-4 shadow-lg">
+                        <div className="flex-1">
+                            <div className="text-xs uppercase tracking-wide text-slate-300">Seleccionadas</div>
+                            <div className="font-semibold">{selectedIds.length} folios · {formatCurrency(selectedAmount)}</div>
+                        </div>
+                        <button
+                            type="button"
+                            disabled={paying}
+                            onClick={() => pagar(selectedIds)}
+                            className="bg-indigo-500 hover:bg-indigo-400 disabled:opacity-40 text-white font-semibold text-sm rounded-lg px-5 py-2.5 flex items-center gap-2"
+                        >
+                            {paying ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <BanknotesIcon className="h-4 w-4" />}
+                            Pagar
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="bg-white border border-slate-200 rounded-xl p-5">

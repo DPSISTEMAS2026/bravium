@@ -18,8 +18,10 @@ export interface ExcelPaymentRowInput {
     idMovimientoBanco?: string;
 }
 
-const PAGOS_CL_PATH = 'e:\\BRAVIUM-PRODUCCION\\CARTOLAS\\EXCEL CARTOLAS 2026\\Pagos_CL_Plataforma_Identificados_2026.xlsx';
-const CONTROL_PATH = 'e:\\BRAVIUM-PRODUCCION\\CARTOLAS\\EXCEL CARTOLAS 2026\\Control_Pagos_Bravium_Plataforma_2026.xlsx';
+const PAGOS_CL_PATH = process.env.EXCEL_PAGOS_CL_PATH
+    || 'e:\\BRAVIUM-PRODUCCION\\CARTOLAS\\EXCEL CARTOLAS 2026\\Pagos_CL_Plataforma_Identificados_2026.xlsx';
+const CONTROL_PATH = process.env.EXCEL_CONTROL_PATH
+    || 'e:\\BRAVIUM-PRODUCCION\\CARTOLAS\\EXCEL CARTOLAS 2026\\Control_Pagos_Bravium_Plataforma_2026.xlsx';
 
 const MONTHS = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
 
@@ -68,6 +70,17 @@ export class ExcelLiveSyncService {
 
     private appendToWorkbook(filePath: string, rows: ExcelPaymentRowInput[], kind: 'pagos-cl' | 'control'): boolean {
         try {
+            // #region agent log
+            try {
+                fs.appendFileSync('e:\\BRAVIUM-PRODUCCION\\.cursor\\debug-58a0b5.log', JSON.stringify({
+                    sessionId: '58a0b5', runId: 'retoma-dte-excel', hypothesisId: 'H1',
+                    location: 'excel-live-sync.service.ts:appendToWorkbook',
+                    message: 'excel write attempt',
+                    data: { filePath, kind, rows: rows.length, exists: fs.existsSync(filePath), cwd: process.cwd(), platform: process.platform },
+                    timestamp: Date.now(),
+                }) + '\n');
+            } catch { /* ignore */ }
+            // #endregion
             if (!fs.existsSync(filePath)) {
                 if (kind !== 'pagos-cl') {
                     this.logger.warn(`Excel no encontrado: ${filePath}`);
@@ -153,9 +166,31 @@ export class ExcelLiveSyncService {
 
             xlsx.writeFile(wb, filePath);
             this.logger.log(`Excel ${kind} actualizado (${rows.length} filas): ${filePath}`);
+            // #region agent log
+            try {
+                fs.appendFileSync('e:\\BRAVIUM-PRODUCCION\\.cursor\\debug-58a0b5.log', JSON.stringify({
+                    sessionId: '58a0b5', runId: 'retoma-dte-excel', hypothesisId: 'H1',
+                    location: 'excel-live-sync.service.ts:appendToWorkbook:ok',
+                    message: 'excel write ok',
+                    data: { filePath, kind, rows: rows.length },
+                    timestamp: Date.now(),
+                }) + '\n');
+            } catch { /* ignore */ }
+            // #endregion
             return true;
         } catch (err: any) {
             this.logger.error(`No se pudo escribir ${kind} (${filePath}): ${err.message}`);
+            // #region agent log
+            try {
+                fs.appendFileSync('e:\\BRAVIUM-PRODUCCION\\.cursor\\debug-58a0b5.log', JSON.stringify({
+                    sessionId: '58a0b5', runId: 'retoma-dte-excel', hypothesisId: 'H1',
+                    location: 'excel-live-sync.service.ts:appendToWorkbook:err',
+                    message: 'excel write failed',
+                    data: { filePath, kind, error: err.message },
+                    timestamp: Date.now(),
+                }) + '\n');
+            } catch { /* ignore */ }
+            // #endregion
             return false;
         }
     }

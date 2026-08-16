@@ -165,6 +165,13 @@ export class DtesController {
         return this.dtesService.updateManualReview(id, organizationId, body);
     }
 
+    @Post('apply-credit-notes')
+    async applyCreditNotes(@Req() req?: Request) {
+        const organizationId = (req as any)?.organizationId;
+        this.logger.log(`Applying credit notes for org ${organizationId}`);
+        return this.dtesService.applyCreditNotes(organizationId);
+    }
+
     /**
      * PATCH /dtes/:id/amount
      * Corrige el monto de un documento (especialmente útil para Boletas de Honorarios manuales)

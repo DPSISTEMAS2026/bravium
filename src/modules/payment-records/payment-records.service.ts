@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { DataVisibilityService } from '../../common/services/data-visibility.service';
 import { ExcelLiveSyncService } from './excel-live-sync.service';
 import { extractCommerceFromGlosa, isMarketplaceGlosa } from '../conciliacion/services/excel-pattern-learner.service';
 
@@ -43,6 +44,7 @@ export class PaymentRecordsService {
     constructor(
         private prisma: PrismaService,
         private excelLiveSync: ExcelLiveSyncService,
+        private readonly visibility: DataVisibilityService,
     ) {}
 
     async create(dto: CreatePaymentRecordDto, userId?: string, organizationId?: string) {
@@ -299,34 +301,69 @@ export class PaymentRecordsService {
         });
         const declaredIds = new Set(alreadyDeclared.map((r) => r.dteId).filter(Boolean) as string[]);
 
-        const dtes = await this.prisma.dTE.findMany({
-            where: {
-                organizationId,
-                type: { notIn: [61] },
-                paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
-                issuedDate: { lte: issuedTo },
-            },
-            include: {
-                provider: {
-                    select: {
-                        id: true,
-                        name: true,
-                        rut: true,
-                        transferBankName: true,
-                        transferAccountNumber: true,
-                        transferAccountType: true,
-                        transferRut: true,
-                        transferEmail: true,
+        const minDate = this.visibility.getVisibleFromDate() ?? new Date('2026-01-01T00:00:00.000Z');
+        const [dtes, ncs] = await Promise.all([
+            this.prisma.dTE.findMany({
+                where: {
+                    organizationId,
+                    type: { notIn: [61] },
+                    paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+                    issuedDate: { gte: minDate, lte: issuedTo },
+                    NOT: { provider: { rut: { startsWith: 'HIST-' } } },
+                },
+                include: {
+                    provider: {
+                        select: {
+                            id: true,
+                            name: true,
+                            rut: true,
+                            transferBankName: true,
+                            transferAccountNumber: true,
+                            transferAccountType: true,
+                            transferRut: true,
+                            transferEmail: true,
+                        },
                     },
                 },
-            },
-            orderBy: { issuedDate: 'asc' },
-            take: 500,
-        });
+                orderBy: { issuedDate: 'asc' },
+            }),
+            this.prisma.dTE.findMany({
+                where: { organizationId, type: 61, issuedDate: { gte: minDate } },
+                select: { id: true, folio: true, totalAmount: true, rutIssuer: true, metadata: true },
+            }),
+        ]);
+
+        const covered = new Set<string>();
+        let ncWouldApply = 0;
+        let ncSkippedMulti = 0;
+        let ncSkippedAlready = 0;
+        for (const nc of ncs) {
+            const meta = (nc.metadata && typeof nc.metadata === 'object' && !Array.isArray(nc.metadata))
+                ? nc.metadata as Record<string, any>
+                : {};
+            if (meta.ncAppliedToDteId) {
+                ncSkippedAlready++;
+                covered.add(String(meta.ncAppliedToDteId));
+                continue;
+            }
+            const amt = Math.abs(nc.totalAmount || 0);
+            const cands = dtes.filter((d) =>
+                d.rutIssuer === nc.rutIssuer
+                && Math.abs(Math.abs(d.outstandingAmount || d.totalAmount) - amt) <= 10
+                && !covered.has(d.id),
+            );
+            if (cands.length === 1) {
+                covered.add(cands[0].id);
+                ncWouldApply++;
+            } else if (cands.length > 1) ncSkippedMulti++;
+        }
+        const nc = { wouldApply: ncWouldApply, skippedAlready: ncSkippedAlready, skippedMulti: ncSkippedMulti, applied: 0 };
 
         const mapRow = (dte: (typeof dtes)[number]) => {
             const daysSinceIssue = Math.floor((today.getTime() - new Date(dte.issuedDate).getTime()) / msDay);
             const daysToDue = 30 - daysSinceIssue;
+            const dueDate = new Date(dte.issuedDate);
+            dueDate.setUTCDate(dueDate.getUTCDate() + 30);
             let bucket: 'vencido' | 'estaSemana' | 'proximo' = 'proximo';
             if (daysToDue < 0) bucket = 'vencido';
             else if (daysToDue <= 7) bucket = 'estaSemana';
@@ -337,6 +374,7 @@ export class PaymentRecordsService {
                 totalAmount: dte.totalAmount,
                 outstandingAmount: dte.outstandingAmount,
                 issuedDate: dte.issuedDate,
+                dueDate: dueDate.toISOString(),
                 daysSinceIssue,
                 daysToDue,
                 bucket,
@@ -346,33 +384,52 @@ export class PaymentRecordsService {
         };
 
         const rows = dtes.map(mapRow);
-        const actionable = rows.filter((r) => !r.alreadyDeclared);
+        const actionable = rows.filter((r) => !r.alreadyDeclared && !covered.has(r.id));
         const estaSemana = actionable.filter((r) => r.bucket === 'estaSemana');
         const vencido = actionable.filter((r) => r.bucket === 'vencido');
         const proximo = actionable.filter((r) => r.bucket === 'proximo');
         const sum = (list: typeof actionable) => list.reduce((s, r) => s + (r.outstandingAmount || r.totalAmount), 0);
         const providers = new Set(estaSemana.concat(vencido).map((r) => r.provider?.id).filter(Boolean));
 
+        const summary = {
+            estaSemana: { count: estaSemana.length, amount: sum(estaSemana) },
+            vencido: { count: vencido.length, amount: sum(vencido) },
+            proximo: { count: proximo.length, amount: sum(proximo) },
+            providersToPay: providers.size,
+            totalActionable: estaSemana.length + vencido.length,
+            totalActionableAmount: sum(estaSemana) + sum(vencido),
+        };
+
+        // #region agent log
+        try {
+            const fs = require('fs');
+            fs.appendFileSync('e:\\BRAVIUM-PRODUCCION\\.cursor\\debug-58a0b5.log', JSON.stringify({
+                sessionId: '58a0b5', runId: 'retoma-dte-excel', hypothesisId: 'H4',
+                location: 'payment-records.service.ts:getWeekQueue',
+                message: 'week-queue structural',
+                data: { minDate: minDate.toISOString().slice(0, 10), issuedTo: issuedTo.toISOString().slice(0, 10), fetched: dtes.length, hiddenByNc: covered.size, summary, nc },
+                timestamp: Date.now(),
+            }) + '\n');
+        } catch { /* ignore */ }
+        // #endregion
+
         return {
             asOf: today.toISOString().slice(0, 10),
-            summary: {
-                estaSemana: { count: estaSemana.length, amount: sum(estaSemana) },
-                vencido: { count: vencido.length, amount: sum(vencido) },
-                proximo: { count: proximo.length, amount: sum(proximo) },
-                providersToPay: providers.size,
-                totalActionable: estaSemana.length + vencido.length,
-                totalActionableAmount: sum(estaSemana) + sum(vencido),
-            },
+            summary,
+            nc,
             dtes: actionable,
         };
     }
 
     async suggestFolios(organizationId: string, q: string, providerId?: string) {
         const query = (q || '').trim();
+        const minDate = this.visibility.getVisibleFromDate() ?? new Date('2026-01-01T00:00:00.000Z');
         const where: Prisma.DTEWhereInput = {
             organizationId,
             type: { notIn: [61] },
             paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+            issuedDate: { gte: minDate },
+            NOT: { provider: { rut: { startsWith: 'HIST-' } } },
             ...(providerId ? { providerId } : {}),
         };
 
